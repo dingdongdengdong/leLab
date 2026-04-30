@@ -147,6 +147,12 @@ const Landing = () => {
     }
   };
 
+  const handleInferenceClick = () => {
+    if (robotModel) {
+      navigate("/inference");
+    }
+  };
+
   const handleStartTeleoperation = async () => {
     if (!leaderConfig || !followerConfig) {
       toast({
@@ -336,6 +342,13 @@ const Landing = () => {
       description: "Train a model on your datasets.",
       handler: handleTrainingClick,
       color: "bg-green-500 hover:bg-green-600",
+      isWorkInProgress: true,
+    },
+    {
+      title: "Inference",
+      description: "Run a trained model on the robot arm.",
+      handler: handleInferenceClick,
+      color: "bg-blue-500 hover:bg-blue-600",
       isWorkInProgress: true,
     },
   ];
