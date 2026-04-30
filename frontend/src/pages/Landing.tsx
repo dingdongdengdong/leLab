@@ -1,13 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowRight } from "lucide-react";
 import LandingHeader from "@/components/landing/LandingHeader";
 import HfAuthBanner from "@/components/landing/HfAuthBanner";
-import RobotModelSelector from "@/components/landing/RobotModelSelector";
+import RobotConfigManager from "@/components/landing/RobotConfigManager";
 import ActionList from "@/components/landing/ActionList";
 import PermissionModal from "@/components/landing/PermissionModal";
-import TeleoperationModal from "@/components/landing/TeleoperationModal";
 import RecordingModal from "@/components/landing/RecordingModal";
 
 import { Action } from "@/components/landing/types";
@@ -20,24 +18,13 @@ import { isHostedSpace } from "@/lib/isHostedSpace";
 const ON_SPACE = isHostedSpace();
 
 const Landing = () => {
-  const [robotModel, setRobotModel] = useState("SO101");
   const [showPermissionModal, setShowPermissionModal] = useState(false);
-  const [showTeleoperationModal, setShowTeleoperationModal] = useState(false);
   const [showUsageModal, setShowUsageModal] = useState(ON_SPACE);
 
-  const [leaderPort, setLeaderPort] = useState("/dev/tty.usbmodem5A460816421");
-  const [followerPort, setFollowerPort] = useState(
-    "/dev/tty.usbmodem5A460816621"
-  );
-  const [leaderConfig, setLeaderConfig] = useState("");
-  const [followerConfig, setFollowerConfig] = useState("");
-  const [leaderConfigs, setLeaderConfigs] = useState<string[]>([]);
-  const [followerConfigs, setFollowerConfigs] = useState<string[]>([]);
-  const [isLoadingConfigs, setIsLoadingConfigs] = useState(false);
   const { baseUrl, fetchWithHeaders } = useApi();
   const { auth } = useHfAuth();
 
-  // Recording state
+  // Recording state (kept as-is — out of scope this round)
   const [showRecordingModal, setShowRecordingModal] = useState(false);
   const [recordLeaderPort, setRecordLeaderPort] = useState(
     "/dev/tty.usbmodem5A460816421"
@@ -47,12 +34,14 @@ const Landing = () => {
   );
   const [recordLeaderConfig, setRecordLeaderConfig] = useState("");
   const [recordFollowerConfig, setRecordFollowerConfig] = useState("");
+  const [leaderConfigs, setLeaderConfigs] = useState<string[]>([]);
+  const [followerConfigs, setFollowerConfigs] = useState<string[]>([]);
+  const [isLoadingConfigs, setIsLoadingConfigs] = useState(false);
   const [datasetName, setDatasetName] = useState("");
   const [singleTask, setSingleTask] = useState("");
   const [numEpisodes, setNumEpisodes] = useState(5);
   const [cameras, setCameras] = useState<CameraConfig[]>([]);
 
-  // Camera stream release ref
   const releaseStreamsRef = useRef<(() => void) | null>(null);
 
   const navigate = useNavigate();
@@ -60,19 +49,15 @@ const Landing = () => {
 
   // Clear camera state and release streams when returning to landing page
   useEffect(() => {
-    // If we have cameras and returning from a recording session, clear them
     if (cameras.length > 0) {
-      console.log(
-        "🧹 Landing page: Cleaning up camera state from previous session"
-      );
+      console.log("🧹 Landing page: Cleaning up camera state from previous session");
       if (releaseStreamsRef.current) {
         releaseStreamsRef.current();
       }
-      setCameras([]); // Clear camera configuration
+      setCameras([]);
     }
-  }, []); // Only run on mount
+  }, []);
 
-  // Cleanup when leaving landing page
   useEffect(() => {
     return () => {
       if (releaseStreamsRef.current) {
@@ -100,114 +85,29 @@ const Landing = () => {
     }
   };
 
-  const handleBeginSession = () => {
-    if (robotModel) {
-      setShowPermissionModal(true);
-    }
-  };
-
-  const handleTeleoperationClick = () => {
-    if (robotModel) {
-      setShowTeleoperationModal(true);
-      loadConfigs();
-    }
-  };
-
   const handleCalibrationClick = () => {
-    if (robotModel) {
-      navigate("/calibration");
-    }
+    navigate("/calibration");
   };
 
   const handleRecordingClick = () => {
-    if (robotModel) {
-      setShowRecordingModal(true);
-      loadConfigs();
-    }
+    setShowRecordingModal(true);
+    loadConfigs();
   };
 
   const handleRecordingModalClose = (open: boolean) => {
     setShowRecordingModal(open);
-    // Release camera streams when modal is closed
     if (!open && releaseStreamsRef.current) {
       console.log("🧹 Modal closed: Releasing camera streams");
       releaseStreamsRef.current();
     }
   };
 
-  const handleTrainingClick = () => {
-    if (robotModel) {
-      navigate("/training");
-    }
-  };
-
-  const handleReplayDatasetClick = () => {
-    if (robotModel) {
-      navigate("/replay-dataset");
-    }
-  };
-
-  const handleInferenceClick = () => {
-    if (robotModel) {
-      navigate("/inference");
-    }
-  };
-
-  const handleStartTeleoperation = async () => {
-    if (!leaderConfig || !followerConfig) {
-      toast({
-        title: "Missing Configuration",
-        description:
-          "Please select calibration configs for both leader and follower.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const response = await fetchWithHeaders(`${baseUrl}/move-arm`, {
-        method: "POST",
-        body: JSON.stringify({
-          leader_port: leaderPort,
-          follower_port: followerPort,
-          leader_config: leaderConfig,
-          follower_config: followerConfig,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        toast({
-          title: "Teleoperation Started",
-          description:
-            data.message || "Successfully started teleoperation session.",
-        });
-        setShowTeleoperationModal(false);
-        navigate("/teleoperation");
-      } else {
-        toast({
-          title: "Error Starting Teleoperation",
-          description: data.message || "Failed to start teleoperation session.",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Connection Error",
-        description: "Could not connect to the backend server.",
-        variant: "destructive",
-      });
-    }
-  };
+  const handleTrainingClick = () => navigate("/training");
+  const handleReplayDatasetClick = () => navigate("/replay-dataset");
+  const handleInferenceClick = () => navigate("/inference");
 
   const handleStartRecording = async () => {
-    if (
-      !recordLeaderConfig ||
-      !recordFollowerConfig ||
-      !datasetName ||
-      !singleTask
-    ) {
+    if (!recordLeaderConfig || !recordFollowerConfig || !datasetName || !singleTask) {
       toast({
         title: "Missing Configuration",
         description:
@@ -218,33 +118,23 @@ const Landing = () => {
     }
 
     const datasetRepoId =
-      auth.status === "authenticated"
-        ? `${auth.username}/${datasetName}`
-        : datasetName;
+      auth.status === "authenticated" ? `${auth.username}/${datasetName}` : datasetName;
 
-    // 🔓 CRITICAL: Release all camera streams before backend accesses them
     if (cameras.length > 0 && releaseStreamsRef.current) {
       console.log("🔓 Releasing camera streams before starting recording...");
-
       toast({
         title: "Preparing Camera Resources",
         description: `Releasing ${cameras.length} camera stream(s) for recording...`,
       });
-
       releaseStreamsRef.current();
-
-      // Wait a moment for camera resources to be fully released
       await new Promise((resolve) => setTimeout(resolve, 500));
       console.log("✅ Camera streams released, proceeding with recording...");
-
       toast({
         title: "Camera Resources Ready",
-        description:
-          "Camera streams released successfully. Starting recording...",
+        description: "Camera streams released successfully. Starting recording...",
       });
     }
 
-    // Convert cameras to the LeRobot format
     const cameraDict = cameras.reduce((acc, cam) => {
       acc[cam.name] = {
         type: cam.type,
@@ -281,22 +171,17 @@ const Landing = () => {
     setShowPermissionModal(false);
     if (allow) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         stream.getTracks().forEach((track) => track.stop());
         toast({
           title: "Permissions Granted",
-          description:
-            "Camera and microphone access enabled. Entering control session...",
+          description: "Camera and microphone access enabled. Entering control session...",
         });
         navigate("/control");
       } catch (error) {
         toast({
           title: "Permission Denied",
-          description:
-            "Camera and microphone access is required for robot control.",
+          description: "Camera and microphone access is required for robot control.",
           variant: "destructive",
         });
       }
@@ -310,6 +195,7 @@ const Landing = () => {
     }
   };
 
+  // Teleoperation is now per-robot on the tile, so it's not in this list.
   const actions: Action[] = [
     {
       title: "Calibration",
@@ -317,12 +203,6 @@ const Landing = () => {
       handler: handleCalibrationClick,
       color: "bg-indigo-500 hover:bg-indigo-600",
       isWorkInProgress: false,
-    },
-    {
-      title: "Teleoperation",
-      description: "Control the robot arm in real-time.",
-      handler: handleTeleoperationClick,
-      color: "bg-yellow-500 hover:bg-yellow-600",
     },
     {
       title: "Record Dataset",
@@ -361,11 +241,8 @@ const Landing = () => {
       </div>
 
       <div className="p-8 bg-gray-900 rounded-lg shadow-xl w-full max-w-4xl space-y-6 border border-gray-700">
-        <RobotModelSelector
-          robotModel={robotModel}
-          onValueChange={setRobotModel}
-        />
-        <ActionList actions={actions} robotModel={robotModel} />
+        <RobotConfigManager />
+        <ActionList actions={actions} />
       </div>
 
       <PermissionModal
@@ -378,23 +255,6 @@ const Landing = () => {
         open={showUsageModal}
         onOpenChange={setShowUsageModal}
         dismissible={!ON_SPACE}
-      />
-
-      <TeleoperationModal
-        open={showTeleoperationModal}
-        onOpenChange={setShowTeleoperationModal}
-        leaderPort={leaderPort}
-        setLeaderPort={setLeaderPort}
-        followerPort={followerPort}
-        setFollowerPort={setFollowerPort}
-        leaderConfig={leaderConfig}
-        setLeaderConfig={setLeaderConfig}
-        followerConfig={followerConfig}
-        setFollowerConfig={setFollowerConfig}
-        leaderConfigs={leaderConfigs}
-        followerConfigs={followerConfigs}
-        isLoadingConfigs={isLoadingConfigs}
-        onStart={handleStartTeleoperation}
       />
 
       <RecordingModal
