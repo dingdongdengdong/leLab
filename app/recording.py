@@ -68,8 +68,21 @@ class DatasetInfoRequest(BaseModel):
 
 def create_record_config(request: RecordingRequest) -> RecordConfig:
     """Create a RecordConfig from the recording request"""
+    import platform
     from lerobot.cameras.opencv import OpenCVCameraConfig
-    
+    from lerobot.cameras.configs import Cv2Backends
+
+    # Pin the backend so the index→camera mapping matches what the
+    # /available-cameras thumbnails were captured with. cv2.CAP_ANY can
+    # pick different backends across calls on macOS, which silently
+    # reorders the cameras between the modal's preview and the recording.
+    if platform.system() == "Darwin":
+        opencv_backend = Cv2Backends.AVFOUNDATION
+    elif platform.system() == "Linux":
+        opencv_backend = Cv2Backends.V4L2
+    else:
+        opencv_backend = Cv2Backends.ANY
+
     # Setup calibration files
     leader_config_name, follower_config_name = setup_calibration_files(
         request.leader_config, request.follower_config
@@ -82,11 +95,12 @@ def create_record_config(request: RecordingRequest) -> RecordConfig:
             # Convert frontend format to OpenCVCameraConfig
             camera_configs[camera_name] = OpenCVCameraConfig(
                 index_or_path=camera_data.get("camera_index", 0),
+                backend=opencv_backend,
                 fps=camera_data.get("fps"),
                 width=camera_data.get("width"),
                 height=camera_data.get("height"),
             )
-            logger.info(f"✅ CAMERA CONFIG: Converted {camera_name} -> OpenCVCameraConfig(index={camera_data.get('camera_index')}, {camera_data.get('width')}x{camera_data.get('height')}@{camera_data.get('fps')}fps)")
+            logger.info(f"✅ CAMERA CONFIG: Converted {camera_name} -> OpenCVCameraConfig(index={camera_data.get('camera_index')}, backend={opencv_backend.name}, {camera_data.get('width')}x{camera_data.get('height')}@{camera_data.get('fps')}fps)")
         else:
             logger.warning(f"⚠️ CAMERA CONFIG: Unsupported camera type '{camera_data.get('type')}' for {camera_name}")
 

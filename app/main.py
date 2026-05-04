@@ -553,10 +553,21 @@ def get_available_cameras():
     try:
         import cv2
         import base64
+        import platform
         cameras = []
 
+        # Pin the backend so the indices we hand back match what the recording
+        # session will see. cv2.CAP_ANY can otherwise pick a different backend
+        # on subsequent calls (notably macOS), silently reordering cameras.
+        if platform.system() == "Darwin":
+            backend = cv2.CAP_AVFOUNDATION
+        elif platform.system() == "Linux":
+            backend = cv2.CAP_V4L2
+        else:
+            backend = cv2.CAP_ANY
+
         for i in range(10):
-            cap = cv2.VideoCapture(i)
+            cap = cv2.VideoCapture(i, backend)
             if not cap.isOpened():
                 cap.release()
                 continue
