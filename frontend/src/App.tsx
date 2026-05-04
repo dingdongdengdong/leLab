@@ -42,6 +42,7 @@ function App() {
                       <Route path="/recording" element={<Recording />} />
                       <Route path="/upload" element={<Upload />} />
                       <Route path="/training" element={<Training />} />
+                      <Route path="/training/:jobId" element={<Training />} />
                       <Route path="/inference" element={<Inference />} />
                       <Route path="/calibration" element={<Calibration />} />
                       <Route path="/edit-dataset" element={<EditDataset />} />
