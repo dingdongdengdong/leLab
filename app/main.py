@@ -57,6 +57,7 @@ from .replaying import (
 )
 
 from .hf_auth import handle_hf_auth_status
+from . import dataset_browser
 
 
 # Set up logging
@@ -259,6 +260,24 @@ def health_check():
 def hf_auth_status():
     """Check whether the local HF CLI is authenticated and return user info."""
     return handle_hf_auth_status()
+
+
+@app.get("/datasets")
+def datasets_list():
+    """List datasets the logged-in HF user owns or shares with their orgs."""
+    return dataset_browser.list_user_datasets()
+
+
+@app.get("/episodes/{repo_id:path}")
+def datasets_episodes(repo_id: str):
+    """List episodes (with durations) for a LeRobot-format dataset."""
+    try:
+        return dataset_browser.get_episode_list(repo_id)
+    except FileNotFoundError as e:
+        return JSONResponse(status_code=404, content={"error": "Not a LeRobot-format dataset", "detail": str(e)})
+    except Exception as e:
+        logger.exception("episode list failed")
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @app.get("/ws-test")
