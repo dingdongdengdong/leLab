@@ -233,13 +233,253 @@ class LocalJobRunner:
             logger.exception("Error reading subprocess stdout: %s", exc)
 
 
-# Re-exported here so callers don't need to know they came from training.py.
-# Filled in by Task 2 (LocalJobRunner) and Task 3 (JobRegistry).
+import json
+import shutil
+from datetime import datetime
+from pathlib import Path
+from typing import Dict
+
+
+_PERSIST_THROTTLE_SECONDS = 1.0
+
+
+def _generate_job_id(policy_type: str, dataset_repo_id: str) -> str:
+    """Mirror of training._generate_output_dir's leaf — same slug logic."""
+    from .training import _SLUG_RE
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    dataset_slug = _SLUG_RE.sub("_", dataset_repo_id).strip("_") or "dataset"
+    return f"{policy_type}_{dataset_slug}_{timestamp}"
+
+
+def _job_dir(output_root: Path, job_id: str) -> Path:
+    return output_root / job_id
+
+
+def _job_meta_path(output_root: Path, job_id: str) -> Path:
+    return _job_dir(output_root, job_id) / "job.json"
+
+
+class JobAlreadyRunningError(Exception):
+    """Raised when start() is called while another local job is running."""
+
+
+class JobNotFoundError(Exception):
+    """Raised when a lookup hits an unknown id."""
+
+
+class JobNotRunningError(Exception):
+    """Raised when stop() is called on a non-running job."""
+
+
+class JobRegistry:
+    """Owns the registry of training jobs and their persistence.
+
+    On instantiation, scans outputs/train/ for existing job.json files and
+    rewrites any record marked 'running' to 'interrupted' (since this is a
+    fresh lelab process — we no longer own those subprocesses).
+    """
+
+    def __init__(self, output_root: Path) -> None:
+        self._output_root = output_root
+        self._output_root.mkdir(parents=True, exist_ok=True)
+
+        self._lock = threading.Lock()
+        self._records: Dict[str, JobRecord] = {}
+        self._runners: Dict[str, LocalJobRunner] = {}
+        self._last_persist_at: Dict[str, float] = {}
+
+        self._stop_watchdog = threading.Event()
+        self._watchdog_thread: Optional[threading.Thread] = None
+
+        self._load_from_disk()
+        self._start_watchdog()
+
+    # -- public API --
+
+    def list(self, limit: int = 10) -> List[JobRecord]:
+        with self._lock:
+            records = list(self._records.values())
+        records.sort(key=lambda r: r.started_at, reverse=True)
+        return records[:limit]
+
+    def get(self, job_id: str) -> JobRecord:
+        with self._lock:
+            record = self._records.get(job_id)
+        if record is None:
+            raise JobNotFoundError(job_id)
+        return record
+
+    def start(self, config: TrainingRequest) -> JobRecord:
+        with self._lock:
+            for r in self._records.values():
+                if r.state == "running":
+                    raise JobAlreadyRunningError(r.id)
+
+            job_id = _generate_job_id(config.policy_type, config.dataset_repo_id)
+            output_dir = str(_job_dir(self._output_root, job_id))
+            name = f"{config.policy_type.upper()} · {config.dataset_repo_id}"
+            record = JobRecord(
+                id=job_id,
+                name=name,
+                state="running",
+                config=config,
+                output_dir=output_dir,
+                started_at=time.time(),
+            )
+
+            _job_dir(self._output_root, job_id).mkdir(parents=True, exist_ok=True)
+            self._records[job_id] = record
+            self._persist(record, force=True)
+
+            runner = LocalJobRunner(record.metrics)
+            try:
+                runner.start(job_id, config, output_dir)
+            except Exception as exc:
+                logger.exception("Failed to start subprocess for job %s", job_id)
+                record.state = "failed"
+                record.ended_at = time.time()
+                record.error_message = f"Failed to spawn subprocess: {exc}"
+                self._persist(record, force=True)
+                raise
+
+            self._runners[job_id] = runner
+            return record
+
+    def stop(self, job_id: str) -> JobRecord:
+        with self._lock:
+            record = self._records.get(job_id)
+            if record is None:
+                raise JobNotFoundError(job_id)
+            runner = self._runners.get(job_id)
+        if record.state != "running" or runner is None:
+            raise JobNotRunningError(job_id)
+        runner.stop()
+        # The watchdog will finalise the record (state, ended_at, exit_code).
+        # Wait briefly so the caller sees the new state in the response.
+        for _ in range(20):
+            time.sleep(0.1)
+            with self._lock:
+                if record.state != "running":
+                    return record
+        return record
+
+    def drain_logs(self, job_id: str) -> List[LogLine]:
+        with self._lock:
+            if job_id not in self._records:
+                raise JobNotFoundError(job_id)
+            runner = self._runners.get(job_id)
+        if runner is None:
+            return []
+        return runner.stream_log_lines()
+
+    def delete(self, job_id: str) -> None:
+        with self._lock:
+            record = self._records.get(job_id)
+            if record is None:
+                raise JobNotFoundError(job_id)
+            if record.state == "running":
+                raise JobNotRunningError(job_id)
+            self._records.pop(job_id, None)
+            self._runners.pop(job_id, None)
+            self._last_persist_at.pop(job_id, None)
+        try:
+            shutil.rmtree(_job_dir(self._output_root, job_id))
+        except FileNotFoundError:
+            pass
+
+    def shutdown(self) -> None:
+        """For tests / orderly process exit. Not wired to FastAPI lifespan today."""
+        self._stop_watchdog.set()
+
+    # -- internals --
+
+    def _load_from_disk(self) -> None:
+        for job_dir in self._output_root.glob("*/"):
+            meta = job_dir / "job.json"
+            if not meta.exists():
+                continue
+            try:
+                data = json.loads(meta.read_text())
+                record = JobRecord.model_validate(data)
+            except Exception as exc:
+                logger.warning("Skipping malformed job.json at %s: %s", meta, exc)
+                continue
+            if record.state == "running":
+                record.state = "interrupted"
+                if record.ended_at is None:
+                    record.ended_at = time.time()
+                self._write_meta(record)
+            self._records[record.id] = record
+
+    def _start_watchdog(self) -> None:
+        self._watchdog_thread = threading.Thread(
+            target=self._watchdog_loop, name="job-registry-watchdog", daemon=True
+        )
+        self._watchdog_thread.start()
+
+    def _watchdog_loop(self) -> None:
+        while not self._stop_watchdog.is_set():
+            try:
+                self._tick()
+            except Exception as exc:
+                logger.exception("Watchdog tick failed: %s", exc)
+            self._stop_watchdog.wait(1.0)
+
+    def _tick(self) -> None:
+        with self._lock:
+            running_ids = [jid for jid, r in self._records.items() if r.state == "running"]
+
+        for jid in running_ids:
+            with self._lock:
+                runner = self._runners.get(jid)
+                record = self._records.get(jid)
+            if runner is None or record is None:
+                continue
+            if runner.is_running():
+                # Persist metric snapshot at most once per second.
+                self._persist(record, force=False)
+                continue
+
+            # Subprocess exited since the last tick. Finalise.
+            rc = runner.returncode()
+            with self._lock:
+                record.state = "done" if rc == 0 else "failed"
+                record.ended_at = time.time()
+                record.exit_code = rc
+                if rc != 0 and record.error_message is None:
+                    record.error_message = f"Subprocess exited with code {rc}"
+                self._runners.pop(jid, None)
+            self._persist(record, force=True)
+
+    def _persist(self, record: JobRecord, force: bool) -> None:
+        now = time.time()
+        last = self._last_persist_at.get(record.id, 0.0)
+        if not force and (now - last) < _PERSIST_THROTTLE_SECONDS:
+            return
+        self._last_persist_at[record.id] = now
+        self._write_meta(record)
+
+    def _write_meta(self, record: JobRecord) -> None:
+        path = _job_meta_path(self._output_root, record.id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(record.model_dump_json(indent=2))
+
+
+# Module-level singleton. The output root is the project's outputs/train/.
+_DEFAULT_OUTPUT_ROOT = Path("outputs/train")
+job_registry = JobRegistry(_DEFAULT_OUTPUT_ROOT)
+
 __all__ = [
     "JobState",
     "TrainingMetrics",
     "LogLine",
     "JobRecord",
     "JobRunner",
+    "LocalJobRunner",
+    "JobRegistry",
+    "JobAlreadyRunningError",
+    "JobNotFoundError",
+    "JobNotRunningError",
+    "job_registry",
     "parse_metrics_into",
 ]
