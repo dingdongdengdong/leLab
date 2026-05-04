@@ -557,114 +557,85 @@ def get_available_ports():
         return {"status": "error", "message": str(e)}
 
 
-def _capture_cv2_thumbnail_subprocess(index: int, backend_value: int) -> bytes | None:
-    """Capture a JPEG thumbnail from cv2.VideoCapture(index, backend) in a fresh subprocess.
+def _avfoundation_cameras_in_cv2_order() -> List[Dict[str, Any]]:
+    """Return AVFoundation cameras in the same order cv2 opens them.
 
-    Running cv2 in a fresh process eliminates the macOS AVFoundation
-    framebuffer-carryover bug that contaminates back-to-back captures within
-    the same process. The thumbnail produced here matches *exactly* what
-    lerobot will see when it opens the same (index, backend) pair during the
-    recording session, so the user's selection from the dropdown is the
-    camera that actually gets recorded.
-
-    Returns raw JPEG bytes (or None on failure) so the caller can both encode
-    the thumbnail for the frontend and compute a signature for similarity
-    matching against ffmpeg captures.
+    OpenCV's macOS AVFoundation backend opens
+    ``([AVCaptureDevice devicesWithMediaType:Video] +
+      [AVCaptureDevice devicesWithMediaType:Muxed])``
+    sorted lexicographically by ``uniqueID`` (cap_avfoundation_mac.mm).
+    Mirroring that here gives a deterministic
+    ``{cv2_index → uniqueID, localizedName}`` map so the browser can match
+    by label without probing or visual fingerprinting.
     """
-    import subprocess
-    import sys
-
-    helper = (
-        "import sys, cv2\n"
-        f"cap = cv2.VideoCapture({index}, {backend_value})\n"
-        "if not cap.isOpened():\n"
-        "    sys.exit(2)\n"
-        "frame = None\n"
-        "for _ in range(20):\n"
-        "    ret, candidate = cap.read()\n"
-        "    if ret and candidate is not None and candidate.size > 0:\n"
-        "        frame = candidate\n"
-        "if frame is None:\n"
-        "    sys.exit(3)\n"
-        "small = cv2.resize(frame, (160, 120))\n"
-        "ok, buf = cv2.imencode('.jpg', small, [cv2.IMWRITE_JPEG_QUALITY, 70])\n"
-        "if not ok:\n"
-        "    sys.exit(4)\n"
-        "sys.stdout.buffer.write(buf.tobytes())\n"
-        "cap.release()\n"
-    )
     try:
-        result = subprocess.run(
-            [sys.executable, "-c", helper],
-            capture_output=True,
-            timeout=10,
-        )
-        if result.returncode != 0 or not result.stdout:
-            logger.warning(
-                f"cv2 subprocess thumbnail failed for index {index} (rc={result.returncode}): "
-                f"{result.stderr.decode(errors='replace')[:300]}"
-            )
-            return None
-        return result.stdout
-    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-        logger.warning(f"cv2 subprocess thumbnail unavailable for index {index}: {e}")
-        return None
+        import objc
+        from Foundation import NSBundle
+    except ImportError:
+        logger.warning("PyObjC not available; cannot enumerate AVFoundation cameras by name")
+        return []
+
+    NSBundle.bundleWithPath_(
+        "/System/Library/Frameworks/AVFoundation.framework"
+    ).load()
+    AVCaptureDevice = objc.lookUpClass("AVCaptureDevice")
+
+    # AVMediaTypeVideo = "vide", AVMediaTypeMuxed = "muxx" (CoreMedia 4-char codes).
+    video = list(AVCaptureDevice.devicesWithMediaType_("vide") or [])
+    muxed = list(AVCaptureDevice.devicesWithMediaType_("muxx") or [])
+    devices = sorted(video + muxed, key=lambda d: d.uniqueID())
+
+    return [
+        {
+            "index": i,
+            "name": str(d.localizedName()),
+            "unique_id": str(d.uniqueID()),
+        }
+        for i, d in enumerate(devices)
+    ]
 
 
 @app.get("/available-cameras")
 def get_available_cameras():
-    """Get all available cameras with a JPEG thumbnail per OpenCV index.
+    """List cameras with the same index ordering cv2 will use to record.
 
-    The thumbnail is the only reliable identity for an OpenCV index on macOS:
-    cv2's AVFoundation backend doesn't expose device names or UUIDs, so we
-    let the user pick by what the camera actually sees. Each thumbnail is
-    captured with the same cv2.VideoCapture(index, backend) call lerobot
-    will use during recording, so picking a thumbnail = picking the camera
-    that records.
+    On macOS we mirror OpenCV's AVFoundation enumeration via PyObjC so each
+    index comes with the AVFoundation ``localizedName``. The browser's
+    ``MediaDeviceInfo.label`` is that same ``localizedName``, so the
+    frontend can match by name to find the matching browser deviceId for the
+    live preview while we record by cv2 index.
     """
     try:
-        import cv2
-        import base64
         import platform
-        cameras = []
-
-        # Pin the backend so the indices we hand back match what the recording
-        # session will see.
         system = platform.system()
+
         if system == "Darwin":
-            backend = cv2.CAP_AVFOUNDATION
-        elif system == "Linux":
+            cameras = _avfoundation_cameras_in_cv2_order()
+            for cam in cameras:
+                cam["available"] = True
+            return {"status": "success", "cameras": cameras}
+
+        # Linux / others: fall back to the cv2 probe (no friendly names).
+        import cv2
+        if system == "Linux":
             backend = cv2.CAP_V4L2
         else:
             backend = cv2.CAP_ANY
 
+        cameras = []
         for i in range(10):
             cap = cv2.VideoCapture(i, backend)
             if not cap.isOpened():
                 cap.release()
                 continue
-            entry = {
+            cameras.append({
                 "index": i,
                 "name": f"Camera {i}",
                 "available": True,
-                "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                "fps": int(cap.get(cv2.CAP_PROP_FPS)),
-            }
+            })
             cap.release()
-
-            # The thumbnail is captured in a fresh subprocess to dodge cv2's
-            # macOS framebuffer carryover, but with the same (index, backend)
-            # arguments the recorder will use.
-            jpeg = _capture_cv2_thumbnail_subprocess(i, int(backend))
-            if jpeg is not None:
-                entry["thumbnail"] = "data:image/jpeg;base64," + base64.b64encode(jpeg).decode("ascii")
-
-            cameras.append(entry)
-
         return {"status": "success", "cameras": cameras}
     except ImportError:
-        # OpenCV not available, return empty list
         logger.warning("OpenCV not available for camera detection")
         return {"status": "success", "cameras": []}
     except Exception as e:

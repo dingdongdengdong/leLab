@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,9 +17,8 @@ export interface CameraConfig {
   id: string;
   name: string;
   type: string;
-  camera_index?: number; // Keep for backend compatibility
-  device_id: string; // Use this for actual camera selection
-  thumbnail?: string; // Backend-captured frame, shown as the static preview
+  camera_index?: number; // cv2 index — what the recorder opens
+  device_id: string; // Browser deviceId matched to the cv2 index by AVFoundation localizedName
   width: number;
   height: number;
   fps?: number;
@@ -36,7 +35,6 @@ interface AvailableCamera {
   deviceId: string;
   name: string;
   available: boolean;
-  thumbnail?: string;
 }
 
 const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
@@ -62,6 +60,18 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
   const fetchAvailableCameras = async () => {
     setIsLoadingCameras(true);
     try {
+      // Need a permission grant before enumerateDevices() returns labels.
+      try {
+        const probe = await navigator.mediaDevices.getUserMedia({ video: true });
+        probe.getTracks().forEach((t) => t.stop());
+      } catch (permError) {
+        console.warn("Camera permission denied; labels will be empty", permError);
+      }
+
+      const browserDevices = (await navigator.mediaDevices.enumerateDevices())
+        .filter((d) => d.kind === "videoinput")
+        .map((d) => ({ deviceId: d.deviceId, label: d.label }));
+
       const response = await fetchWithHeaders(`${baseUrl}/available-cameras`);
       if (!response.ok) {
         setAvailableCameras([]);
@@ -72,17 +82,25 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
         index: number;
         name?: string;
         available: boolean;
-        thumbnail?: string;
       }[];
-      setAvailableCameras(
-        backendCams.map((cam) => ({
+
+      // Match each cv2 index to a browser deviceId by AVFoundation
+      // localizedName (== MediaDeviceInfo.label on macOS, verbatim).
+      const usedBrowserIds = new Set<string>();
+      const merged: AvailableCamera[] = backendCams.map((cam) => {
+        const label = cam.name || `Camera ${cam.index}`;
+        const matched = browserDevices.find(
+          (d) => d.label === label && !usedBrowserIds.has(d.deviceId)
+        );
+        if (matched) usedBrowserIds.add(matched.deviceId);
+        return {
           index: cam.index,
-          deviceId: `cv2_${cam.index}`,
-          name: cam.name || `Camera ${cam.index}`,
+          deviceId: matched?.deviceId || "",
+          name: label,
           available: cam.available,
-          thumbnail: cam.thumbnail,
-        }))
-      );
+        };
+      });
+      setAvailableCameras(merged);
     } catch (error) {
       console.error("Camera enumeration failed:", error);
       toast({
@@ -135,7 +153,6 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
       type: "opencv",
       camera_index: selectedCamera.index,
       device_id: selectedCamera.deviceId,
-      thumbnail: selectedCamera.thumbnail,
       width: 640,
       height: 480,
       fps: 30,
@@ -168,11 +185,14 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
     );
   };
 
-  // No browser-side streams to release; the parent's releaseStreamsRef stays
-  // wired so existing callers don't break, but it's now a no-op.
-  const releaseAllCameraStreams = useCallback(() => {}, []);
+  // When the recording session is starting, the parent calls
+  // releaseStreamsRef.current() to make every CameraPreview drop its browser
+  // stream so cv2.VideoCapture can grab the camera exclusively.
+  const [streamsPaused, setStreamsPaused] = useState(false);
+  const releaseAllCameraStreams = useCallback(() => {
+    setStreamsPaused(true);
+  }, []);
 
-  // Expose the release function to parent component via ref
   useEffect(() => {
     if (releaseStreamsRef) {
       releaseStreamsRef.current = releaseAllCameraStreams;
@@ -219,25 +239,12 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
                       className="text-white hover:bg-gray-700"
                       disabled={!camera.available || alreadyAdded}
                     >
-                      <div className="flex items-center gap-3">
-                        {camera.thumbnail ? (
-                          <img
-                            src={camera.thumbnail}
-                            alt={camera.name}
-                            className="w-16 h-12 object-cover rounded border border-gray-700"
-                          />
-                        ) : (
-                          <div className="w-16 h-12 rounded border border-gray-700 bg-gray-900 flex items-center justify-center text-[10px] text-gray-500">
-                            no preview
-                          </div>
-                        )}
-                        <div className="flex flex-col">
-                          <span className="font-medium">{camera.name}</span>
-                          <span className="text-xs text-gray-400">
-                            Index {camera.index}
-                            {alreadyAdded && " · already added"}
-                          </span>
-                        </div>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{camera.name}</span>
+                        <span className="text-xs text-gray-400">
+                          Index {camera.index}
+                          {alreadyAdded && " · already added"}
+                        </span>
                       </div>
                     </SelectItem>
                   );
@@ -283,6 +290,7 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
               <CameraPreview
                 key={camera.id}
                 camera={camera}
+                paused={streamsPaused}
                 onRemove={() => removeCamera(camera.id)}
                 onUpdate={(updates) => updateCamera(camera.id, updates)}
               />
@@ -303,28 +311,76 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
 
 interface CameraPreviewProps {
   camera: CameraConfig;
+  paused: boolean;
   onRemove: () => void;
   onUpdate: (updates: Partial<CameraConfig>) => void;
 }
 
 const CameraPreview: React.FC<CameraPreviewProps> = ({
   camera,
+  paused,
   onRemove,
   onUpdate,
 }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [streamError, setStreamError] = useState(false);
+
+  useEffect(() => {
+    if (paused || !camera.device_id) {
+      if (!camera.device_id) setStreamError(true);
+      return;
+    }
+    let cancelled = false;
+    let stream: MediaStream | null = null;
+
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: camera.device_id } },
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+        setStreamError(false);
+      } catch (err) {
+        console.warn("Live preview failed for", camera.name, err);
+        setStreamError(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    };
+  }, [camera.device_id, camera.name, paused]);
+
+  const showVideo = !paused && camera.device_id && !streamError;
   return (
     <div className="bg-gray-900 rounded-lg border border-gray-700 overflow-hidden">
       <div className="aspect-[4/3] bg-gray-800 relative">
-        {camera.thumbnail ? (
-          <img
-            src={camera.thumbnail}
-            alt={camera.name}
+        {showVideo ? (
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
             className="w-full h-full object-cover"
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center">
             <VideoOff className="w-8 h-8 text-gray-500 mb-2" />
-            <span className="text-gray-500 text-sm">No preview captured</span>
+            <span className="text-gray-500 text-sm">
+              {paused
+                ? "Preview paused"
+                : camera.device_id
+                ? "Preview failed"
+                : "No browser match"}
+            </span>
           </div>
         )}
       </div>
