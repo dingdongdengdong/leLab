@@ -244,7 +244,7 @@ _PERSIST_THROTTLE_SECONDS = 1.0
 
 
 def _generate_job_id(policy_type: str, dataset_repo_id: str) -> str:
-    """Mirror of training._generate_output_dir's leaf — same slug logic."""
+    """Build a sortable, collision-free job id from policy type and dataset slug."""
     from .training import _SLUG_RE
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     dataset_slug = _SLUG_RE.sub("_", dataset_repo_id).strip("_") or "dataset"

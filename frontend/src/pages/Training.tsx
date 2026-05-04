@@ -169,7 +169,7 @@ const ConfigurationMode: React.FC = () => {
     return (
       <div className="min-h-screen bg-slate-900 text-white p-4">
         <div className="max-w-7xl mx-auto">
-          <TrainingHeader trainingStatus={jobToStatus(null, false)} />
+          <TrainingHeader />
           <div className="flex items-center justify-center py-24 text-slate-400">
             <Loader2 className="w-6 h-6 animate-spin mr-3" />
             Checking training environment…
@@ -183,7 +183,7 @@ const ConfigurationMode: React.FC = () => {
     return (
       <div className="min-h-screen bg-slate-900 text-white p-4">
         <div className="max-w-7xl mx-auto">
-          <TrainingHeader trainingStatus={jobToStatus(null, false)} />
+          <TrainingHeader />
           <TrainingExtraGate installHint={trainingExtraInstallHint} />
         </div>
       </div>
@@ -196,7 +196,7 @@ const ConfigurationMode: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-900 text-white p-4">
       <div className="max-w-7xl mx-auto">
-        <TrainingHeader trainingStatus={jobToStatus(null, false)} />
+        <TrainingHeader />
         <ConfigurationTab
           config={trainingConfig}
           updateConfig={updateConfig}
@@ -267,6 +267,13 @@ const MonitoringMode: React.FC<{ jobId: string }> = ({ jobId }) => {
       clearInterval(id);
     };
   }, [baseUrl, fetchWithHeaders, jobId, job?.state]);
+
+  // Auto-scroll the log panel as new lines arrive.
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);

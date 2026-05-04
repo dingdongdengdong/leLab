@@ -5,26 +5,13 @@ lives in app/jobs.py.
 """
 
 import re
-from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel
 
 
-DEFAULT_OUTPUT_DIR = "outputs/train"
 _SLUG_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 
-
-def _generate_output_dir(policy_type: str, dataset_repo_id: str) -> str:
-    """Build a sortable, collision-free path under outputs/train/.
-
-    LeRobot refuses to write into an existing directory, so each run needs a
-    unique leaf. Timestamp + policy + dataset slug makes runs discoverable on
-    disk.
-    """
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    dataset_slug = _SLUG_RE.sub("_", dataset_repo_id).strip("_") or "dataset"
-    return f"{DEFAULT_OUTPUT_DIR}/{policy_type}_{dataset_slug}_{timestamp}"
 
 
 class TrainingRequest(BaseModel):
