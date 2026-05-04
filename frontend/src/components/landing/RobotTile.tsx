@@ -45,7 +45,7 @@ const RobotTile: React.FC<RobotTileProps> = ({
   const teleopDisabled = !robot || !robot.is_clean;
 
   return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 flex flex-col gap-3 relative">
+    <div className="bg-gray-800 rounded-lg border border-gray-700 p-3 flex flex-col gap-2 relative">
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           <RobotSelector
@@ -63,7 +63,7 @@ const RobotTile: React.FC<RobotTileProps> = ({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-9 w-9 text-gray-300 hover:text-white"
+                  className="h-8 w-8 text-gray-300 hover:text-white"
                   onClick={() => onConfigure(robot.name)}
                   aria-label="Configure"
                 >
@@ -77,7 +77,7 @@ const RobotTile: React.FC<RobotTileProps> = ({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-9 w-9 text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                  className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-900/20"
                   onClick={() => setConfirmDelete(true)}
                   aria-label="Delete robot"
                 >
@@ -92,7 +92,7 @@ const RobotTile: React.FC<RobotTileProps> = ({
 
       {status && (
         <p
-          className={`text-xs text-center ${
+          className={`text-xs text-center truncate ${
             robot!.is_clean ? "text-green-400" : "text-amber-400"
           }`}
         >
