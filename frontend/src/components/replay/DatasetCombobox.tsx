@@ -73,7 +73,7 @@ const DatasetCombobox: React.FC<Props> = ({ datasets, loading, value, onChange }
                 <CommandItem
                   key={d.repo_id}
                   value={d.repo_id}
-                  onSelect={(v) => { onChange(v); setOpen(false); }}
+                  onSelect={() => { onChange(d.repo_id); setOpen(false); }}
                   className="text-white aria-selected:bg-gray-700"
                 >
                   <Check className={cn("mr-2 h-4 w-4", value === d.repo_id ? "opacity-100" : "opacity-0")} />

@@ -31,7 +31,7 @@ const STATUS_LABEL: Record<ReplayStatus, string> = {
 
 const ReplayHeader: React.FC<Props> = ({ status, repoId, episode }) => {
   const navigate = useNavigate();
-  const detail = status === "playing" || status === "paused"
+  const detail = status === "playing" || status === "paused" || status === "ended"
     ? ` • ${repoId} ep ${episode}`
     : "";
 

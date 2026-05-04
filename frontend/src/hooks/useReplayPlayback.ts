@@ -60,12 +60,14 @@ export const useReplayPlayback = () => {
     setState((s) => (s.frame === frame ? s : { ...s, frame }));
 
     const fps = stateRef.current.fps || 30;
-    const expected = frame / fps;
-    for (const v of videoRefs.current) {
+    const cams = stateRef.current.cameras;
+    videoRefs.current.forEach((v, i) => {
+      const offset = cams[i]?.from_timestamp ?? 0;
+      const expected = offset + frame / fps;
       if (Number.isFinite(v.duration) && Math.abs(v.currentTime - expected) > SYNC_THRESHOLD_S) {
         try { v.currentTime = expected; } catch { /* ignored */ }
       }
-    }
+    });
   }, []);
 
   // Subscribe to /ws/joint-data — read only the `frame` field.
@@ -77,6 +79,11 @@ export const useReplayPlayback = () => {
         const msg = JSON.parse(ev.data);
         if (msg.type === "joint_update" && typeof msg.frame === "number") {
           onTick(msg.frame);
+          if (msg.ended) {
+            setState((s) => (s.status === "playing" || s.status === "paused"
+              ? { ...s, status: "ended", paused: true }
+              : s));
+          }
         }
       } catch { /* ignored */ }
     };
@@ -109,7 +116,9 @@ export const useReplayPlayback = () => {
     });
     // Kick off video playback.
     setTimeout(() => {
-      videoRefs.current.forEach((v) => {
+      videoRefs.current.forEach((v, i) => {
+        const offset = (resp.cameras || [])[i]?.from_timestamp ?? 0;
+        try { v.currentTime = offset; } catch { /* ignored */ }
         v.playbackRate = 1;
         v.play().catch(() => { /* autoplay block tolerated */ });
       });

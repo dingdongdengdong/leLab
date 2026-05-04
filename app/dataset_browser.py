@@ -89,14 +89,16 @@ def get_replay_assets(repo_id: str, episode: int) -> dict[str, Any]:
         action_names = action_names.get("motors") or next(iter(action_names.values()), [])
     joint_names = list(action_names)
 
+    ep_row = meta.episodes[episode]
     cameras = []
     for vid_key in meta.video_keys:
         rel_path = meta.get_video_file_path(episode, vid_key).as_posix()
         url = f"{HF_RESOLVE_BASE}/{repo_id}/resolve/main/{rel_path}"
-        cameras.append({"key": vid_key, "url": url})
+        from_ts_key = f"videos/{vid_key}/from_timestamp"
+        from_timestamp = float(ep_row[from_ts_key]) if from_ts_key in ep_row else 0.0
+        cameras.append({"key": vid_key, "url": url, "from_timestamp": from_timestamp})
 
-    row = meta.episodes[episode]
-    num_frames = int(row["length"])
+    num_frames = int(ep_row["length"])
 
     return {
         "joint_names": joint_names,

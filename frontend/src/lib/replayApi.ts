@@ -21,6 +21,7 @@ export interface EpisodeListResponse {
 export interface CameraItem {
   key: string;
   url: string;
+  from_timestamp: number;
 }
 
 export interface StartReplayResponse {
@@ -30,17 +31,6 @@ export interface StartReplayResponse {
   cameras?: CameraItem[];
   fps?: number;
   num_frames?: number;
-}
-
-export interface ReplayStatus {
-  active: boolean;
-  repo_id: string | null;
-  episode: number | null;
-  frame: number;
-  total_frames: number;
-  fps: number;
-  speed: number;
-  paused: boolean;
 }
 
 type Fetcher = (url: string, options?: RequestInit) => Promise<Response>;

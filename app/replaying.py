@@ -58,19 +58,35 @@ def _ticker_loop(manager) -> None:
             fps = _state.fps
             speed = _state.speed
             joint_names = _state.joint_names
+            actions = _actions
 
         if paused or frame >= total:
-            time.sleep(0.05)
             if frame >= total and not paused:
                 with _state_lock:
                     _state.paused = True
-            continue
-
-        if _actions is None:
+                # Broadcast a terminal tick so the frontend can update its UI.
+                if total > 0:
+                    last_frame = total - 1
+                    last_row = actions[last_frame] if actions is not None else None
+                    last_joints = (
+                        {name: float(last_row[i]) for i, name in enumerate(joint_names)}
+                        if last_row is not None else {}
+                    )
+                    manager.broadcast_joint_data_sync({
+                        "type": "joint_update",
+                        "joints": last_joints,
+                        "timestamp": last_frame / fps,
+                        "frame": last_frame,
+                        "ended": True,
+                    })
             time.sleep(0.05)
             continue
 
-        row = _actions[frame]
+        if actions is None:
+            time.sleep(0.05)
+            continue
+
+        row = actions[frame]
         joints = {name: float(row[i]) for i, name in enumerate(joint_names)}
         manager.broadcast_joint_data_sync({
             "type": "joint_update",
