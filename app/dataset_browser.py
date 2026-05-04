@@ -55,17 +55,16 @@ def _format_duration(seconds: float) -> str:
 def get_episode_list(repo_id: str) -> dict[str, Any]:
     meta = LeRobotDatasetMetadata(repo_id)
     fps = meta.fps
-    eps = meta.episodes  # pandas DataFrame in v3, list-like in older
+    eps = meta.episodes
 
     out: list[dict[str, Any]] = []
     if eps is None:
         return {"fps": fps, "episodes": []}
 
-    # `meta.episodes` is a pandas DataFrame for v3 datasets; iterate by row.
     for idx in range(len(eps)):
-        row = eps.iloc[idx] if hasattr(eps, "iloc") else eps[idx]
+        row = eps.iloc[idx]
         length = int(row["length"])
-        tasks = row.get("tasks") if hasattr(row, "get") else row["tasks"]
+        tasks = row["tasks"]
         if hasattr(tasks, "tolist"):
             tasks = tasks.tolist()
         duration = length / fps if fps else 0.0
@@ -87,7 +86,7 @@ def get_replay_assets(repo_id: str, episode: int) -> dict[str, Any]:
 
     action_names = meta.features["action"]["names"]
     if isinstance(action_names, dict):
-        action_names = action_names.get("motors") or list(action_names.values())[0]
+        action_names = action_names.get("motors") or next(iter(action_names.values()), [])
     joint_names = list(action_names)
 
     cameras = []
@@ -96,7 +95,7 @@ def get_replay_assets(repo_id: str, episode: int) -> dict[str, Any]:
         url = f"{HF_RESOLVE_BASE}/{repo_id}/resolve/main/{rel_path}"
         cameras.append({"key": vid_key, "url": url})
 
-    row = meta.episodes.iloc[episode] if hasattr(meta.episodes, "iloc") else meta.episodes[episode]
+    row = meta.episodes.iloc[episode]
     num_frames = int(row["length"])
 
     return {
