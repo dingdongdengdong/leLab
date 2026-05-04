@@ -5,7 +5,7 @@ import DatasetCombobox from "@/components/replay/DatasetCombobox";
 import { useApi } from "@/contexts/ApiContext";
 import { DatasetItem, listDatasets } from "@/lib/replayApi";
 
-const SPACE_BASE_URL = "https://lerobot-visualize-dataset.hf.space";
+const SPACE_WRAPPER_URL = "https://huggingface.co/spaces/lerobot/visualize_dataset";
 
 const ReplayDataset: React.FC = () => {
   const { baseUrl, fetchWithHeaders } = useApi();
@@ -24,7 +24,8 @@ const ReplayDataset: React.FC = () => {
 
   const handleDatasetChange = (repoId: string | null) => {
     if (!repoId) return;
-    window.open(`${SPACE_BASE_URL}/${repoId}`, "_blank", "noopener,noreferrer");
+    const target = `${SPACE_WRAPPER_URL}?path=${encodeURIComponent(`/${repoId}`)}`;
+    window.open(target, "_blank", "noopener,noreferrer");
     navigate("/");
   };
 
