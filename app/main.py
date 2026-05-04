@@ -259,18 +259,6 @@ def datasets_list():
     return dataset_browser.list_user_datasets()
 
 
-@app.get("/episodes/{repo_id:path}")
-def datasets_episodes(repo_id: str):
-    """List episodes (with durations) for a LeRobot-format dataset."""
-    try:
-        return dataset_browser.get_episode_list(repo_id)
-    except FileNotFoundError as e:
-        return JSONResponse(status_code=404, content={"error": "Not a LeRobot-format dataset", "detail": str(e)})
-    except Exception as e:
-        logger.exception("episode list failed")
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-
 @app.get("/ws-test")
 def websocket_test():
     """Test endpoint to verify WebSocket support"""
