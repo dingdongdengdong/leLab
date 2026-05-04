@@ -17,6 +17,16 @@ import {
   Play,
 } from "lucide-react";
 import { useApi } from "@/contexts/ApiContext";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface RecordingConfig {
   leader_port: string;
@@ -70,6 +80,7 @@ const Recording = () => {
   const [recordingSessionStarted, setRecordingSessionStarted] = useState(false);
 
   const [optimisticPhase, setOptimisticPhase] = useState<Phase | null>(null);
+  const [showStopConfirm, setShowStopConfirm] = useState(false);
 
   // Redirect if no config provided
   useEffect(() => {
@@ -291,9 +302,19 @@ const Recording = () => {
     }
   }, [backendStatus, baseUrl, fetchWithHeaders, toast, recordingConfig, navigate]);
 
-  const handlersRef = useRef({ handleExitEarly, handleRerecordEpisode, handleStopRecording });
+  const requestStopRecording = useCallback(() => {
+    if (!backendStatus?.available_controls.stop_recording) return;
+    setShowStopConfirm(true);
+  }, [backendStatus]);
+
+  const confirmStopRecording = useCallback(async () => {
+    setShowStopConfirm(false);
+    await handleStopRecording();
+  }, [handleStopRecording]);
+
+  const handlersRef = useRef({ handleExitEarly, handleRerecordEpisode, requestStopRecording });
   useEffect(() => {
-    handlersRef.current = { handleExitEarly, handleRerecordEpisode, handleStopRecording };
+    handlersRef.current = { handleExitEarly, handleRerecordEpisode, requestStopRecording };
   });
 
   const sessionReady = recordingSessionStarted && backendStatus !== null;
@@ -312,7 +333,7 @@ const Recording = () => {
       } else if (e.key === "r" || e.key === "R") {
         handlersRef.current.handleRerecordEpisode();
       } else if (e.key === "Escape") {
-        handlersRef.current.handleStopRecording();
+        handlersRef.current.requestStopRecording();
       }
     };
 
@@ -427,7 +448,7 @@ const Recording = () => {
                   Re-record episode
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={handleStopRecording}
+                  onClick={requestStopRecording}
                   disabled={!backendStatus.available_controls.stop_recording}
                   className="text-red-400 focus:bg-gray-800 focus:text-red-300"
                 >
@@ -486,6 +507,28 @@ const Recording = () => {
           )}
         </div>
       </div>
+
+      <AlertDialog open={showStopConfirm} onOpenChange={setShowStopConfirm}>
+        <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stop recording?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              Saved episodes are kept. The session will end and you'll be taken to the upload page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">
+              Keep recording
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmStopRecording}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
+              Stop
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
