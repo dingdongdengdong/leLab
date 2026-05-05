@@ -1,3 +1,4 @@
+import { ReactNode } from "react";
 
 export interface Action {
   title: string;
@@ -5,4 +6,5 @@ export interface Action {
   handler: () => void;
   color: string;
   isWorkInProgress?: boolean;
+  trigger?: ReactNode;
 }

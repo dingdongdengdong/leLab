@@ -49,13 +49,15 @@ const ActionList: React.FC<ActionListProps> = ({ actions }) => {
                 </p>
               </div>
             </div>
-            <Button
-              onClick={action.handler}
-              size="icon"
-              className={`${action.color} text-white`}
-            >
-              <ArrowRight className="w-5 h-5" />
-            </Button>
+            {action.trigger ?? (
+              <Button
+                onClick={action.handler}
+                size="icon"
+                className={`${action.color} text-white`}
+              >
+                <ArrowRight className="w-5 h-5" />
+              </Button>
+            )}
           </div>
         ))}
       </div>
