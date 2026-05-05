@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useApi } from "@/contexts/ApiContext";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -21,10 +22,20 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronRight, RefreshCw, Search } from "lucide-react";
 
 const POLL_INTERVAL_MS = 5000;
 const LIMIT = 10;
+
+// Hub stages still doing work. Anything outside this set (COMPLETED, FAILED,
+// CANCELED, …) gets demoted to UNTRACKED.
+const HUB_ACTIVE_STAGES = new Set(["RUNNING", "QUEUED", "SCHEDULING"]);
+
+const isJobActive = (j: JobRecord) =>
+  j.state === "running" || j.checkpoint_count > 0;
+
+const isHubJobActive = (h: HubJob) =>
+  HUB_ACTIVE_STAGES.has((h.status?.stage ?? "").toUpperCase());
 
 const JobsSection: React.FC = () => {
   const { baseUrl, fetchWithHeaders } = useApi();
@@ -35,6 +46,7 @@ const JobsSection: React.FC = () => {
   const [hubModels, setHubModels] = useState<HubModel[]>([]);
   const [hubAuthenticated, setHubAuthenticated] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const { selectedRecord } = useRobots();
   const [inferenceModalOpen, setInferenceModalOpen] = useState(false);
@@ -103,13 +115,36 @@ const JobsSection: React.FC = () => {
     }
   };
 
+  const query = search.trim().toLowerCase();
+  const matchesQuery = useCallback(
+    (text: string | null | undefined) =>
+      !query || (text ?? "").toLowerCase().includes(query),
+    [query],
+  );
+
+  const filteredJobs = useMemo(
+    () => jobs.filter((j) => matchesQuery(j.name)),
+    [jobs, matchesQuery],
+  );
+  const filteredHubJobs = useMemo(
+    () =>
+      hubJobs.filter((h) =>
+        matchesQuery(h.docker_image ?? h.space_id ?? h.id),
+      ),
+    [hubJobs, matchesQuery],
+  );
+  const filteredHubModels = useMemo(
+    () => hubModels.filter((m) => matchesQuery(m.repo_id)),
+    [hubModels, matchesQuery],
+  );
+
   const localJobs = useMemo(
-    () => jobs.filter((j) => j.runner === "local"),
-    [jobs],
+    () => filteredJobs.filter((j) => j.runner === "local"),
+    [filteredJobs],
   );
   const trackedCloudJobs = useMemo(
-    () => jobs.filter((j) => j.runner === "hf_cloud"),
-    [jobs],
+    () => filteredJobs.filter((j) => j.runner === "hf_cloud"),
+    [filteredJobs],
   );
   // Hub jobs already mirrored by a local JobRecord get their richer card via
   // trackedCloudJobs; everything else from the hub gets a plain HubJobCard.
@@ -123,8 +158,8 @@ const JobsSection: React.FC = () => {
     [trackedCloudJobs],
   );
   const untrackedHubJobs = useMemo(
-    () => hubJobs.filter((h) => !trackedHfJobIds.has(h.id)),
-    [hubJobs, trackedHfJobIds],
+    () => filteredHubJobs.filter((h) => !trackedHfJobIds.has(h.id)),
+    [filteredHubJobs, trackedHfJobIds],
   );
   // Hide model repos that map 1-to-1 to a tracked cloud job (those already
   // appear via JobCard); the remainder are past trainings the registry no
@@ -139,49 +174,64 @@ const JobsSection: React.FC = () => {
     [trackedCloudJobs],
   );
   const untrackedHubModels = useMemo(
-    () => hubModels.filter((m) => !trackedRepoIds.has(m.repo_id)),
-    [hubModels, trackedRepoIds],
+    () => filteredHubModels.filter((m) => !trackedRepoIds.has(m.repo_id)),
+    [filteredHubModels, trackedRepoIds],
   );
-  // Cancelled cloud work is collapsed away by default. Tracked side maps
-  // CANCELLED → "interrupted"; untracked side keeps the raw HF stage.
+
+  // Active = running or has runnable checkpoints. Everything else collapses
+  // under UNTRACKED so the eye lands on what's still relevant.
+  const localActive = useMemo(() => localJobs.filter(isJobActive), [localJobs]);
+  const localUntracked = useMemo(
+    () => localJobs.filter((j) => !isJobActive(j)),
+    [localJobs],
+  );
   const trackedCloudActive = useMemo(
-    () => trackedCloudJobs.filter((j) => j.state !== "interrupted"),
+    () => trackedCloudJobs.filter(isJobActive),
     [trackedCloudJobs],
   );
-  const trackedCloudCancelled = useMemo(
-    () => trackedCloudJobs.filter((j) => j.state === "interrupted"),
+  const trackedCloudUntracked = useMemo(
+    () => trackedCloudJobs.filter((j) => !isJobActive(j)),
     [trackedCloudJobs],
   );
-  // HF returns "CANCELED" (single L); accept the British spelling too in case
-  // it ever changes.
-  const isCancelledStage = (stage: string | undefined | null) => {
-    const s = (stage ?? "").toUpperCase();
-    return s === "CANCELED" || s === "CANCELLED";
-  };
   const untrackedHubActive = useMemo(
-    () => untrackedHubJobs.filter((h) => !isCancelledStage(h.status?.stage)),
+    () => untrackedHubJobs.filter(isHubJobActive),
     [untrackedHubJobs],
   );
-  const untrackedHubCancelled = useMemo(
-    () => untrackedHubJobs.filter((h) => isCancelledStage(h.status?.stage)),
+  const untrackedHubInactive = useMemo(
+    () => untrackedHubJobs.filter((h) => !isHubJobActive(h)),
     [untrackedHubJobs],
   );
-  const cancelledCount =
-    trackedCloudCancelled.length + untrackedHubCancelled.length;
+
+  const untrackedCount =
+    localUntracked.length +
+    trackedCloudUntracked.length +
+    untrackedHubInactive.length;
 
   return (
     <section className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-white">Jobs</h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={refresh}
-          className="h-7 w-7 text-slate-400 hover:text-white"
-          aria-label="Refresh jobs"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search jobs"
+              className="h-8 w-48 sm:w-60 pl-8 bg-slate-800/50 border-slate-700 text-sm text-white placeholder:text-slate-500"
+              aria-label="Search jobs"
+            />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={refresh}
+            className="h-7 w-7 text-slate-400 hover:text-white"
+            aria-label="Refresh jobs"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
       {error ? <p className="text-sm text-red-300">Couldn't load jobs: {error}</p> : null}
@@ -190,13 +240,15 @@ const JobsSection: React.FC = () => {
         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
           Local jobs
         </h3>
-        {localJobs.length === 0 ? (
+        {localActive.length === 0 ? (
           <p className="text-sm text-slate-500">
-            No local training jobs yet. Start one from the Training page.
+            {query
+              ? "No local jobs match your search."
+              : "No active local jobs. Start one from the Training page."}
           </p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {localJobs.map((job) => (
+            {localActive.map((job) => (
               <JobCard
                 key={job.id}
                 job={job}
@@ -219,65 +271,67 @@ const JobsSection: React.FC = () => {
           <p className="text-sm text-slate-500">
             Sign in with Hugging Face to see your cloud jobs.
           </p>
-        ) : trackedCloudJobs.length === 0 &&
-          untrackedHubJobs.length === 0 &&
+        ) : trackedCloudActive.length === 0 &&
+          untrackedHubActive.length === 0 &&
           untrackedHubModels.length === 0 ? (
-          <p className="text-sm text-slate-500">No cloud jobs yet.</p>
+          <p className="text-sm text-slate-500">
+            {query ? "No online jobs match your search." : "No active cloud jobs."}
+          </p>
         ) : (
-          <>
-            {trackedCloudActive.length === 0 &&
-            untrackedHubActive.length === 0 &&
-            untrackedHubModels.length === 0 ? (
-              <p className="text-sm text-slate-500">
-                No active cloud jobs — see cancelled below.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {trackedCloudActive.map((job) => (
-                  <JobCard
-                    key={job.id}
-                    job={job}
-                    onStop={handleStop}
-                    onDelete={handleDelete}
-                    onPlay={handlePlay}
-                  />
-                ))}
-                {untrackedHubActive.map((job) => (
-                  <HubJobCard key={job.id} job={job} />
-                ))}
-                {untrackedHubModels.map((model) => (
-                  <HubModelCard key={model.repo_id} model={model} />
-                ))}
-              </div>
-            )}
-
-            {cancelledCount > 0 ? (
-              <Collapsible className="mt-4">
-                <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-white transition-colors">
-                  <ChevronRight className="w-3.5 h-3.5 transition-transform group-data-[state=open]:rotate-90" />
-                  Cancelled ({cancelledCount})
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-3">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {trackedCloudCancelled.map((job) => (
-                      <JobCard
-                        key={job.id}
-                        job={job}
-                        onStop={handleStop}
-                        onDelete={handleDelete}
-                        onPlay={handlePlay}
-                      />
-                    ))}
-                    {untrackedHubCancelled.map((job) => (
-                      <HubJobCard key={job.id} job={job} />
-                    ))}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            ) : null}
-          </>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {trackedCloudActive.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                onStop={handleStop}
+                onDelete={handleDelete}
+                onPlay={handlePlay}
+              />
+            ))}
+            {untrackedHubActive.map((job) => (
+              <HubJobCard key={job.id} job={job} />
+            ))}
+            {untrackedHubModels.map((model) => (
+              <HubModelCard key={model.repo_id} model={model} />
+            ))}
+          </div>
         )}
       </div>
+
+      {untrackedCount > 0 ? (
+        <Collapsible>
+          <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-white transition-colors">
+            <ChevronRight className="w-3.5 h-3.5 transition-transform group-data-[state=open]:rotate-90" />
+            Untracked ({untrackedCount})
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {localUntracked.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  onStop={handleStop}
+                  onDelete={handleDelete}
+                  onPlay={handlePlay}
+                />
+              ))}
+              {trackedCloudUntracked.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  onStop={handleStop}
+                  onDelete={handleDelete}
+                  onPlay={handlePlay}
+                />
+              ))}
+              {untrackedHubInactive.map((job) => (
+                <HubJobCard key={job.id} job={job} />
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
+
       {inferenceJob ? (
         <InferenceModal
           open={inferenceModalOpen}
