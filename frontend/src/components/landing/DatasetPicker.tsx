@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Plus, Check, ExternalLink } from "lucide-react";
+import { Plus, ExternalLink } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -110,7 +110,6 @@ const DatasetPicker: React.FC<DatasetPickerProps> = ({
                     onSelect={() => handlePick(d.repo_id)}
                     className="text-white aria-selected:bg-gray-700"
                   >
-                    <Check className="mr-2 h-4 w-4 opacity-0" />
                     <span className="flex-1 truncate">{d.repo_id}</span>
                     {d.private && (
                       <span className="text-xs text-amber-400">private</span>

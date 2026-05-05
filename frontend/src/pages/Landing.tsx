@@ -216,8 +216,6 @@ const Landing = () => {
     {
       title: "Dataset",
       description: "Pick an existing dataset or create a new one to record.",
-      handler: () => {},
-      color: "bg-purple-500 hover:bg-purple-600",
       trigger: datasetTrigger,
     },
     {

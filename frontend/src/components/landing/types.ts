@@ -1,10 +1,21 @@
 import { ReactNode } from "react";
 
-export interface Action {
+interface ActionBase {
   title: string;
   description: string;
+  isWorkInProgress?: boolean;
+}
+
+interface NavAction extends ActionBase {
   handler: () => void;
   color: string;
-  isWorkInProgress?: boolean;
-  trigger?: ReactNode;
+  trigger?: never;
 }
+
+interface TriggerAction extends ActionBase {
+  trigger: ReactNode;
+  handler?: never;
+  color?: never;
+}
+
+export type Action = NavAction | TriggerAction;
