@@ -516,6 +516,15 @@ def get_job_log_file(job_id: str):
     return {"logs": logs}
 
 
+@app.get("/jobs/{job_id}/checkpoints")
+def get_job_checkpoints(job_id: str):
+    """List the checkpoints saved for this job, ascending by step."""
+    try:
+        return {"checkpoints": job_registry.list_checkpoints(job_id)}
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
+
+
 @app.post("/jobs/{job_id}/stop")
 def stop_job(job_id: str):
     try:
