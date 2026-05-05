@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import LandingHeader from "@/components/landing/LandingHeader";
-import HfAuthBanner from "@/components/landing/HfAuthBanner";
+import LandingTopBar from "@/components/landing/LandingTopBar";
 import RobotConfigManager from "@/components/landing/RobotConfigManager";
 import ActionList from "@/components/landing/ActionList";
 import RecordingModal from "@/components/landing/RecordingModal";
@@ -209,25 +208,33 @@ const Landing = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col items-center p-4 pt-12 sm:pt-20">
-      <div className="w-full max-w-7xl mx-auto px-4 mb-12">
-        <HfAuthBanner />
-        <LandingHeader />
+    <div
+      className="min-h-screen bg-black text-white"
+      style={{ ["--lelab-topbar-h" as string]: "48px" }}
+    >
+      <LandingTopBar />
+
+      <div
+        className="sticky z-20 bg-black/95 backdrop-blur supports-[backdrop-filter]:bg-black/70 border-b border-gray-800"
+        style={{ top: "var(--lelab-topbar-h)" }}
+      >
+        <div className="mx-auto max-w-7xl px-4 py-4 grid gap-4 grid-cols-1 lg:grid-cols-[1.2fr_2fr]">
+          <RobotConfigManager
+            selectedName={selectedName}
+            selectedRecord={selectedRecord}
+            availableNames={availableNames}
+            isLoading={isLoadingRobots}
+            selectRobot={selectRobot}
+            createRobot={createRobot}
+            deleteRobot={deleteRobot}
+          />
+          <ActionList actions={actions} />
+        </div>
       </div>
 
-      <div className="p-8 bg-gray-900 rounded-lg shadow-xl w-full max-w-4xl space-y-6 border border-gray-700">
-        <RobotConfigManager
-          selectedName={selectedName}
-          selectedRecord={selectedRecord}
-          availableNames={availableNames}
-          isLoading={isLoadingRobots}
-          selectRobot={selectRobot}
-          createRobot={createRobot}
-          deleteRobot={deleteRobot}
-        />
+      <main className="mx-auto max-w-7xl px-4 py-6">
         <JobsSection />
-        <ActionList actions={actions} />
-      </div>
+      </main>
 
       <UsageInstructionsModal
         open={showUsageModal}
