@@ -84,7 +84,7 @@ class HfCloudJobRunner:
         self._hf_job_id = job.id
 
         self._tail_thread = threading.Thread(
-            target=self._tail_loop, name=f"hf-job-{job.id}-logs", daemon=True
+            target=self._tail_loop, name=f"hf-job-{job_id}-logs", daemon=True
         )
         self._tail_thread.start()
 
