@@ -1,4 +1,6 @@
 export interface TrainingConfig {
+  target: { runner: "local" | "hf_cloud"; flavor?: string };
+
   // Dataset configuration
   dataset_repo_id: string;
 

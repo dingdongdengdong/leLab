@@ -40,6 +40,8 @@ export interface TrainingRequest {
   optimizer_weight_decay?: number;
   optimizer_grad_clip_norm?: number;
   use_policy_training_preset: boolean;
+  // Optional target for runner dispatch; omitted ⇒ local.
+  target?: { runner: "local" | "hf_cloud"; flavor?: string };
 }
 
 export interface JobRecord {
@@ -53,7 +55,10 @@ export interface JobRecord {
   exit_code: number | null;
   error_message: string | null;
   metrics: TrainingMetrics;
-  runner: "local";
+  runner: "local" | "hf_cloud";
+  hf_job_id: string | null;
+  hf_flavor: string | null;
+  hf_repo_id: string | null;
 }
 
 type Fetcher = (url: string, options?: RequestInit) => Promise<Response>;
@@ -120,9 +125,12 @@ export async function startTrainingJob(
   fetcher: Fetcher,
   request: TrainingRequest,
 ): Promise<JobRecord> {
+  const { target, ...config } = request;
+  const body = target ? { config, target } : config;
   const r = await fetcher(`${baseUrl}/jobs/training`, {
     method: "POST",
-    body: JSON.stringify(request),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
   if (r.status === 409) {
     throw new Error("Another training is already running. Stop it first.");
@@ -148,4 +156,31 @@ export async function deleteJob(
 ): Promise<void> {
   const r = await fetcher(`${baseUrl}/jobs/${id}`, { method: "DELETE" });
   await expectOk(r, "Delete job");
+}
+
+export interface RunnerFlavor {
+  name: string;
+  pretty_name: string;
+  cpu: string;
+  ram: string;
+  accelerator: string | null;
+  unit_cost_usd: number;
+  unit_label: string;
+}
+
+export interface RunnerHardwareResponse {
+  authenticated: boolean;
+  username: string | null;
+  flavors: RunnerFlavor[];
+}
+
+export async function listRunnerHardware(
+  baseUrl: string,
+  fetcher: Fetcher,
+): Promise<RunnerHardwareResponse> {
+  const r = await fetcher(`${baseUrl}/jobs/runners/hardware`);
+  if (!r.ok) {
+    return { authenticated: false, username: null, flavors: [] };
+  }
+  return r.json();
 }
