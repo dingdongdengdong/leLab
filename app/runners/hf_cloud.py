@@ -174,11 +174,16 @@ class HfCloudJobRunner:
         # job_id is already a unique slug like "act_dataset_2026-05-04_10-22-03".
         config.policy_repo_id = f"{username}/{job_id}"
 
-        argv = build_training_command(config, output_dir)
-        logger.info("Submitting HF Cloud job %s on %s: %s",
-                    job_id, self._flavor, " ".join(argv))
+        trainer_argv = build_training_command(config, output_dir)
+        # The wrapper expects `python -c WRAPPER_SOURCE -- <trainer argv>`.
+        # `python -c` consumes the first non-option argument as the script,
+        # so we prepend a "--" sentinel of our own.
+        wrapped_command = ["python", "-c", WRAPPER_SOURCE, "--", *trainer_argv]
+        logger.info(
+            "Submitting HF Cloud job %s on %s (wrapped trainer): %s",
+            job_id, self._flavor, " ".join(trainer_argv),
+        )
 
-        # Open the persistent log sink — same shape as LocalJobRunner.
         self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
         self._log_file = self._log_file_path.open("a", buffering=1)
 
@@ -186,7 +191,7 @@ class HfCloudJobRunner:
         # the job's environment variable inspection / logs.
         job = self._api.run_job(
             image=LEROBOT_IMAGE,
-            command=argv,
+            command=wrapped_command,
             flavor=self._flavor,
             secrets={"HF_TOKEN": token},
             timeout=HF_JOB_TIMEOUT,
