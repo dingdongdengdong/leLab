@@ -13,6 +13,7 @@ import TrainingExtraGate from "@/components/training/TrainingExtraGate";
 import HfAuthBanner from "@/components/landing/HfAuthBanner";
 
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Loader2, Play, Square, Trash2, ArrowLeft } from "lucide-react";
 
 import { DatasetItem, listDatasets } from "@/lib/replayApi";
@@ -120,7 +121,7 @@ const ConfigurationMode: React.FC = () => {
   const [datasetsLoading, setDatasetsLoading] = useState(true);
   const [trainingExtraAvailable, setTrainingExtraAvailable] = useState<boolean | null>(null);
   const [trainingExtraInstallHint, setTrainingExtraInstallHint] = useState<string>("pip install accelerate");
-  const [runningJobExists, setRunningJobExists] = useState<boolean>(false);
+  const [localJobRunning, setLocalJobRunning] = useState<boolean>(false);
   const [isStarting, setIsStarting] = useState(false);
   const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [flavors, setFlavors] = useState<RunnerFlavor[]>([]);
@@ -145,9 +146,16 @@ const ConfigurationMode: React.FC = () => {
   }, [baseUrl, fetchWithHeaders]);
 
   useEffect(() => {
-    listJobs(baseUrl, fetchWithHeaders, 1)
-      .then((j) => setRunningJobExists(j.some((r) => r.state === "running")))
-      .catch(() => setRunningJobExists(false));
+    // Only the local lock matters for the Start button; cloud jobs can stack.
+    // Pull a generous slice so a running local isn't masked by newer cloud
+    // jobs in the started_at-desc ordering.
+    listJobs(baseUrl, fetchWithHeaders, 200)
+      .then((j) =>
+        setLocalJobRunning(
+          j.some((r) => r.runner === "local" && r.state === "running"),
+        ),
+      )
+      .catch(() => setLocalJobRunning(false));
   }, [baseUrl, fetchWithHeaders]);
 
   useEffect(() => {
@@ -184,8 +192,12 @@ const ConfigurationMode: React.FC = () => {
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Error", description: msg, variant: "destructive" });
       // If the failure was the 409 case, refresh our running-job knowledge.
-      listJobs(baseUrl, fetchWithHeaders, 1)
-        .then((j) => setRunningJobExists(j.some((r) => r.state === "running")))
+      listJobs(baseUrl, fetchWithHeaders, 200)
+        .then((j) =>
+          setLocalJobRunning(
+            j.some((r) => r.runner === "local" && r.state === "running"),
+          ),
+        )
         .catch(() => {});
     } finally {
       setIsStarting(false);
@@ -220,14 +232,16 @@ const ConfigurationMode: React.FC = () => {
   const targetRequiresAuth = trainingConfig.target.runner === "hf_cloud";
   const targetMissingFlavor =
     trainingConfig.target.runner === "hf_cloud" && !trainingConfig.target.flavor;
+  const localBlocked =
+    trainingConfig.target.runner === "local" && localJobRunning;
   const startDisabled =
     isStarting ||
     !trainingConfig.dataset_repo_id.trim() ||
-    runningJobExists ||
+    localBlocked ||
     (targetRequiresAuth && !authenticated) ||
     targetMissingFlavor;
-  const startTooltip = runningJobExists
-    ? "Another training is already running"
+  const startTooltip = localBlocked
+    ? "Another local training is already running"
     : targetRequiresAuth && !authenticated
     ? "Log in to Hugging Face to use cloud compute"
     : targetMissingFlavor
@@ -249,23 +263,39 @@ const ConfigurationMode: React.FC = () => {
           hardwareLoading={hardwareLoading}
         />
         <div className="max-w-3xl mx-auto mt-6 flex justify-end">
-          <Button
-            onClick={handleStart}
-            disabled={startDisabled}
-            title={startTooltip}
-            size="lg"
-            className="bg-green-500 hover:bg-green-600 text-white font-semibold px-6"
-          >
-            {isStarting ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Starting…
-              </>
-            ) : (
-              <>
-                <Play className="w-5 h-5 mr-2" /> Start Training
-              </>
-            )}
-          </Button>
+          {(() => {
+            const startButton = (
+              <Button
+                onClick={handleStart}
+                disabled={startDisabled}
+                size="lg"
+                className="bg-green-500 hover:bg-green-600 text-white font-semibold px-6"
+              >
+                {isStarting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Starting…
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-5 h-5 mr-2" /> Start Training
+                  </>
+                )}
+              </Button>
+            );
+            // Native `title` doesn't fire reliably on disabled buttons across
+            // browsers — and since Radix's tooltip relies on pointer events
+            // that a disabled button swallows, wrap in a span so the trigger
+            // still receives hover/focus.
+            if (!startTooltip) return startButton;
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0}>{startButton}</span>
+                </TooltipTrigger>
+                <TooltipContent>{startTooltip}</TooltipContent>
+              </Tooltip>
+            );
+          })()}
         </div>
       </div>
     </div>
