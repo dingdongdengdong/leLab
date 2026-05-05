@@ -30,6 +30,10 @@ import {
   listRunnerHardware,
   RunnerFlavor,
 } from "@/lib/jobsApi";
+import { JobCheckpoint, listJobCheckpoints } from "@/lib/checkpointsApi";
+import CheckpointDropdown from "@/components/jobs/CheckpointDropdown";
+import InferenceModal from "@/components/landing/InferenceModal";
+import { useRobots } from "@/hooks/useRobots";
 
 const POLL_INTERVAL_MS = 1000;
 
@@ -307,10 +311,14 @@ const MonitoringMode: React.FC<{ jobId: string }> = ({ jobId }) => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  const { selectedRecord } = useRobots();
   const [job, setJob] = useState<JobRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const logContainerRef = useRef<HTMLDivElement>(null);
+  const [checkpoints, setCheckpoints] = useState<JobCheckpoint[]>([]);
+  const [selectedStep, setSelectedStep] = useState<number | null>(null);
+  const [inferenceModalOpen, setInferenceModalOpen] = useState(false);
 
   // Seed logs from the persistent on-disk file once on mount, so navigating
   // away and back (or coming in fresh on a finished/interrupted job) shows
@@ -330,6 +338,43 @@ const MonitoringMode: React.FC<{ jobId: string }> = ({ jobId }) => {
       cancelled = true;
     };
   }, [baseUrl, fetchWithHeaders, jobId]);
+
+  // Poll checkpoints — every 5s while the job is running, then once on stop.
+  useEffect(() => {
+    let cancelled = false;
+    const tick = () => {
+      listJobCheckpoints(baseUrl, fetchWithHeaders, jobId)
+        .then((cks) => {
+          if (cancelled) return;
+          setCheckpoints(cks);
+          if (cks.length > 0) {
+            const latest = cks[cks.length - 1].step;
+            setSelectedStep((prev) =>
+              prev != null && cks.some((c) => c.step === prev) ? prev : latest,
+            );
+          } else {
+            setSelectedStep(null);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setCheckpoints([]);
+            setSelectedStep(null);
+          }
+        });
+    };
+    tick();
+    const id = setInterval(() => {
+      if (cancelled) return;
+      // Once the job is no longer running we don't need to keep polling.
+      if (job?.state && job.state !== "running") return;
+      tick();
+    }, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [baseUrl, fetchWithHeaders, jobId, job?.state]);
 
   // Poll the job + its logs while running.
   useEffect(() => {
@@ -492,6 +537,35 @@ const MonitoringMode: React.FC<{ jobId: string }> = ({ jobId }) => {
           trainingStatus={jobToStatus(job, false)}
           getProgressPercentage={getProgressPercentage}
           formatTime={formatTime}
+        />
+        <div className="bg-slate-800/40 border border-slate-700 rounded-lg p-4 flex items-center gap-3">
+          <span className="text-sm font-semibold text-slate-300">Run inference</span>
+          {checkpoints.length === 0 ? (
+            <span className="text-xs text-slate-500">No checkpoints yet — wait for the first save.</span>
+          ) : (
+            <>
+              <CheckpointDropdown
+                checkpoints={checkpoints}
+                selectedStep={selectedStep}
+                onChange={setSelectedStep}
+              />
+              <Button
+                onClick={() => setInferenceModalOpen(true)}
+                disabled={selectedStep == null}
+                className="bg-green-500 hover:bg-green-600 text-white"
+              >
+                <Play className="w-4 h-4 mr-2" />
+                Run on robot
+              </Button>
+            </>
+          )}
+        </div>
+        <InferenceModal
+          open={inferenceModalOpen}
+          onOpenChange={setInferenceModalOpen}
+          robot={selectedRecord}
+          jobId={jobId}
+          initialStep={selectedStep}
         />
         <TrainingLogs logs={logs} logContainerRef={logContainerRef} />
       </div>
