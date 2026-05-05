@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +11,7 @@ import threading
 import queue
 import time
 from pathlib import Path
+from pydantic import BaseModel
 from . import config
 from huggingface_hub import HfApi, get_token
 
@@ -47,6 +48,7 @@ from .jobs import (
     JobAlreadyRunningError,
     JobNotFoundError,
     JobNotRunningError,
+    JobTarget,
 )
 
 from .system import (
@@ -62,6 +64,23 @@ from . import dataset_browser
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class StartTrainingBody(BaseModel):
+    """Wrapping body for POST /jobs/training. Adds optional target spec."""
+    config: TrainingRequest
+    target: Optional[JobTarget] = None
+
+    @classmethod
+    def from_legacy(cls, raw: dict) -> "StartTrainingBody":
+        """Accept the old request shape (TrainingRequest fields at top level)
+        as well as the new shape ({config: ..., target: ...}).
+        """
+        if "config" in raw and isinstance(raw["config"], dict):
+            return cls.model_validate(raw)
+        # Legacy: top-level training fields, no target.
+        return cls(config=TrainingRequest.model_validate(raw))
+
 
 # Cache for HF Jobs hardware flavors (5-minute TTL)
 _flavors_cache: dict = {"data": None, "fetched_at": 0.0}
@@ -357,11 +376,16 @@ def get_dataset_info(request: DatasetInfoRequest):
 
 
 @app.post("/jobs/training", status_code=201)
-def create_training_job(request: TrainingRequest):
+async def create_training_job(req: Request):
+    raw = await req.json()
+    body = StartTrainingBody.from_legacy(raw)
     try:
-        record = job_registry.start(request)
+        record = job_registry.start(body.config, body.target)
     except JobAlreadyRunningError as exc:
-        raise HTTPException(status_code=409, detail=f"A training job is already running: {exc}")
+        raise HTTPException(status_code=409, detail=f"Job already running: {exc}")
+    except ValueError as exc:
+        # e.g. "flavor is required when runner is hf_cloud"
+        raise HTTPException(status_code=400, detail=str(exc))
     return record
 
 
