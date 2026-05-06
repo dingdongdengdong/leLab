@@ -1,7 +1,10 @@
+export type DatasetSource = "local" | "hub" | "both";
+
 export interface DatasetItem {
   repo_id: string;
   last_modified: string | null;
   private: boolean;
+  source: DatasetSource;
 }
 
 type Fetcher = (url: string, options?: RequestInit) => Promise<Response>;
