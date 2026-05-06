@@ -34,6 +34,7 @@ current_episode = 1  # Track current episode number
 saved_episodes = 0  # Track how many episodes have been saved
 current_phase = "preparing"  # Track current phase: "preparing", "recording", "resetting", "completed"
 phase_start_time = None  # Track when current phase started
+last_recording_info: Dict[str, Any] | None = None  # Snapshot of the most recently completed dataset (for /dataset-info)
 
 
 class RecordingRequest(BaseModel):
@@ -159,6 +160,7 @@ def handle_start_recording(request: RecordingRequest, websocket_manager=None) ->
 
     # 🧹 CLEANUP: Reset all global state from previous sessions
     logger.info("🧹 CLEANUP: Resetting all recording state variables")
+    global last_recording_info
     recording_active = False
     recording_thread = None
     recording_events = None
@@ -169,6 +171,7 @@ def handle_start_recording(request: RecordingRequest, websocket_manager=None) ->
     saved_episodes = 0
     current_phase = "preparing"
     phase_start_time = None
+    last_recording_info = None
 
     try:
         import time
@@ -212,7 +215,7 @@ def handle_start_recording(request: RecordingRequest, websocket_manager=None) ->
 
         # Start recording in a separate thread
         def recording_worker():
-            global recording_active, recording_start_time, session_end_elapsed_seconds, current_phase, phase_start_time, current_episode, saved_episodes
+            global recording_active, recording_start_time, session_end_elapsed_seconds, current_phase, phase_start_time, current_episode, saved_episodes, last_recording_info
             recording_active = True
             recording_start_time = time.time()  # Set start time when recording actually begins
             
@@ -236,6 +239,16 @@ def handle_start_recording(request: RecordingRequest, websocket_manager=None) ->
                 dataset = record_with_web_events(record_config, recording_events)
                 logger.info(f"Recording completed successfully. Dataset has {dataset.num_episodes} episodes")
                 print(f"🎉 STATUS CHANGE: Recording session completed successfully with {dataset.num_episodes} episodes")
+                last_recording_info = {
+                    "success": True,
+                    "dataset_repo_id": request.dataset_repo_id,
+                    "num_episodes": dataset.num_episodes,
+                    "single_task": request.single_task,
+                    "fps": dataset.fps,
+                    "features": list(dataset.features.keys()),
+                    "total_frames": dataset.num_frames,
+                    "robot_type": getattr(dataset.meta, "robot_type", "Unknown robot"),
+                }
                 return {"success": True, "episodes": dataset.num_episodes}
             except Exception as e:
                 logger.error(f"❌ CRITICAL ERROR during recording: {e}")
@@ -459,51 +472,61 @@ def add_debug_info_modifier():
 
 
 def handle_get_dataset_info(request: DatasetInfoRequest) -> Dict[str, Any]:
-    """Get information about a saved dataset"""
+    """Return dataset metadata — from the most recent session if it matches,
+    otherwise by loading the local LeRobot cache copy."""
+    if last_recording_info and last_recording_info.get("dataset_repo_id") == request.dataset_repo_id:
+        return last_recording_info
+
     try:
-        # Import LeRobotDataset to load the dataset
         from lerobot.datasets import LeRobotDataset
-        import time
-        
-        logger.info(f"Loading dataset {request.dataset_repo_id} to get info")
-        
-        # Load the dataset from local storage
+
         dataset = LeRobotDataset(request.dataset_repo_id)
-        
-        logger.info(f"Dataset loaded with {dataset.num_episodes} episodes")
-        
-        # Get dataset metadata
-        dataset_info = {
+        return {
             "success": True,
             "dataset_repo_id": request.dataset_repo_id,
             "num_episodes": dataset.num_episodes,
-            "single_task": getattr(dataset.meta, 'single_task', 'Unknown task'),
+            "single_task": getattr(dataset.meta, "single_task", "Unknown task"),
             "fps": dataset.fps,
             "features": list(dataset.features.keys()),
-            "total_frames": dataset.total_frames,
-            "robot_type": getattr(dataset.meta, 'robot_type', 'Unknown robot'),
+            "total_frames": dataset.num_frames,
+            "robot_type": getattr(dataset.meta, "robot_type", "Unknown robot"),
         }
-        
-        # Try to get task information from the first episode if available
-        if dataset.num_episodes > 0:
-            try:
-                first_episode = dataset[0]
-                if 'task' in first_episode:
-                    dataset_info["single_task"] = first_episode['task'][0] if len(first_episode['task']) > 0 else dataset_info["single_task"]
-            except Exception as e:
-                logger.warning(f"Could not extract task from first episode: {e}")
-        
-        logger.info(f"Dataset info retrieved: {dataset_info}")
-        return dataset_info
-        
     except Exception as e:
-        logger.error(f"Error loading dataset {request.dataset_repo_id}: {e}")
-        import traceback
-        logger.error(f"Full traceback: {traceback.format_exc()}")
+        logger.warning(f"Could not load local dataset {request.dataset_repo_id}: {e}")
         return {
             "success": False,
-            "message": f"Failed to load dataset: {str(e)}"
+            "message": f"Dataset {request.dataset_repo_id} not found locally",
         }
+
+
+def handle_delete_dataset(request: DatasetInfoRequest) -> Dict[str, Any]:
+    """Remove a recorded dataset's directory from local disk."""
+    global last_recording_info
+    from pathlib import Path
+    from lerobot.utils.constants import HF_LEROBOT_HOME
+
+    repo_id = request.dataset_repo_id
+    root = Path(HF_LEROBOT_HOME).resolve()
+    target = (root / repo_id).resolve()
+
+    # Reject path traversal: target must stay strictly inside HF_LEROBOT_HOME.
+    if target == root or root not in target.parents:
+        return {"success": False, "message": "Invalid dataset path"}
+
+    if not target.exists():
+        return {"success": False, "message": f"Dataset not found on disk: {repo_id}"}
+
+    try:
+        shutil.rmtree(target)
+    except Exception as e:
+        logger.error(f"Failed to delete dataset {repo_id}: {e}")
+        return {"success": False, "message": f"Failed to delete dataset: {e}"}
+
+    if last_recording_info and last_recording_info.get("dataset_repo_id") == repo_id:
+        last_recording_info = None
+
+    logger.info(f"Deleted dataset directory {target}")
+    return {"success": True, "message": f"Deleted {repo_id}"}
 
 
 def handle_upload_dataset(request: UploadRequest) -> Dict[str, Any]:
