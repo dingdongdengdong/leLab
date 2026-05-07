@@ -326,20 +326,9 @@ const Recording = () => {
       });
 
       toast({
-        title: "Recording Stopped",
-        description: "Recording session has been stopped.",
+        title: "Stopping recording",
+        description: "Finalizing dataset…",
       });
-
-      const datasetInfo = {
-        dataset_repo_id:
-          backendStatus?.dataset_repo_id || recordingConfig.dataset_repo_id,
-        single_task: recordingConfig.single_task,
-        num_episodes: recordingConfig.num_episodes,
-        saved_episodes: backendStatus?.saved_episodes || 0,
-        session_elapsed_seconds: backendStatus?.session_elapsed_seconds || 0,
-      };
-
-      navigate("/upload", { state: { datasetInfo } });
     } catch (error) {
       toast({
         title: "Error",
@@ -347,7 +336,7 @@ const Recording = () => {
         variant: "destructive",
       });
     }
-  }, [backendStatus, baseUrl, fetchWithHeaders, toast, recordingConfig, navigate]);
+  }, [backendStatus, baseUrl, fetchWithHeaders, toast]);
 
   const requestStopRecording = useCallback(() => {
     if (!backendStatus?.available_controls.stop_recording) return;
@@ -384,10 +373,11 @@ const Recording = () => {
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
         return;
       }
-      if (e.key === " " || e.code === "Space") {
+      if (e.key === " " || e.code === "Space" || e.key === "ArrowRight") {
         e.preventDefault();
         handlersRef.current.handleExitEarly();
-      } else if (e.key === "r" || e.key === "R") {
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
         handlersRef.current.handleRerecordEpisode();
       } else if (e.key === "Escape") {
         if (handlersRef.current.showStopConfirm) return;
@@ -573,7 +563,7 @@ const Recording = () => {
             <PrimaryIcon className="w-5 h-5 mr-2" />
             {primaryLabel}
             {currentPhase !== "completed" && (
-              <span className="ml-3 px-2 py-0.5 rounded text-xs font-mono bg-black/30 text-white/70">SPACE</span>
+              <span className="ml-3 px-2 py-0.5 rounded text-xs font-mono bg-black/30 text-white/70">SPACE / →</span>
             )}
           </Button>
 
