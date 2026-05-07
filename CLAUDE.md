@@ -14,7 +14,7 @@ Install (editable, requires Python ≥3.10):
 ```bash
 pip install -e .
 ```
-This pulls `lerobot` directly from GitHub (`git+https://github.com/huggingface/lerobot.git`) — installs are slow.
+`lerobot` is pinned to a specific PyPI release (see [pyproject.toml](pyproject.toml)). Bumping it usually requires touching imports — the layout (`lerobot.scripts.lerobot_record`, `lerobot.utils.control_utils`, `lerobot.datasets.feature_utils`) shifts between releases.
 
 Run servers (entry point defined in [pyproject.toml](pyproject.toml)):
 ```bash
