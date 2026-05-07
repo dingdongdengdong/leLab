@@ -17,7 +17,7 @@ from typing import List, Literal, Optional, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
-from .training import TrainingRequest
+from .train import TrainingRequest
 
 logger = logging.getLogger(__name__)
 

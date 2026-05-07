@@ -12,11 +12,11 @@ import queue
 import time
 from pathlib import Path
 from pydantic import BaseModel
-from . import config
+from .utils import config
 from huggingface_hub import HfApi
 
 # Import our custom recording functionality
-from .recording import (
+from .record import (
     RecordingRequest,
     UploadRequest,
     DatasetInfoRequest,
@@ -31,7 +31,7 @@ from .recording import (
 )
 
 # Import our custom teleoperation functionality
-from .teleoperating import (
+from .teleoperate import (
     TeleoperateRequest,
     handle_start_teleoperation,
     handle_stop_teleoperation,
@@ -39,7 +39,7 @@ from .teleoperating import (
     handle_get_joint_positions,
 )
 
-from .inferring import (
+from .rollout import (
     InferenceRequest,
     handle_start_inference,
     handle_stop_inference,
@@ -47,10 +47,10 @@ from .inferring import (
 )
 
 # Import our custom calibration functionality
-from .calibrating import CalibrationRequest, calibration_manager
+from .calibrate import CalibrationRequest, calibration_manager
 
 # Training is now job-based; see app/jobs.py.
-from .training import TrainingRequest
+from .train import TrainingRequest
 from .jobs import (
     job_registry,
     JobAlreadyRunningError,
@@ -59,7 +59,7 @@ from .jobs import (
     JobTarget,
 )
 
-from .system import (
+from .utils.system import (
     handle_get_training_extra,
     handle_install_training_extra,
     handle_install_training_extra_status,
@@ -68,8 +68,8 @@ from .system import (
     handle_install_wandb_extra_status,
 )
 
-from .hf_auth import cached_whoami, handle_hf_auth_status, handle_hf_login
-from . import dataset_browser
+from .utils.hf_auth import cached_whoami, handle_hf_auth_status, handle_hf_login
+from . import datasets as dataset_browser
 
 
 # Set up logging
@@ -119,7 +119,7 @@ LEROBOT_PATH = str(Path(__file__).parent.parent.parent.parent)
 logger.info(f"LeRobot path: {LEROBOT_PATH}")
 
 # Import shared configuration constants
-from .config import (
+from .utils.config import (
     CALIBRATION_BASE_PATH_TELEOP,
     CALIBRATION_BASE_PATH_ROBOTS,
     LEADER_CONFIG_PATH,

@@ -15,7 +15,7 @@ from lerobot.datasets import LeRobotDataset
 logger = logging.getLogger(__name__)
 
 # Import calibration paths from config (shared constants)
-from .config import (
+from .utils.config import (
     CALIBRATION_BASE_PATH_TELEOP,
     CALIBRATION_BASE_PATH_ROBOTS,
     LEADER_CONFIG_PATH,

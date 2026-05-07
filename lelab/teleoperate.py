@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from lerobot.teleoperators.so_leader import SO101LeaderConfig, SO101Leader
 from lerobot.robots.so_follower import SO101FollowerConfig, SO101Follower
 
-from .config import setup_calibration_files
+from .utils.config import setup_calibration_files
 
 logger = logging.getLogger(__name__)
 

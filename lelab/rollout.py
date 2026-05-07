@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
-from .config import setup_follower_calibration_file
+from .utils.config import setup_follower_calibration_file
 
 logger = logging.getLogger(__name__)
 

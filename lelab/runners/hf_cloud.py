@@ -19,9 +19,9 @@ from typing import List, Optional
 from huggingface_hub import HfApi, get_token
 from huggingface_hub.errors import RepositoryNotFoundError
 
-from ..hf_auth import cached_whoami
+from ..utils.hf_auth import cached_whoami
 from ..jobs import LogLine, TrainingMetrics, extract_wandb_run_url, parse_metrics_into
-from ..training import TrainingRequest, build_training_command
+from ..train import TrainingRequest, build_training_command
 
 logger = logging.getLogger(__name__)
 
