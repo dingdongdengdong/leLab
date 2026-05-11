@@ -607,12 +607,25 @@ class JobRegistry:
         # broadcast so the frontend can refetch on-event instead of polling.
         self._on_change: Callable[[], None] | None = None
 
+        # Fired from the watchdog at ~1Hz with a compact snapshot of every
+        # running job (id, state, metrics, wandb url, checkpoint count) so
+        # the dashboard keeps the progress bar live without refetching /jobs.
+        self._on_progress: Callable[[builtins.list[dict]], None] | None = None
+
         self._load_from_disk()
         self._start_watchdog()
 
     def set_on_change(self, callback: Callable[[], None] | None) -> None:
         """Register a single observer fired when registry state changes."""
         self._on_change = callback
+
+    def set_on_progress(
+        self, callback: Callable[[builtins.list[dict]], None] | None
+    ) -> None:
+        """Register an observer fired each watchdog tick with one dict per
+        running job. Quiet when no job runs: a tick with no running jobs
+        produces no callback."""
+        self._on_progress = callback
 
     def _notify_change(self) -> None:
         cb = self._on_change
@@ -622,6 +635,15 @@ class JobRegistry:
             cb()
         except Exception as exc:
             logger.exception("JobRegistry on_change callback failed: %s", exc)
+
+    def _notify_progress(self, snapshots: builtins.list[dict]) -> None:
+        cb = self._on_progress
+        if cb is None or not snapshots:
+            return
+        try:
+            cb(snapshots)
+        except Exception as exc:
+            logger.exception("JobRegistry on_progress callback failed: %s", exc)
 
     # -- public API --
 
@@ -925,6 +947,8 @@ class JobRegistry:
         with self._lock:
             running_ids = [jid for jid, r in self._records.items() if r.state == "running"]
 
+        progress_snapshots: builtins.list[dict] = []
+
         for jid in running_ids:
             with self._lock:
                 runner = self._runners.get(jid)
@@ -941,6 +965,15 @@ class JobRegistry:
                         self._persist(record, force=True)
                 # Persist metric snapshot at most once per second.
                 self._persist(record, force=False)
+                progress_snapshots.append(
+                    {
+                        "id": record.id,
+                        "state": record.state,
+                        "metrics": record.metrics.model_dump(),
+                        "wandb_run_url": record.wandb_run_url,
+                        "checkpoint_count": self._count_checkpoints(record),
+                    }
+                )
                 continue
 
             # Subprocess exited since the last tick. Finalise.
@@ -965,6 +998,8 @@ class JobRegistry:
                 self._runners.pop(jid, None)
             self._persist(record, force=True)
             self._notify_change()
+
+        self._notify_progress(progress_snapshots)
 
     def _persist(self, record: JobRecord, force: bool) -> None:
         now = time.time()

@@ -1,19 +1,29 @@
 import { useEffect, useRef } from "react";
 import { useApi } from "@/contexts/ApiContext";
+import { JobProgressSnapshot } from "@/lib/jobsApi";
 
 /**
- * Subscribe to backend job-state events on the shared /ws/joint-data
- * channel. The backend pushes `{type: "jobs_changed"}` on submit /
- * watchdog finalisation / delete, so we can refetch on-event instead
- * of polling.
+ * Subscribe to backend job events on the shared /ws/joint-data channel.
  *
- * The callback ref is captured so its identity changing doesn't tear
- * down the socket. Auto-reconnects with a 3s delay if the server bounces.
+ * Two event types flow on this socket:
+ *  - `jobs_changed`  → fired on submit / watchdog finalisation / delete.
+ *                       Triggers `onChange` so the caller can refetch /jobs.
+ *  - `job_progress`  → fired by the watchdog (~1Hz) while jobs are running.
+ *                       Triggers `onProgress` with per-job snapshots so the
+ *                       UI can update the progress bar in place — no fetch.
+ *
+ * Callback refs are captured so identity changes don't tear down the socket.
+ * Auto-reconnects with a 3s delay if the server bounces.
  */
-export const useJobsChangedSignal = (onChange: () => void) => {
+export const useJobsChangedSignal = (
+  onChange: () => void,
+  onProgress?: (snapshots: JobProgressSnapshot[]) => void,
+) => {
   const { wsBaseUrl } = useApi();
-  const cbRef = useRef(onChange);
-  cbRef.current = onChange;
+  const changeRef = useRef(onChange);
+  changeRef.current = onChange;
+  const progressRef = useRef(onProgress);
+  progressRef.current = onProgress;
 
   useEffect(() => {
     let cancelled = false;
@@ -31,7 +41,15 @@ export const useJobsChangedSignal = (onChange: () => void) => {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data?.type === "jobs_changed") cbRef.current();
+          if (data?.type === "jobs_changed") {
+            changeRef.current();
+          } else if (
+            data?.type === "job_progress" &&
+            progressRef.current &&
+            Array.isArray(data?.jobs)
+          ) {
+            progressRef.current(data.jobs as JobProgressSnapshot[]);
+          }
         } catch {
           /* ignore non-JSON or unexpected payloads */
         }

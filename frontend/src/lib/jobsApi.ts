@@ -64,6 +64,16 @@ export interface JobRecord {
   checkpoint_count: number;
 }
 
+// Per-running-job snapshot pushed by the watchdog over WS at ~1Hz. Subset
+// of JobRecord — just the fields that change during a running tick.
+export interface JobProgressSnapshot {
+  id: string;
+  state: JobState;
+  metrics: TrainingMetrics;
+  wandb_run_url: string | null;
+  checkpoint_count: number;
+}
+
 type Fetcher = (url: string, options?: RequestInit) => Promise<Response>;
 
 async function expectOk(r: Response, action: string): Promise<Response> {

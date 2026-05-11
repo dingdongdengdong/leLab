@@ -7,6 +7,7 @@ import { useJobsChangedSignal } from "@/hooks/useJobsChangedSignal";
 import {
   HubJob,
   HubModel,
+  JobProgressSnapshot,
   JobRecord,
   deleteJob,
   listHubJobs,
@@ -87,7 +88,29 @@ const JobsSection: React.FC = () => {
     };
   }, [refresh]);
 
-  useJobsChangedSignal(refresh);
+  const applyProgress = useCallback((snapshots: JobProgressSnapshot[]) => {
+    if (snapshots.length === 0) return;
+    setJobs((prev) => {
+      if (prev.length === 0) return prev;
+      const byId = new Map(snapshots.map((s) => [s.id, s]));
+      let mutated = false;
+      const next = prev.map((j) => {
+        const s = byId.get(j.id);
+        if (!s) return j;
+        mutated = true;
+        return {
+          ...j,
+          state: s.state,
+          metrics: s.metrics,
+          wandb_run_url: s.wandb_run_url,
+          checkpoint_count: s.checkpoint_count,
+        };
+      });
+      return mutated ? next : prev;
+    });
+  }, []);
+
+  useJobsChangedSignal(refresh, applyProgress);
 
   const handleStop = async (id: string) => {
     try {

@@ -257,9 +257,23 @@ class ConnectionManager:
             with contextlib.suppress(queue.Full):
                 self.broadcast_queue.put_nowait({"type": "jobs_changed", "timestamp": time.time()})
 
+    def notify_job_progress(self, snapshots: list[dict]) -> None:
+        """Push a 'job_progress' event with per-running-job snapshots.
+
+        Fired from the JobRegistry watchdog (~1Hz) while jobs are running so
+        the dashboard's progress bar updates live without refetching /jobs
+        (let alone /jobs/hub, which hits the HF API on every call).
+        """
+        if self.is_running and self.active_connections:
+            with contextlib.suppress(queue.Full):
+                self.broadcast_queue.put_nowait(
+                    {"type": "job_progress", "jobs": snapshots, "timestamp": time.time()}
+                )
+
 
 manager = ConnectionManager()
 job_registry.set_on_change(manager.notify_jobs_changed)
+job_registry.set_on_progress(manager.notify_job_progress)
 
 
 @app.get("/get-configs")
