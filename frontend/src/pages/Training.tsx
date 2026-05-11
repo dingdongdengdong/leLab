@@ -547,6 +547,7 @@ const MonitoringMode: React.FC<{ jobId: string }> = ({ jobId }) => {
         </div>
 
         <MonitoringStats
+          jobId={jobId}
           trainingStatus={jobToStatus(job, false)}
           getProgressPercentage={getProgressPercentage}
           formatTime={formatTime}

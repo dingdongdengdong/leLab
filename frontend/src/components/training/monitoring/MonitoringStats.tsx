@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrainingStatus } from '../types';
 import { CheckCircle, Activity, Clock } from 'lucide-react';
+import { useApi } from '@/contexts/ApiContext';
+import { getJobMetricsHistory } from '@/lib/jobsApi';
 import {
   Line,
   LineChart,
@@ -12,6 +14,7 @@ import {
 } from 'recharts';
 
 interface MonitoringStatsProps {
+  jobId: string;
   trainingStatus: TrainingStatus;
   getProgressPercentage: () => number;
   formatTime: (seconds: number) => string;
@@ -27,9 +30,10 @@ interface LrPoint {
   lr: number;
 }
 
-const HISTORY_CAP = 200;
+const HISTORY_CAP = 2000;
 
 const MonitoringStats: React.FC<MonitoringStatsProps> = ({
+  jobId,
   trainingStatus,
   getProgressPercentage,
   formatTime,
@@ -37,6 +41,40 @@ const MonitoringStats: React.FC<MonitoringStatsProps> = ({
   const [lossHistory, setLossHistory] = useState<LossPoint[]>([]);
   const [lrHistory, setLrHistory] = useState<LrPoint[]>([]);
   const lastStepRef = useRef(0);
+  const { baseUrl, fetchWithHeaders } = useApi();
+
+  // Seed the curves from the persisted log on mount (and when the active job
+  // changes). Without this, the chart starts empty on every page reload,
+  // after navigating away and back, or after a lelab restart re-attaches to
+  // a still-running job. Live-append continues from the last seeded step.
+  useEffect(() => {
+    let cancelled = false;
+    getJobMetricsHistory(baseUrl, fetchWithHeaders, jobId)
+      .then((points) => {
+        if (cancelled || points.length === 0) return;
+        const lossSeed: LossPoint[] = points
+          .filter((p) => p.loss != null)
+          .map((p) => ({ step: p.step, loss: p.loss as number }))
+          .slice(-HISTORY_CAP);
+        const lrSeed: LrPoint[] = points
+          .filter((p) => p.lr != null)
+          .map((p) => ({ step: p.step, lr: p.lr as number }))
+          .slice(-HISTORY_CAP);
+        setLossHistory(lossSeed);
+        setLrHistory(lrSeed);
+        // Pin lastStepRef to the last seeded step so the first live tick
+        // (whose step is >= the seed's last step) doesn't trigger the
+        // step-regressed reset in the live-append effect below.
+        const lastSeededStep = points[points.length - 1]?.step ?? 0;
+        lastStepRef.current = lastSeededStep;
+      })
+      .catch(() => {
+        // 404 or transient — fall through; live ticks will populate from empty.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUrl, fetchWithHeaders, jobId]);
 
   // Append new metric points as they arrive; reset when a new run starts
   // (current_step resets back to 0).
