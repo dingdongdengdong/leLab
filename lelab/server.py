@@ -27,7 +27,6 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from huggingface_hub import HfApi
 from pydantic import BaseModel
 
 from . import datasets as dataset_browser
@@ -91,7 +90,7 @@ from .utils.config import (
     save_robot_port,
     save_robot_record,
 )
-from .utils.hf_auth import cached_whoami, handle_hf_auth_status, handle_hf_login
+from .utils.hf_auth import cached_whoami, handle_hf_auth_status, handle_hf_login, shared_hf_api
 from .utils.system import (
     handle_get_training_extra,
     handle_get_wandb_extra,
@@ -244,8 +243,20 @@ class ConnectionManager:
             except queue.Full:
                 logger.warning("Broadcast queue is full, dropping data")
 
+    def notify_jobs_changed(self) -> None:
+        """Push a 'jobs_changed' event to all WS clients so they refetch.
+
+        Called from JobRegistry on submit / watchdog finalisation / delete.
+        Skipped silently if no clients are connected — the frontend does an
+        initial fetch on mount, so a missed broadcast is self-healing.
+        """
+        if self.is_running and self.active_connections:
+            with contextlib.suppress(queue.Full):
+                self.broadcast_queue.put_nowait({"type": "jobs_changed", "timestamp": time.time()})
+
 
 manager = ConnectionManager()
+job_registry.set_on_change(manager.notify_jobs_changed)
 
 
 @app.get("/get-configs")
@@ -466,7 +477,7 @@ def list_hub_jobs():
     info = cached_whoami()
     if info is None:
         return {"authenticated": False, "jobs": [], "models": []}
-    api = HfApi()
+    api = shared_hf_api()
 
     authors: list[str] = []
     if info.get("name"):
@@ -605,7 +616,7 @@ def get_runners_hardware():
     if info is None or not info.get("name"):
         return {"authenticated": False, "username": None, "flavors": []}
     username: str = info["name"]
-    api = HfApi()
+    api = shared_hf_api()
 
     now = time.time()
     if _flavors_cache["data"] is None or now - _flavors_cache["fetched_at"] > _FLAVOR_CACHE_TTL_SECONDS:

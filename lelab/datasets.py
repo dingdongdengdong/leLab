@@ -18,8 +18,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from huggingface_hub import HfApi, whoami
-from huggingface_hub.errors import HfHubHTTPError, LocalTokenNotFoundError
+from huggingface_hub.errors import HfHubHTTPError
+
+from .utils.hf_auth import cached_whoami, shared_hf_api
 
 logger = logging.getLogger(__name__)
 
@@ -104,13 +105,12 @@ def list_local_datasets() -> list[dict[str, Any]]:
 
 
 def list_user_datasets() -> list[dict[str, Any]]:
-    try:
-        info = whoami()
-    except (LocalTokenNotFoundError, HfHubHTTPError, OSError):
+    info = cached_whoami()
+    if info is None:
         return []
 
     authors = [info["name"]] + [o["name"] for o in info.get("orgs", [])]
-    api = HfApi()
+    api = shared_hf_api()
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
     for author in authors:

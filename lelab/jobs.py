@@ -32,7 +32,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Literal, Protocol, runtime_checkable
+from typing import Callable, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -601,8 +601,26 @@ class JobRegistry:
         # repo_id -> (expires_at_epoch, checkpoint list)
         self._cloud_ckpt_cache: dict[str, tuple[float, list[JobCheckpoint]]] = {}
 
+        # Fired (best-effort) on every state change: new job, stop initiated,
+        # watchdog finalisation, delete. Server wires this to a WebSocket
+        # broadcast so the frontend can refetch on-event instead of polling.
+        self._on_change: Callable[[], None] | None = None
+
         self._load_from_disk()
         self._start_watchdog()
+
+    def set_on_change(self, callback: Callable[[], None] | None) -> None:
+        """Register a single observer fired when registry state changes."""
+        self._on_change = callback
+
+    def _notify_change(self) -> None:
+        cb = self._on_change
+        if cb is None:
+            return
+        try:
+            cb()
+        except Exception as exc:
+            logger.exception("JobRegistry on_change callback failed: %s", exc)
 
     # -- public API --
 
@@ -686,7 +704,8 @@ class JobRegistry:
 
             self._persist(record, force=True)
             self._runners[job_id] = runner
-            return record
+        self._notify_change()
+        return record
 
     def stop(self, job_id: str) -> JobRecord:
         with self._lock:
@@ -818,6 +837,7 @@ class JobRegistry:
             self._last_persist_at.pop(job_id, None)
         with contextlib.suppress(FileNotFoundError):
             shutil.rmtree(_job_dir(self._output_root, job_id))
+        self._notify_change()
 
     def shutdown(self) -> None:
         """For tests / orderly process exit. Not wired to FastAPI lifespan today."""
@@ -961,6 +981,7 @@ class JobRegistry:
                     record.error_message = reason or f"Subprocess exited with code {rc}"
                 self._runners.pop(jid, None)
             self._persist(record, force=True)
+            self._notify_change()
 
     def _persist(self, record: JobRecord, force: bool) -> None:
         now = time.time()

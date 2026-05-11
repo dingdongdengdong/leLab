@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useApi } from "@/contexts/ApiContext";
 import { useToast } from "@/hooks/use-toast";
+import { useJobsChangedSignal } from "@/hooks/useJobsChangedSignal";
 import {
   HubJob,
   HubModel,
@@ -24,7 +25,6 @@ import {
 } from "@/components/ui/collapsible";
 import { ChevronRight, RefreshCw, Search } from "lucide-react";
 
-const POLL_INTERVAL_MS = 5000;
 const LIMIT = 10;
 
 // Hub stages still doing work. Anything outside this set (COMPLETED, FAILED,
@@ -69,17 +69,25 @@ const JobsSection: React.FC = () => {
     }
   }, [baseUrl, fetchWithHeaders]);
 
+  // Initial fetch on mount + refetch when the tab regains focus. Backend
+  // pushes a `jobs_changed` WS event on every registry mutation, which
+  // covers any change originating on this machine. The focus refresh
+  // catches changes originating elsewhere (e.g. a job submitted from
+  // another tab or the HF dashboard) without burning the rate limit.
   useEffect(() => {
-    let cancelled = false;
     refresh();
-    const id = setInterval(() => {
-      if (!cancelled) refresh();
-    }, POLL_INTERVAL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", refresh);
     return () => {
-      cancelled = true;
-      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", refresh);
     };
   }, [refresh]);
+
+  useJobsChangedSignal(refresh);
 
   const handleStop = async (id: string) => {
     try {

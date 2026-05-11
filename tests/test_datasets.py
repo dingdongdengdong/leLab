@@ -80,11 +80,9 @@ def test_list_local_datasets_skips_non_dataset_dirs(
 def test_list_user_datasets_returns_empty_when_not_logged_in(
     tmp_lerobot_home: Path,
 ) -> None:
-    from huggingface_hub.errors import LocalTokenNotFoundError
-
     from lelab.datasets import list_user_datasets
 
-    with patch("lelab.datasets.whoami", side_effect=LocalTokenNotFoundError("")):
+    with patch("lelab.datasets.cached_whoami", return_value=None):
         assert list_user_datasets() == []
 
 
