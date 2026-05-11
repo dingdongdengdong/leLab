@@ -48,10 +48,11 @@ def cached_whoami() -> dict | None:
     Swallows transport errors and returns None — callers treat that as
     "unauthenticated" so the UI degrades gracefully instead of 500ing.
     """
-    if not get_token():
+    token = get_token()
+    if not token:
         return None
     try:
-        return _WHOAMI_API.whoami(cache=True)
+        return _WHOAMI_API.whoami(token=token, cache=True)
     except Exception as exc:
         logger.info("whoami failed: %s", exc)
         return None
