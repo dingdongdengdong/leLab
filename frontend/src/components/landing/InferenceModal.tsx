@@ -156,11 +156,12 @@ const InferenceModal: React.FC<Props> = ({
 
   // Load the user's available cameras when the modal opens, and merge each
   // backend cv2 index with the matching browser deviceId so we can render a
-  // live preview alongside the bound dropdowns.
+  // live preview alongside the bound dropdowns. Also refreshes on USB
+  // hotplug so cameras plugged in after `lelab` started show up.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    (async () => {
+    const refresh = async () => {
       try {
         // Need a permission grant before enumerateDevices() returns labels.
         try {
@@ -213,9 +214,13 @@ const InferenceModal: React.FC<Props> = ({
       } catch {
         if (!cancelled) setAvailableCameras([]);
       }
-    })();
+    };
+    refresh();
+    const handler = () => refresh();
+    navigator.mediaDevices.addEventListener("devicechange", handler);
     return () => {
       cancelled = true;
+      navigator.mediaDevices.removeEventListener("devicechange", handler);
     };
   }, [open, baseUrl, fetchWithHeaders]);
 

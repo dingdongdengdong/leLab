@@ -15,9 +15,12 @@
 import asyncio
 import contextlib
 import glob
+import json
 import logging
 import os
 import queue
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -805,40 +808,70 @@ def get_available_ports():
         return {"status": "error", "message": str(e)}
 
 
-def _avfoundation_cameras_in_cv2_order() -> list[dict[str, Any]]:
-    """Return AVFoundation cameras in the same order cv2 opens them.
+# Runs in a fresh Python — see _avfoundation_cameras_in_cv2_order for why.
+# Mirrors OpenCV's macOS enumeration: video + muxed devices sorted by
+# uniqueID (cap_avfoundation_mac.mm), so the returned index matches what
+# cv2.VideoCapture will open.
+_AVF_ENUM_SCRIPT = """
+import json, objc
+from Foundation import NSBundle
+bundle = NSBundle.bundleWithPath_("/System/Library/Frameworks/AVFoundation.framework")
+bundle.load()
+types = []
+for name in (
+    "AVCaptureDeviceTypeBuiltInWideAngleCamera",
+    "AVCaptureDeviceTypeExternalUnknown",   # macOS < 14
+    "AVCaptureDeviceTypeExternal",          # macOS >= 14
+    "AVCaptureDeviceTypeContinuityCamera",  # macOS >= 14
+    "AVCaptureDeviceTypeDeskViewCamera",    # macOS >= 13
+):
+    loaded = {}
+    try:
+        objc.loadBundleVariables(bundle, loaded, [(name, b"@")])
+    except objc.error:
+        continue
+    if loaded.get(name) is not None:
+        types.append(loaded[name])
+cls = objc.lookUpClass("AVCaptureDeviceDiscoverySession")
+devs = []
+for mt in ("vide", "muxx"):
+    devs.extend(cls.discoverySessionWithDeviceTypes_mediaType_position_(types, mt, 0).devices() or [])
+devs.sort(key=lambda d: d.uniqueID())
+print(json.dumps([
+    {"index": i, "name": str(d.localizedName()), "unique_id": str(d.uniqueID())}
+    for i, d in enumerate(devs)
+]))
+"""
 
-    OpenCV's macOS AVFoundation backend opens
-    ``([AVCaptureDevice devicesWithMediaType:Video] +
-      [AVCaptureDevice devicesWithMediaType:Muxed])``
-    sorted lexicographically by ``uniqueID`` (cap_avfoundation_mac.mm).
-    Mirroring that here gives a deterministic
-    ``{cv2_index → uniqueID, localizedName}`` map so the browser can match
-    by label without probing or visual fingerprinting.
+
+def _avfoundation_cameras_in_cv2_order() -> list[dict[str, Any]]:
+    """Enumerate macOS cameras in a fresh Python subprocess.
+
+    AVFoundation's in-process device cache doesn't refresh on USB
+    hotplug. Both the deprecated ``+devicesWithMediaType:`` and a
+    long-lived ``AVCaptureDeviceDiscoverySession`` go stale, because
+    device-connection notifications are delivered via
+    ``NSNotificationCenter`` on a thread that needs an active
+    ``NSRunLoop`` — uvicorn workers don't run one. A fresh subprocess
+    re-initializes AVFoundation, which reads IOKit's live device state
+    at startup.
     """
     try:
-        import objc
-        from Foundation import NSBundle
-    except ImportError:
-        logger.warning("PyObjC not available; cannot enumerate AVFoundation cameras by name")
+        result = subprocess.run(
+            [sys.executable, "-c", _AVF_ENUM_SCRIPT],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.warning("AVFoundation enumeration subprocess failed: %s", e)
         return []
-
-    NSBundle.bundleWithPath_("/System/Library/Frameworks/AVFoundation.framework").load()
-    AVCaptureDevice = objc.lookUpClass("AVCaptureDevice")  # noqa: N806 — ObjC class name
-
-    # AVMediaTypeVideo = "vide", AVMediaTypeMuxed = "muxx" (CoreMedia 4-char codes).
-    video = list(AVCaptureDevice.devicesWithMediaType_("vide") or [])
-    muxed = list(AVCaptureDevice.devicesWithMediaType_("muxx") or [])
-    devices = sorted(video + muxed, key=lambda d: d.uniqueID())
-
-    return [
-        {
-            "index": i,
-            "name": str(d.localizedName()),
-            "unique_id": str(d.uniqueID()),
-        }
-        for i, d in enumerate(devices)
-    ]
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        logger.warning("AVFoundation enumeration returned invalid JSON: %s", e)
+        return []
 
 
 @app.get("/available-cameras")

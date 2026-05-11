@@ -52,9 +52,14 @@ const CameraConfiguration: React.FC<CameraConfigurationProps> = ({
   const [cameraName, setCameraName] = useState("");
   const [isLoadingCameras, setIsLoadingCameras] = useState(false);
 
-  // Fetch available cameras on component mount
+  // Re-fetch on mount and whenever the OS reports a USB hotplug.
   useEffect(() => {
     fetchAvailableCameras();
+    const handler = () => fetchAvailableCameras();
+    navigator.mediaDevices.addEventListener("devicechange", handler);
+    return () =>
+      navigator.mediaDevices.removeEventListener("devicechange", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchAvailableCameras = async () => {
