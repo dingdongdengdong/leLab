@@ -86,14 +86,22 @@ class TrainingRequest(BaseModel):
     config_path: str | None = None
 
 
-def build_training_command(request: TrainingRequest, output_dir: str) -> list[str]:
-    """Build the argv list to invoke `python -m lerobot.scripts.lerobot_train`.
+def build_training_command(
+    request: TrainingRequest, output_dir: str, python_executable: str = "python"
+) -> list[str]:
+    """Build the argv list to invoke `<python_executable> -m lerobot.scripts.lerobot_train`.
 
     `output_dir` is supplied separately from the request so the caller (the
     JobRegistry) can pin it to the per-job directory rather than relying on
     request.output_dir, which the frontend doesn't even send in the new world.
+
+    `python_executable` defaults to "python" for the cloud runner (whose
+    container has lerobot on PATH); the local runner must pass sys.executable
+    so the subprocess uses the same interpreter as lelab itself — otherwise
+    PATH lookup picks up a different env (uv tool venv, miniforge3 base, etc.)
+    that lacks lerobot.
     """
-    cmd: list[str] = ["python", "-m", "lerobot.scripts.lerobot_train"]
+    cmd: list[str] = [python_executable, "-m", "lerobot.scripts.lerobot_train"]
 
     # Dataset
     cmd.extend(["--dataset.repo_id", request.dataset_repo_id])

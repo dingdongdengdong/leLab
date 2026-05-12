@@ -27,6 +27,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -240,7 +241,7 @@ class LocalJobRunner:
         # Build the command via the helper that lives in train.py.
         from .train import build_training_command  # avoid import cycle at module load
 
-        cmd = build_training_command(config, output_dir)
+        cmd = build_training_command(config, output_dir, sys.executable)
         logger.info("Starting job %s: %s", job_id, " ".join(cmd))
 
         # Open the persistent log sink (one JSON line per stdout line). Held
