@@ -55,6 +55,9 @@ _inference_proc: subprocess.Popen | None = None
 _inference_started_at: float | None = None
 _inference_rollout_started_at: float | None = None
 _inference_meta: dict[str, Any] = {}
+# Guards mutations to the globals above; held only for the short critical
+# sections in start/stop/status.
+_state_lock = threading.Lock()
 _HUB_REF_RE = re.compile(r"^(?P<repo>[^@]+)@checkpoints/(?P<step_dir>\d+)$")
 # lerobot prints this once per run, the moment its main control loop is
 # about to take over from the setup phase. We watch stdout for it so the
@@ -150,27 +153,29 @@ def handle_start_inference(request: InferenceRequest) -> dict[str, Any]:
     global _inference_rollout_started_at, _inference_meta
 
     # Mutex with teleop and recording: all three drive the same serial bus.
-    from .record import recording_active
-    from .teleoperate import teleoperation_active
+    from . import record as _record, teleoperate as _teleoperate
 
-    if teleoperation_active:
-        return {
-            "success": False,
-            "status_code": 409,
-            "message": "Teleoperation is currently active. Stop it first.",
-        }
-    if recording_active:
-        return {
-            "success": False,
-            "status_code": 409,
-            "message": "Recording is currently active. Stop it first.",
-        }
-    if inference_active:
-        return {
-            "success": False,
-            "status_code": 409,
-            "message": "Inference is already active. Stop it first.",
-        }
+    with _state_lock:
+        if _teleoperate.teleoperation_active:
+            return {
+                "success": False,
+                "status_code": 409,
+                "message": "Teleoperation is currently active. Stop it first.",
+            }
+        if _record.recording_active:
+            return {
+                "success": False,
+                "status_code": 409,
+                "message": "Recording is currently active. Stop it first.",
+            }
+        if inference_active:
+            return {
+                "success": False,
+                "status_code": 409,
+                "message": "Inference is already active. Stop it first.",
+            }
+        # Claim the slot now so a concurrent caller losing the race sees us.
+        inference_active = True
 
     try:
         # `setup_follower_calibration_file` returns the basename without the
@@ -231,17 +236,20 @@ def handle_start_inference(request: InferenceRequest) -> dict[str, Any]:
         ).start()
     except Exception as exc:
         logger.exception("Failed to start inference")
+        # Subprocess never started — release the slot.
+        with _state_lock:
+            inference_active = False
         return {"success": False, "status_code": 500, "message": f"Failed to start inference: {exc}"}
 
-    inference_active = True
-    _inference_proc = proc
-    _inference_started_at = time.time()
-    _inference_rollout_started_at = None
-    _inference_meta = {
-        "policy_ref": request.policy_ref,
-        "duration_s": request.duration_s,
-        "log_path": str(log_path),
-    }
+    with _state_lock:
+        _inference_proc = proc
+        _inference_started_at = time.time()
+        _inference_rollout_started_at = None
+        _inference_meta = {
+            "policy_ref": request.policy_ref,
+            "duration_s": request.duration_s,
+            "log_path": str(log_path),
+        }
     logger.info("Inference started: pid=%s policy=%s", proc.pid, policy_path)
     return {"success": True, "message": "Inference started", "log_path": str(log_path)}
 
@@ -249,9 +257,12 @@ def handle_start_inference(request: InferenceRequest) -> dict[str, Any]:
 def handle_stop_inference() -> dict[str, Any]:
     global inference_active, _inference_proc, _inference_started_at
     global _inference_rollout_started_at, _inference_meta
-    if not inference_active or _inference_proc is None:
-        return {"success": False, "status_code": 409, "message": "No inference is active"}
-    proc = _inference_proc
+
+    with _state_lock:
+        if not inference_active or _inference_proc is None:
+            return {"success": False, "status_code": 409, "message": "No inference is active"}
+        proc = _inference_proc
+
     try:
         proc.terminate()
         try:
@@ -262,50 +273,55 @@ def handle_stop_inference() -> dict[str, Any]:
             proc.wait()
     except Exception as exc:
         logger.exception("Stop inference: %s", exc)
-    inference_active = False
-    _inference_proc = None
-    _inference_started_at = None
-    _inference_rollout_started_at = None
-    _inference_meta = {}
+
+    with _state_lock:
+        inference_active = False
+        _inference_proc = None
+        _inference_started_at = None
+        _inference_rollout_started_at = None
+        _inference_meta = {}
     return {"success": True, "message": "Inference stopped"}
 
 
 def handle_inference_status() -> dict[str, Any]:
     global inference_active, _inference_proc, _inference_started_at
     global _inference_rollout_started_at, _inference_meta
-    # If the subprocess died on its own, finalize state lazily.
-    if _inference_proc is not None and _inference_proc.poll() is not None:
-        rc = _inference_proc.returncode
-        logger.info("Inference subprocess exited rc=%s", rc)
-        inference_active = False
-        _inference_proc = None
-        finished_meta = _inference_meta
-        finished_started = _inference_started_at
-        finished_rollout_started = _inference_rollout_started_at
-        _inference_started_at = None
-        _inference_rollout_started_at = None
-        _inference_meta = {}
+
+    # Finalise state lazily if the subprocess died on its own.
+    with _state_lock:
+        proc = _inference_proc
+        if proc is not None and proc.poll() is not None:
+            rc = proc.returncode
+            logger.info("Inference subprocess exited rc=%s", rc)
+            finished_meta = _inference_meta
+            finished_started = _inference_started_at
+            finished_rollout_started = _inference_rollout_started_at
+            inference_active = False
+            _inference_proc = None
+            _inference_started_at = None
+            _inference_rollout_started_at = None
+            _inference_meta = {}
+            return {
+                "inference_active": False,
+                "exited": True,
+                "exit_code": rc,
+                "policy_ref": finished_meta.get("policy_ref"),
+                "duration_s": finished_meta.get("duration_s"),
+                "log_path": finished_meta.get("log_path"),
+                "started_at": finished_started,
+                "rollout_started_at": finished_rollout_started,
+                "rollout_elapsed_s": 0,
+                "elapsed_s": 0,
+            }
+        elapsed = (time.time() - _inference_started_at) if _inference_started_at else 0
+        rollout_elapsed = time.time() - _inference_rollout_started_at if _inference_rollout_started_at else 0
         return {
-            "inference_active": False,
-            "exited": True,
-            "exit_code": rc,
-            "policy_ref": finished_meta.get("policy_ref"),
-            "duration_s": finished_meta.get("duration_s"),
-            "log_path": finished_meta.get("log_path"),
-            "started_at": finished_started,
-            "rollout_started_at": finished_rollout_started,
-            "rollout_elapsed_s": 0,
-            "elapsed_s": 0,
+            "inference_active": inference_active,
+            "started_at": _inference_started_at,
+            "rollout_started_at": _inference_rollout_started_at,
+            "elapsed_s": elapsed,
+            "rollout_elapsed_s": rollout_elapsed,
+            "duration_s": _inference_meta.get("duration_s"),
+            "policy_ref": _inference_meta.get("policy_ref"),
+            "log_path": _inference_meta.get("log_path"),
         }
-    elapsed = (time.time() - _inference_started_at) if _inference_started_at else 0
-    rollout_elapsed = time.time() - _inference_rollout_started_at if _inference_rollout_started_at else 0
-    return {
-        "inference_active": inference_active,
-        "started_at": _inference_started_at,
-        "rollout_started_at": _inference_rollout_started_at,
-        "elapsed_s": elapsed,
-        "rollout_elapsed_s": rollout_elapsed,
-        "duration_s": _inference_meta.get("duration_s"),
-        "policy_ref": _inference_meta.get("policy_ref"),
-        "log_path": _inference_meta.get("log_path"),
-    }

@@ -24,7 +24,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -132,13 +132,15 @@ _FLAVOR_CACHE_TTL_SECONDS = 300.0
 
 app = FastAPI()
 
-# Add CORS middleware
+# In dev mode the React app runs on :8080 while the API runs on :8000; in
+# prod they share an origin and CORS is unnecessary. allow_credentials with
+# a wildcard origin is rejected by browsers, so we drop it.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
@@ -154,23 +156,30 @@ class ConnectionManager:
         self.broadcast_queue = queue.Queue()
         self.broadcast_thread = None
         self.is_running = False
+        # Guards `active_connections` since the broadcast worker thread also
+        # mutates it on send failure.
+        self._connections_lock = threading.Lock()
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections.append(websocket)
-        logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
+        with self._connections_lock:
+            self.active_connections.append(websocket)
+            count = len(self.active_connections)
+        logger.info(f"WebSocket connected. Total connections: {count}")
 
-        # Start broadcast thread if not running
         if not self.is_running:
             self.start_broadcast_thread()
 
     def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-            logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
+        with self._connections_lock:
+            if websocket in self.active_connections:
+                self.active_connections.remove(websocket)
+                count = len(self.active_connections)
+                logger.info(f"WebSocket disconnected. Total connections: {count}")
+            else:
+                count = len(self.active_connections)
 
-        # Stop broadcast thread if no connections
-        if not self.active_connections and self.is_running:
+        if count == 0 and self.is_running:
             self.stop_broadcast_thread()
 
     def start_broadcast_thread(self):
@@ -220,18 +229,19 @@ class ConnectionManager:
 
     async def _send_to_all_connections(self, data: dict[str, Any]):
         """Send data to all active WebSocket connections"""
-        if not self.active_connections:
+        with self._connections_lock:
+            connections = list(self.active_connections)
+        if not connections:
             return
 
         disconnected = []
-        for connection in self.active_connections:
+        for connection in connections:
             try:
                 await connection.send_json(data)
             except Exception as e:
                 logger.error(f"Error sending data to WebSocket: {e}")
                 disconnected.append(connection)
 
-        # Remove disconnected connections
         for connection in disconnected:
             self.disconnect(connection)
 
@@ -946,97 +956,75 @@ def get_available_cameras():
         return {"status": "error", "message": str(e), "cameras": []}
 
 
+RobotSideLiteral = Literal["leader", "follower"]
+
+
+class PortDetectionBody(BaseModel):
+    robot_type: RobotSideLiteral = "follower"
+
+
+class PortDisconnectBody(BaseModel):
+    ports_before: list[str]
+
+
+class SaveRobotPortBody(BaseModel):
+    robot_type: RobotSideLiteral
+    port: str
+
+
+class SaveRobotConfigBody(BaseModel):
+    robot_type: RobotSideLiteral
+    config_name: str
+
+
 @app.post("/start-port-detection")
-def start_port_detection(data: dict):
-    """Start port detection process for a robot"""
-    try:
-        robot_type = data.get("robot_type", "robot")
-        result = find_robot_port(robot_type)
-        return {"status": "success", "data": result}
-    except Exception as e:
-        logger.error(f"Error starting port detection: {e}")
-        return {"status": "error", "message": str(e)}
+def start_port_detection(body: PortDetectionBody):
+    """Snapshot available ports so the follow-up /detect-port-after-disconnect
+    call can diff them."""
+    result = find_robot_port(body.robot_type)
+    return {"status": "success", "data": result}
 
 
 @app.post("/detect-port-after-disconnect")
-def detect_port_after_disconnect_endpoint(data: dict):
-    """Detect port after disconnection"""
+def detect_port_after_disconnect_endpoint(body: PortDisconnectBody):
+    """Block up to 15s waiting for one port from `ports_before` to disappear."""
     try:
-        ports_before = data.get("ports_before", [])
-        detected_port = detect_port_after_disconnect(ports_before)
-        return {"status": "success", "port": detected_port}
-    except Exception as e:
-        logger.error(f"Error detecting port: {e}")
-        return {"status": "error", "message": str(e)}
+        detected_port = detect_port_after_disconnect(body.ports_before)
+    except OSError as exc:
+        raise HTTPException(status_code=408, detail=str(exc)) from exc
+    return {"status": "success", "port": detected_port}
 
 
 @app.post("/save-robot-port")
-def save_robot_port_endpoint(data: dict):
+def save_robot_port_endpoint(body: SaveRobotPortBody):
     """Save a robot port for future use"""
-    try:
-        robot_type = data.get("robot_type")
-        port = data.get("port")
-
-        if not robot_type or not port:
-            return {"status": "error", "message": "robot_type and port are required"}
-
-        save_robot_port(robot_type, port)
-        return {"status": "success", "message": f"Port {port} saved for {robot_type}"}
-    except Exception as e:
-        logger.error(f"Error saving robot port: {e}")
-        return {"status": "error", "message": str(e)}
+    save_robot_port(body.robot_type, body.port)
+    return {"status": "success", "message": f"Port {body.port} saved for {body.robot_type}"}
 
 
 @app.get("/robot-port/{robot_type}")
-def get_robot_port(robot_type: str):
+def get_robot_port(robot_type: RobotSideLiteral):
     """Get the saved port for a robot type"""
-    try:
-        saved_port = get_saved_robot_port(robot_type)
-        default_port = get_default_robot_port(robot_type)
-        return {"status": "success", "saved_port": saved_port, "default_port": default_port}
-    except Exception as e:
-        logger.error(f"Error getting robot port: {e}")
-        return {"status": "error", "message": str(e)}
+    saved_port = get_saved_robot_port(robot_type)
+    default_port = get_default_robot_port(robot_type)
+    return {"status": "success", "saved_port": saved_port, "default_port": default_port}
 
 
 @app.post("/save-robot-config")
-def save_robot_config_endpoint(data: dict):
+def save_robot_config_endpoint(body: SaveRobotConfigBody):
     """Save a robot configuration for future use"""
-    try:
-        robot_type = data.get("robot_type")
-        config_name = data.get("config_name")
-
-        if not robot_type or not config_name:
-            return {"status": "error", "message": "Missing robot_type or config_name"}
-
-        success = config.save_robot_config(robot_type, config_name)
-
-        if success:
-            return {"status": "success", "message": f"Configuration saved for {robot_type}"}
-        else:
-            return {"status": "error", "message": "Failed to save configuration"}
-
-    except Exception as e:
-        logger.error(f"Error saving robot configuration: {e}")
-        return {"status": "error", "message": str(e)}
+    if not config.save_robot_config(body.robot_type, body.config_name):
+        raise HTTPException(status_code=500, detail="Failed to save configuration")
+    return {"status": "success", "message": f"Configuration saved for {body.robot_type}"}
 
 
 @app.get("/robot-config/{robot_type}")
-def get_robot_config(robot_type: str, available_configs: str = ""):
+def get_robot_config(robot_type: RobotSideLiteral, available_configs: str = ""):
     """Get the saved configuration for a robot type"""
-    try:
-        # Parse available configs from query parameter
-        available_configs_list = []
-        if available_configs:
-            available_configs_list = [cfg.strip() for cfg in available_configs.split(",") if cfg.strip()]
-
-        saved_config = config.get_saved_robot_config(robot_type)
-        default_config = config.get_default_robot_config(robot_type, available_configs_list)
-
-        return {"status": "success", "saved_config": saved_config, "default_config": default_config}
-    except Exception as e:
-        logger.error(f"Error getting robot configuration: {e}")
-        return {"status": "error", "message": str(e)}
+    available_configs_list = [c.strip() for c in available_configs.split(",") if c.strip()]
+    saved_config = config.get_saved_robot_config(robot_type)
+    default_config = config.get_default_robot_config(robot_type, available_configs_list)
+    return {"status": "success", "saved_config": saved_config, "default_config": default_config}
 
 
 # ============================================================================

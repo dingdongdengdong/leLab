@@ -24,7 +24,7 @@ import threading
 import time
 import traceback
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from lerobot.motors import MotorCalibration
 from lerobot.motors.feetech import OperatingMode
@@ -70,7 +70,7 @@ class CalibrationStatus:
 class CalibrationRequest:
     """Request parameters for starting calibration"""
 
-    device_type: str  # "robot" or "teleop"
+    device_type: Literal["robot", "teleop"]
     port: str
     config_file: str
     robot_name: str | None = None  # When set, write port + config back into the robot record on success
@@ -505,19 +505,16 @@ class CalibrationManager:
         # update the robot's port + config field for the side that was just calibrated.
         request = self._current_request
         if request is not None and request.robot_name:
-            from .config import save_robot_record
+            from .utils.config import save_robot_record
 
             if request.device_type == "teleop":
                 patch = {"leader_port": request.port, "leader_config": f"{request.config_file}.json"}
-            elif request.device_type == "robot":
-                patch = {"follower_port": request.port, "follower_config": f"{request.config_file}.json"}
             else:
-                patch = None
-            if patch is not None:
-                try:
-                    save_robot_record(request.robot_name, patch, allow_create=False)
-                except Exception as e:
-                    logger.warning(f"Robot-record write-back failed for {request.robot_name}: {e}")
+                patch = {"follower_port": request.port, "follower_config": f"{request.config_file}.json"}
+            try:
+                save_robot_record(request.robot_name, patch, allow_create=False)
+            except Exception as e:
+                logger.warning(f"Robot-record write-back failed for {request.robot_name}: {e}")
 
     def _cleanup_and_finish(self, message: str, status: str = "completed"):
         """Clean up and finish calibration"""

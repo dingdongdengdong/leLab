@@ -13,8 +13,11 @@
 # limitations under the License.
 
 import logging
+import re
 import shutil
-from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -33,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Global variables for recording state
 recording_active = False
-recording_thread = None
+recording_thread: threading.Thread | None = None
 recording_events = None  # Events dict for controlling recording session
 recording_config = None  # Store recording configuration
 recording_start_time = None  # Track when recording started
@@ -45,6 +48,9 @@ phase_start_time = None  # Track when current phase started
 last_recording_info: dict[str, Any] | None = (
     None  # Snapshot of the most recently completed dataset (for /dataset-info)
 )
+# Guards the start path so two concurrent POST /start-recording calls cannot
+# both pass the active-flag check.
+_state_lock = threading.Lock()
 
 
 class RecordingRequest(BaseModel):
@@ -60,6 +66,8 @@ class RecordingRequest(BaseModel):
     fps: int = 30
     video: bool = True
     push_to_hub: bool = False
+    tags: list[str] = []
+    private: bool = False
     resume: bool = False
     streaming_encoding: bool = True
     cameras: dict = {}
@@ -142,6 +150,10 @@ def create_record_config(request: RecordingRequest) -> RecordConfig:
         fps=request.fps,
         video=request.video,
         push_to_hub=request.push_to_hub,
+        # Upstream typing: tags is `list[str] | None`. None when push is off
+        # keeps the lerobot default.
+        tags=request.tags if request.push_to_hub else None,
+        private=request.private,
         streaming_encoding=request.streaming_encoding,
     )
 
@@ -170,38 +182,33 @@ def handle_start_recording(request: RecordingRequest) -> dict[str, Any]:
         current_episode, \
         saved_episodes, \
         current_phase, \
-        phase_start_time
+        phase_start_time, \
+        last_recording_info
 
-    if recording_active:
-        return {"success": False, "message": "Recording is already active"}
-    from .rollout import inference_active
-    from .teleoperate import teleoperation_active
+    from . import rollout as _rollout, teleoperate as _teleoperate
 
-    if teleoperation_active:
-        return {"success": False, "message": "Teleoperation is currently active. Stop it first."}
-    if inference_active:
-        return {"success": False, "message": "Inference is currently active. Stop it first."}
-
-    # 🧹 CLEANUP: Reset all global state from previous sessions
-    logger.info("🧹 CLEANUP: Resetting all recording state variables")
-    global last_recording_info
-    recording_active = False
-    recording_thread = None
-    recording_events = None
-    recording_config = None
-    recording_start_time = None
-    session_end_elapsed_seconds = None
-    current_episode = 1
-    saved_episodes = 0
-    current_phase = "preparing"
-    phase_start_time = None
-    last_recording_info = None
+    # Claim the active flag under the lock so two concurrent starts can't both
+    # pass the precondition check.
+    with _state_lock:
+        if recording_active:
+            return {"success": False, "message": "Recording is already active"}
+        if _teleoperate.teleoperation_active:
+            return {"success": False, "message": "Teleoperation is currently active. Stop it first."}
+        if _rollout.inference_active:
+            return {"success": False, "message": "Inference is currently active. Stop it first."}
+        recording_active = True
+        recording_thread = None
+        recording_events = None
+        recording_config = None
+        recording_start_time = None
+        session_end_elapsed_seconds = None
+        current_episode = 1
+        saved_episodes = 0
+        current_phase = "preparing"
+        phase_start_time = None
+        last_recording_info = None
 
     try:
-        import re
-        import time
-        from datetime import datetime
-
         # Sanitize the dataset name so push_to_hub never rejects a finished
         # recording over an invalid character. HF repo names allow only
         # [A-Za-z0-9._-]; everything else becomes "_".
@@ -221,24 +228,15 @@ def handle_start_recording(request: RecordingRequest) -> dict[str, Any]:
         logger.info(f"Starting recording for dataset: {request.dataset_repo_id}")
         logger.info(f"Task: {request.single_task}")
 
-        # Store recording configuration and reset episode counter
         recording_config = request
-        recording_start_time = None  # Will be set when recording actually starts
-        current_episode = 1
-        current_phase = "preparing"
-        phase_start_time = None
-
-        # Initialize recording events for web control (replaces keyboard controls)
         recording_events = {
             "exit_early": False,  # Right arrow key -> "Skip to next episode" button
             "stop_recording": False,  # ESC key -> "Stop recording" button
             "rerecord_episode": False,  # Left arrow key -> "Re-record episode" button
         }
 
-        # Create the record configuration
         record_config = create_record_config(request)
 
-        # Start recording in a separate thread
         def recording_worker():
             global \
                 recording_active, \
@@ -249,37 +247,29 @@ def handle_start_recording(request: RecordingRequest) -> dict[str, Any]:
                 current_episode, \
                 saved_episodes, \
                 last_recording_info
-            recording_active = True
-            recording_start_time = time.time()  # Set start time when recording actually begins
-
-            # Initialize episode counters
+            recording_start_time = time.time()
             current_episode = 1
             saved_episodes = 0
 
             try:
-                logger.info(f"Starting recording worker with events: {recording_events}")
-                print(f"🚀 STATUS CHANGE: Recording session started for dataset '{request.dataset_repo_id}'")
-                print(
-                    f"📋 STATUS CHANGE: Task: '{request.single_task}' - {request.num_episodes} episodes planned"
+                logger.info(
+                    "Recording session started: dataset=%s task=%r episodes=%d",
+                    request.dataset_repo_id,
+                    request.single_task,
+                    request.num_episodes,
                 )
 
-                # 🔓 CRITICAL: Wait for camera streams to be fully released by frontend
+                # Give the frontend's camera streams time to release the
+                # underlying devices before lerobot tries to open them.
                 if request.cameras:
                     logger.info(
-                        f"🔓 BACKEND: Waiting for camera resources to be released (cameras configured: {list(request.cameras.keys())})"
+                        "Waiting for camera resources to be released (cameras: %s)",
+                        list(request.cameras.keys()),
                     )
-                    print("🔓 STATUS CHANGE: Waiting for camera resources to be released...")
-                    time.sleep(2.0)  # Give cameras more time to be fully released
-                    logger.info(
-                        "✅ BACKEND: Camera wait period complete, proceeding with robot initialization"
-                    )
+                    time.sleep(2.0)
 
-                # Use the original record() function but with web-controlled events
                 dataset = record_with_web_events(record_config, recording_events)
                 logger.info(f"Recording completed successfully. Dataset has {dataset.num_episodes} episodes")
-                print(
-                    f"🎉 STATUS CHANGE: Recording session completed successfully with {dataset.num_episodes} episodes"
-                )
                 last_recording_info = {
                     "success": True,
                     "dataset_repo_id": request.dataset_repo_id,
@@ -290,41 +280,26 @@ def handle_start_recording(request: RecordingRequest) -> dict[str, Any]:
                     "total_frames": dataset.num_frames,
                     "robot_type": getattr(dataset.meta, "robot_type", "Unknown robot"),
                 }
-                return {"success": True, "episodes": dataset.num_episodes}
             except Exception as e:
-                logger.error(f"❌ CRITICAL ERROR during recording: {e}")
-                print(f"❌ STATUS CHANGE: Recording session failed with error: {str(e)}")
-                import traceback
-
-                logger.error(f"Full traceback: {traceback.format_exc()}")
-
-                # 🚨 CRITICAL: Set phase to "error" instead of "completed" to distinguish failures
+                logger.exception("Recording session failed")
+                current_phase = "error"
                 if recording_start_time:
                     session_end_elapsed_seconds = int(time.time() - recording_start_time)
-                current_phase = "error"
-                recording_active = False
-                recording_start_time = None
-                phase_start_time = None
-
-                return {"success": False, "error": str(e)}
+                last_recording_info = {"success": False, "error": str(e)}
             finally:
-                # Only set to completed if no error occurred
                 if current_phase != "error":
                     current_phase = "completed"
-
                 if recording_start_time:
                     session_end_elapsed_seconds = int(time.time() - recording_start_time)
-
                 recording_active = False
                 recording_start_time = None
                 phase_start_time = None
-                current_episode = 1  # Reset for next session
-                saved_episodes = 0  # Reset for next session
-                logger.info("🔚 RECORDING SESSION: Setting state to completed - frontend should stop polling")
-                print("🔚 STATUS CHANGE: Recording session ended")
+                current_episode = 1
+                saved_episodes = 0
+                logger.info("Recording session ended")
 
-        recording_thread = ThreadPoolExecutor(max_workers=1)
-        recording_thread.submit(recording_worker)
+        recording_thread = threading.Thread(target=recording_worker, name="recording-worker", daemon=True)
+        recording_thread.start()
 
         return {
             "success": True,
@@ -341,108 +316,57 @@ def handle_start_recording(request: RecordingRequest) -> dict[str, Any]:
 
 def handle_stop_recording() -> dict[str, Any]:
     """Handle stop recording request - replaces ESC key"""
-    global recording_active, recording_thread, recording_events, current_phase, phase_start_time
+    global current_phase, phase_start_time
 
     if not recording_active or recording_events is None:
         return {"success": False, "message": "No recording session is active"}
 
-    try:
-        # Trigger the stop recording event (replaces ESC key)
-        recording_events["stop_recording"] = True
-        recording_events["exit_early"] = True
-
-        # Update phase to indicate stopping
-        current_phase = "stopping"
-        phase_start_time = None
-
-        logger.info("Stop recording triggered from web interface")
-        print("🛑 STATUS CHANGE: Stop recording requested - session will end soon")
-
-        return {
-            "success": True,
-            "message": "Recording stop requested successfully",
-            "session_ending": True,  # Signal that session is ending
-        }
-
-    except Exception as e:
-        logger.error(f"Error stopping recording: {e}")
-        return {"success": False, "message": f"Failed to stop recording: {str(e)}"}
+    recording_events["stop_recording"] = True
+    recording_events["exit_early"] = True
+    current_phase = "stopping"
+    phase_start_time = None
+    logger.info("Stop recording triggered from web interface")
+    return {
+        "success": True,
+        "message": "Recording stop requested successfully",
+        "session_ending": True,
+    }
 
 
 def handle_exit_early() -> dict[str, Any]:
     """Handle exit early request - replaces right arrow key"""
-    global recording_events, current_phase
-
     if not recording_active or recording_events is None:
         return {"success": False, "message": "No recording session is active"}
-
-    try:
-        # Log the current state before setting the flag
-        logger.info(f"Exit early requested - Current phase: {current_phase}")
-        logger.info(f"Events before setting exit_early: {recording_events}")
-
-        # Trigger the exit early event (replaces right arrow key)
-        recording_events["exit_early"] = True
-        # Also set our tracking flag that won't be reset by record_loop
-        recording_events["_exit_early_triggered"] = True
-
-        # Log the state after setting the flag
-        logger.info(f"Exit early flag set - Events after: {recording_events}")
-        logger.info(f"Exit early triggered from web interface (current phase: {current_phase})")
-
-        phase_name = "recording phase" if current_phase == "recording" else "reset phase"
-        return {
-            "success": True,
-            "message": f"Exit early triggered successfully for {phase_name}",
-            "current_phase": current_phase,
-            "events_state": dict(recording_events),  # Include events state in response
-        }
-
-    except Exception as e:
-        logger.error(f"Error triggering exit early: {e}")
-        import traceback
-
-        logger.error(f"Full traceback: {traceback.format_exc()}")
-        return {"success": False, "message": f"Failed to trigger exit early: {str(e)}"}
+    recording_events["exit_early"] = True
+    # Tracking flag that record_loop won't reset, so the worker can tell
+    # "user pressed skip" from "control_time_s elapsed naturally".
+    recording_events["_exit_early_triggered"] = True
+    logger.info("Exit early triggered (current phase: %s)", current_phase)
+    phase_name = "recording phase" if current_phase == "recording" else "reset phase"
+    return {
+        "success": True,
+        "message": f"Exit early triggered successfully for {phase_name}",
+        "current_phase": current_phase,
+        "events_state": dict(recording_events),
+    }
 
 
 def handle_rerecord_episode() -> dict[str, Any]:
     """Handle rerecord episode request - replaces left arrow key"""
-    global recording_events
-
     if not recording_active or recording_events is None:
         return {"success": False, "message": "No recording session is active"}
-
-    try:
-        # Log the current state before setting the flags
-        logger.info(f"Re-record episode requested - Events before: {recording_events}")
-
-        # Trigger the rerecord episode event (replaces left arrow key)
-        recording_events["rerecord_episode"] = True
-        recording_events["exit_early"] = True  # Also need to exit current loop
-
-        # Log the state after setting the flags
-        logger.info(f"Re-record flags set - Events after: {recording_events}")
-        logger.info("Re-record episode triggered from web interface")
-
-        return {
-            "success": True,
-            "message": "Re-record episode requested successfully",
-            "events_state": dict(recording_events),  # Include events state in response
-        }
-
-    except Exception as e:
-        logger.error(f"Error triggering rerecord episode: {e}")
-        import traceback
-
-        logger.error(f"Full traceback: {traceback.format_exc()}")
-        return {"success": False, "message": f"Failed to trigger rerecord episode: {str(e)}"}
+    recording_events["rerecord_episode"] = True
+    recording_events["exit_early"] = True
+    logger.info("Re-record episode triggered")
+    return {
+        "success": True,
+        "message": "Re-record episode requested successfully",
+        "events_state": dict(recording_events),
+    }
 
 
 def handle_recording_status() -> dict[str, Any]:
     """Handle recording status request"""
-    import time
-
     # If recording is not active and phase is completed or error, indicate session has ended
     session_ended = not recording_active and current_phase in ["completed", "error"]
 

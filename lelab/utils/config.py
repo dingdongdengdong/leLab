@@ -19,8 +19,11 @@ import platform
 import shutil
 import time
 from pathlib import Path
+from typing import Literal
 
 logger = logging.getLogger(__name__)
+
+RobotSide = Literal["leader", "follower"]
 
 # Define the calibration config paths (shared between features)
 CALIBRATION_BASE_PATH_TELEOP = os.path.expanduser("~/.cache/huggingface/lerobot/calibration/teleoperators")
@@ -40,6 +43,34 @@ FOLLOWER_CONFIG_FILE = os.path.join(CONFIG_STORAGE_PATH, "follower_config.txt")
 
 # Robot config records (per-robot JSON metadata)
 ROBOTS_PATH = os.path.expanduser("~/.cache/huggingface/lerobot/robots")
+
+
+def _atomic_write_text(path: str, content: str) -> None:
+    """Write to <path>.tmp then os.replace, so a crash mid-write never leaves
+    a half-written file on disk."""
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    tmp = f"{path}.tmp"
+    with open(tmp, "w") as f:
+        f.write(content)
+    os.replace(tmp, path)
+
+
+def _port_file_for(robot_type: RobotSide) -> str:
+    if robot_type == "leader":
+        return LEADER_PORT_FILE
+    if robot_type == "follower":
+        return FOLLOWER_PORT_FILE
+    raise ValueError(f"robot_type must be 'leader' or 'follower', got {robot_type!r}")
+
+
+def _config_file_for(robot_type: RobotSide) -> str:
+    rt = robot_type.lower() if isinstance(robot_type, str) else robot_type
+    if rt == "leader":
+        return LEADER_CONFIG_FILE
+    if rt == "follower":
+        return FOLLOWER_CONFIG_FILE
+    raise ValueError(f"robot_type must be 'leader' or 'follower', got {robot_type!r}")
 
 
 def setup_calibration_files(leader_config: str, follower_config: str):
@@ -200,121 +231,69 @@ def detect_port_after_disconnect(ports_before, timeout_s: float = 15.0, poll_int
     )
 
 
-def save_robot_port(robot_type, port):
-    """
-    Save the robot port to a file for future use
-
-    Args:
-        robot_type (str): "leader" or "follower"
-        port (str): The port to save
-    """
-    # Create port config directory if it doesn't exist
-    os.makedirs(PORT_CONFIG_PATH, exist_ok=True)
-
-    port_file = LEADER_PORT_FILE if robot_type == "leader" else FOLLOWER_PORT_FILE
-
-    with open(port_file, "w") as f:
-        f.write(port)
-
+def save_robot_port(robot_type: RobotSide, port: str) -> None:
+    """Persist the robot port for `robot_type` ('leader' or 'follower')."""
+    port_file = _port_file_for(robot_type)
+    _atomic_write_text(port_file, port)
     logger.info(f"Saved {robot_type} port: {port}")
 
 
-def get_saved_robot_port(robot_type):
-    """
-    Get the saved robot port from file
-
-    Args:
-        robot_type (str): "leader" or "follower"
-
-    Returns:
-        str or None: The saved port, or None if not found
-    """
-    port_file = LEADER_PORT_FILE if robot_type == "leader" else FOLLOWER_PORT_FILE
-
-    if os.path.exists(port_file):
-        with open(port_file) as f:
-            port = f.read().strip()
-            logger.info(f"Retrieved saved {robot_type} port: {port}")
-            return port
-
-    logger.info(f"No saved port found for {robot_type}")
-    return None
+def get_saved_robot_port(robot_type: RobotSide) -> str | None:
+    """Return the saved port for `robot_type`, or None if no file exists."""
+    port_file = _port_file_for(robot_type)
+    if not os.path.exists(port_file):
+        logger.info(f"No saved port found for {robot_type}")
+        return None
+    with open(port_file) as f:
+        port = f.read().strip()
+    logger.info(f"Retrieved saved {robot_type} port: {port}")
+    return port
 
 
-def get_default_robot_port(robot_type):
-    """
-    Get the default port for a robot, checking saved ports first
-
-    Args:
-        robot_type (str): "leader" or "follower"
-
-    Returns:
-        str: The default port to use
-    """
+def get_default_robot_port(robot_type: RobotSide) -> str:
+    """Saved port if present, else a platform-typical default."""
     saved_port = get_saved_robot_port(robot_type)
     if saved_port:
         return saved_port
-
-    # Fallback to common default ports
     if platform.system() == "Windows":
-        return "COM3"  # Common Windows default
-    else:
-        return "/dev/ttyUSB0"  # Common Linux/macOS default
+        return "COM3"
+    return "/dev/ttyUSB0"
 
 
-def save_robot_config(robot_type: str, config_name: str):
-    """Save the robot configuration to a file for future use"""
+def save_robot_config(robot_type: RobotSide, config_name: str) -> bool:
     try:
-        # Create the config storage directory if it doesn't exist
-        os.makedirs(CONFIG_STORAGE_PATH, exist_ok=True)
-
-        # Determine the config file path
-        if robot_type.lower() == "leader":
-            config_file_path = LEADER_CONFIG_FILE
-        elif robot_type.lower() == "follower":
-            config_file_path = FOLLOWER_CONFIG_FILE
-        else:
-            logger.error(f"Unknown robot type: {robot_type}")
-            return False
-
-        # Write the config name to file
-        with open(config_file_path, "w") as f:
-            f.write(config_name.strip())
-
-        logger.info(f"Saved {robot_type} configuration: {config_name}")
-        return True
-
+        config_file_path = _config_file_for(robot_type)
+    except ValueError as e:
+        logger.error(str(e))
+        return False
+    try:
+        _atomic_write_text(config_file_path, config_name.strip())
     except Exception as e:
         logger.error(f"Error saving {robot_type} configuration: {e}")
         return False
+    logger.info(f"Saved {robot_type} configuration: {config_name}")
+    return True
 
 
-def get_saved_robot_config(robot_type: str):
-    """Get the saved robot configuration from file"""
+def get_saved_robot_config(robot_type: RobotSide) -> str | None:
     try:
-        # Determine the config file path
-        if robot_type.lower() == "leader":
-            config_file_path = LEADER_CONFIG_FILE
-        elif robot_type.lower() == "follower":
-            config_file_path = FOLLOWER_CONFIG_FILE
-        else:
-            logger.error(f"Unknown robot type: {robot_type}")
-            return None
-
-        # Read the config name from file
-        if os.path.exists(config_file_path):
-            with open(config_file_path) as f:
-                config_name = f.read().strip()
-                if config_name:
-                    logger.info(f"Found saved {robot_type} configuration: {config_name}")
-                    return config_name
-
+        config_file_path = _config_file_for(robot_type)
+    except ValueError as e:
+        logger.error(str(e))
+        return None
+    if not os.path.exists(config_file_path):
         logger.info(f"No saved {robot_type} configuration found")
         return None
-
-    except Exception as e:
+    try:
+        with open(config_file_path) as f:
+            config_name = f.read().strip()
+    except OSError as e:
         logger.error(f"Error reading saved {robot_type} configuration: {e}")
         return None
+    if not config_name:
+        return None
+    logger.info(f"Found saved {robot_type} configuration: {config_name}")
+    return config_name
 
 
 def get_default_robot_config(robot_type: str, available_configs: list):
@@ -425,8 +404,7 @@ def save_robot_record(name: str, data: dict, allow_create: bool = True) -> bool:
     record["name"] = name
 
     path = _robot_record_path(name)
-    with open(path, "w") as f:
-        json.dump(record, f, indent=2)
+    _atomic_write_text(path, json.dumps(record, indent=2))
     logger.info(f"Saved robot record {name}: {record}")
     return True
 

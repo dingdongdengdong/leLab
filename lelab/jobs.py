@@ -604,7 +604,7 @@ class JobRegistry:
     """
 
     def __init__(self, output_root: Path) -> None:
-        self._output_root = output_root
+        self._output_root = output_root.resolve()
         self._output_root.mkdir(parents=True, exist_ok=True)
 
         self._lock = threading.Lock()
@@ -628,8 +628,71 @@ class JobRegistry:
         # the dashboard keeps the progress bar live without refetching /jobs.
         self._on_progress: Callable[[builtins.list[dict]], None] | None = None
 
+        self._migrate_legacy_cwd_jobs()
         self._load_from_disk()
         self._start_watchdog()
+
+    def _migrate_legacy_cwd_jobs(self) -> None:
+        """One-shot migration from cwd-relative `outputs/train/` to the new
+        absolute root.
+
+        Older lelab versions wrote job dirs to `<cwd>/outputs/train/`, which
+        meant history disappeared when you launched from a different cwd. We
+        now anchor to ~/.cache/.../outputs/train. On first boot under the new
+        layout, move any pre-existing cwd-relative job dirs over and rewrite
+        each job.json's `output_dir` field to the new absolute path.
+
+        Idempotent: skipped if (a) the new root is the legacy one itself
+        (LELAB_OUTPUT_ROOT=outputs/train still wins for tests), or (b) the
+        legacy dir is absent / already empty.
+        """
+        legacy_root = (Path.cwd() / "outputs" / "train").resolve()
+        if legacy_root == self._output_root or not legacy_root.is_dir():
+            return
+
+        legacy_dirs = [p for p in legacy_root.iterdir() if p.is_dir()]
+        if not legacy_dirs:
+            return
+
+        logger.info(
+            "Migrating %d legacy job dirs from %s to %s",
+            len(legacy_dirs),
+            legacy_root,
+            self._output_root,
+        )
+        for src in legacy_dirs:
+            dst = self._output_root / src.name
+            if dst.exists():
+                logger.warning("Migration: %s already exists at destination; skipping", src.name)
+                continue
+            try:
+                shutil.move(str(src), str(dst))
+            except Exception as exc:
+                logger.warning("Migration: failed to move %s: %s", src.name, exc)
+                continue
+            self._rewrite_output_dir_in_meta(dst)
+
+        # If the legacy dir is now empty, remove it so subsequent boots skip
+        # the scan. A leftover non-dir file keeps it around — that's fine.
+        with contextlib.suppress(OSError):
+            legacy_root.rmdir()
+
+    def _rewrite_output_dir_in_meta(self, job_dir: Path) -> None:
+        """Repoint `output_dir` in a migrated job.json to its new absolute
+        path. Pre-migration records stored `outputs/train/<id>/run` which
+        no longer resolves once cwd has moved."""
+        meta = job_dir / "job.json"
+        if not meta.is_file():
+            return
+        try:
+            data = json.loads(meta.read_text())
+        except Exception as exc:
+            logger.warning("Migration: could not parse %s: %s", meta, exc)
+            return
+        data["output_dir"] = str(job_dir / "run")
+        tmp = meta.with_suffix(meta.suffix + ".tmp")
+        tmp.write_text(json.dumps(data, indent=2))
+        os.replace(tmp, meta)
 
     def set_on_change(self, callback: Callable[[], None] | None) -> None:
         """Register a single observer fired when registry state changes."""
@@ -1072,11 +1135,20 @@ class JobRegistry:
     def _write_meta(self, record: JobRecord) -> None:
         path = _job_meta_path(self._output_root, record.id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(record.model_dump_json(indent=2))
+        # Atomic write so a crash mid-write never strands a half-written file
+        # that would skip the job on next _load_from_disk.
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(record.model_dump_json(indent=2))
+        os.replace(tmp, path)
 
 
-# Module-level singleton. The output root is the project's outputs/train/.
-_DEFAULT_OUTPUT_ROOT = Path("outputs/train")
+# Module-level singleton. Anchored to ~/.cache so history survives launches
+# from different cwds. JobRegistry.__init__ migrates legacy `<cwd>/outputs/train/`
+# job dirs into this root on first boot. LELAB_OUTPUT_ROOT overrides for tests.
+_DEFAULT_OUTPUT_ROOT = Path(
+    os.environ.get("LELAB_OUTPUT_ROOT")
+    or (Path.home() / ".cache" / "huggingface" / "lerobot" / "outputs" / "train")
+).expanduser()
 job_registry = JobRegistry(_DEFAULT_OUTPUT_ROOT)
 
 __all__ = [

@@ -14,8 +14,8 @@
 
 import logging
 import math
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from pydantic import BaseModel
@@ -48,9 +48,11 @@ _SO101_URDF_CORRECTIONS = {
 
 # Global variables for teleoperation state
 teleoperation_active = False
-teleoperation_thread = None
+teleoperation_thread: threading.Thread | None = None
 current_robot = None
 current_teleop = None
+# Guards the start path; the worker owns disconnect so stop() does not race.
+_state_lock = threading.Lock()
 
 
 class TeleoperateRequest(BaseModel):
@@ -124,15 +126,16 @@ def handle_start_teleoperation(request: TeleoperateRequest, websocket_manager=No
     """Handle start teleoperation request"""
     global teleoperation_active, teleoperation_thread, current_robot, current_teleop
 
-    if teleoperation_active:
-        return {"success": False, "message": "Teleoperation is already active"}
-    from .record import recording_active
-    from .rollout import inference_active
+    from . import record as _record, rollout as _rollout
 
-    if recording_active:
-        return {"success": False, "message": "Recording is currently active. Stop it first."}
-    if inference_active:
-        return {"success": False, "message": "Inference is currently active. Stop it first."}
+    with _state_lock:
+        if teleoperation_active:
+            return {"success": False, "message": "Teleoperation is already active"}
+        if _record.recording_active:
+            return {"success": False, "message": "Recording is currently active. Stop it first."}
+        if _rollout.inference_active:
+            return {"success": False, "message": "Inference is currently active. Stop it first."}
+        teleoperation_active = True
 
     try:
         logger.info(
@@ -158,7 +161,6 @@ def handle_start_teleoperation(request: TeleoperateRequest, websocket_manager=No
         # Start teleoperation in a separate thread
         def teleoperation_worker():
             global teleoperation_active, current_robot, current_teleop
-            teleoperation_active = True
 
             try:
                 logger.info("Initializing robot and teleop device...")
@@ -226,8 +228,10 @@ def handle_start_teleoperation(request: TeleoperateRequest, websocket_manager=No
                 current_robot = None
                 current_teleop = None
 
-        teleoperation_thread = ThreadPoolExecutor(max_workers=1)
-        teleoperation_thread.submit(teleoperation_worker)
+        teleoperation_thread = threading.Thread(
+            target=teleoperation_worker, name="teleoperation-worker", daemon=True
+        )
+        teleoperation_thread.start()
 
         return {
             "success": True,
@@ -243,60 +247,28 @@ def handle_start_teleoperation(request: TeleoperateRequest, websocket_manager=No
 
 
 def handle_stop_teleoperation() -> dict[str, Any]:
-    """Handle stop teleoperation request"""
-    global teleoperation_active, teleoperation_thread, current_robot, current_teleop
+    """Handle stop teleoperation request.
+
+    Signals the worker via `teleoperation_active = False` and waits for it to
+    exit. The worker owns the disconnect call, so this avoids racing the
+    serial bus from the request thread.
+    """
+    global teleoperation_active, teleoperation_thread
 
     if not teleoperation_active:
         return {"success": False, "message": "No teleoperation session is active"}
 
-    try:
-        logger.info("Stop teleoperation triggered from web interface")
+    logger.info("Stop teleoperation triggered from web interface")
+    teleoperation_active = False
 
-        # Stop the teleoperation flag
-        teleoperation_active = False
+    worker = teleoperation_thread
+    if worker is not None and worker.is_alive():
+        worker.join(timeout=5.0)
+        if worker.is_alive():
+            logger.warning("Teleoperation worker did not exit within 5s")
+    teleoperation_thread = None
 
-        # Force cleanup of robot connections if they exist
-        try:
-            if current_robot:
-                logger.info("Disconnecting robot...")
-                current_robot.disconnect()
-
-            if current_teleop:
-                logger.info("Disconnecting teleop device...")
-                current_teleop.disconnect()
-        except Exception as cleanup_error:
-            logger.warning(f"Error during device cleanup: {cleanup_error}")
-
-        # Wait for the thread to finish (with timeout)
-        if teleoperation_thread:
-            try:
-                logger.info("Waiting for teleoperation thread to finish...")
-                # Give the thread a moment to finish gracefully
-                import time
-
-                time.sleep(0.5)
-
-                # Shutdown the thread pool
-                teleoperation_thread.shutdown(wait=True, timeout=5.0)
-                logger.info("Teleoperation thread stopped")
-            except Exception as thread_error:
-                logger.warning(f"Error stopping teleoperation thread: {thread_error}")
-
-        # Clean up global variables
-        current_robot = None
-        current_teleop = None
-        teleoperation_thread = None
-
-        logger.info("Teleoperation stopped successfully")
-
-        return {
-            "success": True,
-            "message": "Teleoperation stopped successfully",
-        }
-
-    except Exception as e:
-        logger.error(f"Error stopping teleoperation: {e}")
-        return {"success": False, "message": f"Failed to stop teleoperation: {str(e)}"}
+    return {"success": True, "message": "Teleoperation stopped successfully"}
 
 
 def handle_teleoperation_status() -> dict[str, Any]:
