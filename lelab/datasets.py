@@ -14,7 +14,12 @@
 
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+try:
+    from datetime import UTC
+except ImportError:  # Python < 3.11 compatibility for ROS2 Humble Python 3.10.
+    UTC = timezone.utc
 from pathlib import Path
 from typing import Any
 

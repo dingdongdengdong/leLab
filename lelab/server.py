@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 from typing import Any, Literal
 
+import yaml
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -47,6 +48,7 @@ from .jobs import (
     JobTarget,
     job_registry,
 )
+from .manual_leader import build_manual_leader_config
 
 # Import our custom recording functionality
 from .record import (
@@ -71,8 +73,10 @@ from .rollout import (
 
 # Import our custom teleoperation functionality
 from .teleoperate import (
+    JointActionRequest,
     TeleoperateRequest,
     handle_get_joint_positions,
+    handle_send_joint_action,
     handle_start_teleoperation,
     handle_stop_teleoperation,
     handle_teleoperation_status,
@@ -324,6 +328,12 @@ def teleoperation_status():
 def get_joint_positions():
     """Get current robot joint positions"""
     return handle_get_joint_positions()
+
+
+@app.post("/send-joint-action")
+def send_joint_action(request: JointActionRequest):
+    """Send one joint action to the active robot backend."""
+    return handle_send_joint_action(request)
 
 
 @app.post("/start-inference")
@@ -1153,6 +1163,45 @@ def _record_with_clean(record: dict) -> dict:
     return {**record, "is_clean": is_robot_record_clean(record)}
 
 
+def _resolve_robot_config_path(record: dict) -> Path | None:
+    config_path = record.get("isaacsim_config") or record.get("follower_config")
+    if not isinstance(config_path, str) or not config_path.strip():
+        return None
+    path = Path(config_path)
+    if not path.is_absolute():
+        workspace = record.get("superarm_ws_path") or os.environ.get("SUPERARM_WS_PATH") or "/workspaces/superarm_ws"
+        path = Path(workspace) / path
+    return path
+
+
+def _default_manual_leader_presets(joint_count: int) -> list[dict[str, Any]]:
+    def pad(values: list[float]) -> list[float]:
+        padded = values[:joint_count]
+        padded.extend([0.0] * max(0, joint_count - len(padded)))
+        return padded
+
+    return [
+        {"name": "Home zero", "action": pad([0.0, 0.0, 0.0, 0.0, 0.0])},
+        {"name": "Positive reach", "action": pad([0.25, -0.20, 0.30, -0.35, 0.20])},
+        {"name": "Negative reach", "action": pad([-0.25, 0.20, -0.30, 0.35, -0.20])},
+        {"name": "Mixed elbow", "action": pad([0.40, 0.10, 0.15, -0.45, 0.30])},
+    ]
+
+
+def _manual_leader_config_for_record(record: dict) -> tuple[int, dict[str, Any]]:
+    if (record.get("robot_backend") or "so101") != "isaacsim_rpo_arm":
+        return 400, {
+            "status": "error",
+            "message": "Manual web leader is only available for Isaac Sim custom follower robots.",
+        }
+    try:
+        return 200, build_manual_leader_config(record)
+    except FileNotFoundError:
+        return 400, {"status": "error", "message": "Isaac Sim config file is missing."}
+    except ValueError:
+        return 400, {"status": "error", "message": "Isaac Sim config does not define joint_names."}
+
+
 @app.get("/robots")
 def get_robots():
     """List all saved robot records."""
@@ -1173,6 +1222,20 @@ def get_robot(name: str):
     if record is None:
         return JSONResponse(status_code=404, content={"status": "error", "message": "Robot not found"})
     return {"status": "success", "robot": _record_with_clean(record)}
+
+
+@app.get("/manual-leader-config/{name}")
+def get_manual_leader_config(name: str):
+    """Return slider metadata for using the browser as a custom leader arm."""
+    if not is_valid_robot_name(name):
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid robot name"})
+    record = get_robot_record(name)
+    if record is None:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Robot not found"})
+    status_code, body = _manual_leader_config_for_record(record)
+    if status_code != 200:
+        return JSONResponse(status_code=status_code, content=body)
+    return body
 
 
 @app.post("/robots/{name}")

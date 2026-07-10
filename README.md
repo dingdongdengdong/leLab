@@ -59,6 +59,10 @@ A page will automatically open in your browser and you are ready to go.
   </table>
 </div>
 
+## SuperArm Isaac Sim backend
+
+This branch can control the local SuperArm/source-arm Isaac Sim follower from LeLab. See [SUPERARM_ISAAC_SIM.md](SUPERARM_ISAAC_SIM.md) for startup commands, the Manual Web Leader slider page, ROS topic checks, and screenshot capture workflow.
+
 ## Resources
 
 - **[LeRobot](https://github.com/huggingface/lerobot):** the underlying library — go here for everything beyond the UI.

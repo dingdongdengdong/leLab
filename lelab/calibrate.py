@@ -26,17 +26,42 @@ import traceback
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from lerobot.motors import MotorCalibration
-from lerobot.motors.feetech import OperatingMode
-from lerobot.robots import (
-    Robot,
-    make_robot_from_config,
-)
-from lerobot.teleoperators import (
-    Teleoperator,
-    make_teleoperator_from_config,
-)
-from lerobot.utils.utils import init_logging
+try:
+    from lerobot.motors import MotorCalibration
+    from lerobot.motors.feetech import OperatingMode
+    from lerobot.robots import (
+        Robot,
+        make_robot_from_config,
+    )
+    from lerobot.teleoperators import (
+        Teleoperator,
+        make_teleoperator_from_config,
+    )
+    from lerobot.utils.utils import init_logging
+except ModuleNotFoundError:
+    # Keep the full LeLab web app importable when only the custom Isaac Sim
+    # follower backend is available. SO-101 calibration still fails with a clear
+    # dependency error if the user tries to run it without LeRobot installed.
+    class _MissingLeRobot:
+        def __init__(self, *args, **kwargs) -> None:
+            raise ModuleNotFoundError("LeRobot is required for SO-101 calibration")
+
+    class _MissingOperatingMode:
+        POSITION = type("_Position", (), {"value": "position"})()
+
+    MotorCalibration = _MissingLeRobot
+    OperatingMode = _MissingOperatingMode
+    Robot = object
+    Teleoperator = object
+
+    def make_robot_from_config(*_args, **_kwargs):
+        raise ModuleNotFoundError("LeRobot is required for SO-101 calibration")
+
+    def make_teleoperator_from_config(*_args, **_kwargs):
+        raise ModuleNotFoundError("LeRobot is required for SO-101 calibration")
+
+    def init_logging() -> None:
+        return None
 
 logger = logging.getLogger(__name__)
 

@@ -145,6 +145,52 @@ def test_robot_record_merges_fields(tmp_lerobot_home: Path) -> None:
     assert loaded["follower_port"] == "/dev/b"
 
 
+
+def test_robot_record_preserves_custom_backend_fields(tmp_lerobot_home: Path) -> None:
+    from lelab.utils import config as cfg
+
+    assert cfg.save_robot_record(
+        "source_arm",
+        {
+            "robot_backend": "isaacsim_rpo_arm",
+            "superarm_ws_path": "/workspaces/superarm_ws",
+            "isaacsim_config": "/workspaces/superarm_ws/isaacsim_test/lerobot/source_arm_isaacsim_arm_only.yaml",
+            "leader_port": "unused",
+            "follower_port": "unused",
+            "leader_config": "unused",
+            "follower_config": "/workspaces/superarm_ws/isaacsim_test/lerobot/source_arm_isaacsim_arm_only.yaml",
+        },
+        allow_create=True,
+    )
+
+    loaded = cfg.get_robot_record("source_arm")
+    assert loaded is not None
+    assert loaded["robot_backend"] == "isaacsim_rpo_arm"
+    assert loaded["superarm_ws_path"] == "/workspaces/superarm_ws"
+    assert loaded["isaacsim_config"].endswith("source_arm_isaacsim_arm_only.yaml")
+    assert cfg.is_robot_record_clean(loaded) is True
+
+
+def test_list_robot_records_includes_builtin_superarm_source_arm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from lelab.utils import config as cfg
+
+    superarm_ws = tmp_path / "superarm_ws"
+    source_config = superarm_ws / "isaacsim_test" / "lerobot" / "source_arm_isaacsim_arm_only.yaml"
+    source_config.parent.mkdir(parents=True)
+    source_config.write_text("_type: isaacsim_rpo_arm\njoint_names: [joint_rev_1]\n", encoding="utf-8")
+    monkeypatch.setenv("SUPERARM_WS_PATH", str(superarm_ws))
+
+    records = cfg.list_robot_records()
+    builtin = next((r for r in records if r["name"] == "SuperArm Source Arm"), None)
+
+    assert builtin is not None
+    assert builtin["robot_backend"] == "isaacsim_rpo_arm"
+    assert builtin["leader_port"] == "unused"
+    assert builtin["follower_port"] == "unused"
+    assert builtin["follower_config"] == str(source_config)
+    assert builtin["isaacsim_config"] == str(source_config)
+    assert cfg.is_robot_record_clean(builtin) is True
+
 def test_setup_calibration_files_copies_configs(
     tmp_lerobot_home: Path,
 ) -> None:

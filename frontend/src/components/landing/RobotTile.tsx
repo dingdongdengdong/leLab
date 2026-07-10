@@ -26,6 +26,7 @@ interface RobotTileProps {
   onCreateNew: (name: string) => Promise<boolean>;
   onConfigure: (name: string) => void;
   onTeleop: (robot: RobotRecord) => void;
+  onManualLeader?: (robot: RobotRecord) => void;
   onDelete: (name: string) => void;
 }
 
@@ -38,11 +39,13 @@ const RobotTile: React.FC<RobotTileProps> = ({
   onCreateNew,
   onConfigure,
   onTeleop,
+  onManualLeader,
   onDelete,
 }) => {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const status = robot ? (robot.is_clean ? "Ready" : "Needs configuration") : null;
   const teleopDisabled = !robot || !robot.is_clean;
+  const manualLeaderAvailable = robot?.robot_backend === "isaacsim_rpo_arm";
 
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-3 flex flex-col gap-2 relative">
@@ -100,26 +103,38 @@ const RobotTile: React.FC<RobotTileProps> = ({
       </div>
 
       {robot && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="w-full">
-              <Button
-                onClick={() => onTeleop(robot)}
-                disabled={teleopDisabled}
-                className={`w-full ${
-                  teleopDisabled
-                    ? "bg-red-500/30 hover:bg-red-500/30 text-red-200 cursor-not-allowed"
-                    : "bg-yellow-500 hover:bg-yellow-600 text-white"
-                }`}
-              >
-                Teleoperation
-              </Button>
-            </div>
-          </TooltipTrigger>
-          {teleopDisabled && (
-            <TooltipContent>Configure the robot first.</TooltipContent>
+        <div className="grid gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="w-full">
+                <Button
+                  onClick={() => onTeleop(robot)}
+                  disabled={teleopDisabled}
+                  className={`w-full ${
+                    teleopDisabled
+                      ? "bg-red-500/30 hover:bg-red-500/30 text-red-200 cursor-not-allowed"
+                      : "bg-yellow-500 hover:bg-yellow-600 text-white"
+                  }`}
+                >
+                  Teleoperation
+                </Button>
+              </div>
+            </TooltipTrigger>
+            {teleopDisabled && (
+              <TooltipContent>Configure the robot first.</TooltipContent>
+            )}
+          </Tooltip>
+          {manualLeaderAvailable && onManualLeader && (
+            <Button
+              onClick={() => onManualLeader(robot)}
+              disabled={teleopDisabled}
+              variant="outline"
+              className="w-full border-gray-600 bg-gray-900 text-white hover:bg-gray-700"
+            >
+              Manual Web Leader
+            </Button>
           )}
-        </Tooltip>
+        </div>
       )}
 
       {robot && (

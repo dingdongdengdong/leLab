@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -27,6 +28,7 @@ REQUIRED_PATHS = {
     "/health",
     "/get-configs",
     "/move-arm",
+    "/manual-leader-config/{name}",
     "/stop-teleoperation",
     "/teleoperation-status",
     "/joint-positions",
@@ -62,6 +64,41 @@ def test_health_endpoint_returns_dict(client: TestClient) -> None:
     response = client.get("/health")
     body = response.json()
     assert isinstance(body, dict)
+
+
+def test_manual_leader_config_exposes_superarm_slider_contract(client: TestClient) -> None:
+    response = client.get("/manual-leader-config/SuperArm Source Arm")
+    assert response.status_code == 200
+
+    body = response.json()
+    assert body["status"] == "success"
+    assert body["robot_name"] == "SuperArm Source Arm"
+    assert body["robot_backend"] == "isaacsim_rpo_arm"
+    assert body["joint_names"] == [
+        "joint_rev_1",
+        "joint_rev_2",
+        "joint_rev_3",
+        "joint_rev_4",
+        "joint_rev_5",
+    ]
+    assert body["action_endpoint"] == "/send-joint-action"
+    assert body["start_endpoint"] == "/move-arm"
+    assert body["stop_endpoint"] == "/stop-teleoperation"
+    assert body["start_request"]["robot_backend"] == "isaacsim_rpo_arm"
+    assert body["start_request"]["isaacsim_config"].endswith("source_arm_isaacsim_arm_only.yaml")
+    assert all(slider["min"] < 0 < slider["max"] for slider in body["sliders"])
+    assert body["presets"][0]["name"] == "Home zero"
+    assert body["presets"][0]["action"] == [0.0, 0.0, 0.0, 0.0, 0.0]
+
+
+def test_manual_leader_config_rejects_so101_records(client: TestClient, tmp_lerobot_home) -> None:
+    name = f"Manual Leader SO101 Test {uuid.uuid4().hex[:8]}"
+    response = client.post(f"/robots/{name}?create=true", json={})
+    assert response.status_code == 200
+
+    response = client.get(f"/manual-leader-config/{name}")
+    assert response.status_code == 400
+    assert "manual web leader" in response.json()["message"].lower()
 
 
 def test_unknown_route_returns_404(client: TestClient) -> None:

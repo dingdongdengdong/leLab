@@ -22,13 +22,26 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from lerobot.configs.dataset import DatasetRecordConfig
-from lerobot.datasets import LeRobotDataset
-from lerobot.robots.so_follower import SO101FollowerConfig
+try:
+    from lerobot.configs.dataset import DatasetRecordConfig
+    from lerobot.datasets import LeRobotDataset
+    from lerobot.robots.so_follower import SO101FollowerConfig
 
-# Import the main record functionality to reuse it
-from lerobot.scripts.lerobot_record import RecordConfig
-from lerobot.teleoperators.so_leader import SO101LeaderConfig
+    # Import the main record functionality to reuse it
+    from lerobot.scripts.lerobot_record import RecordConfig
+    from lerobot.teleoperators.so_leader import SO101LeaderConfig
+except ModuleNotFoundError:
+    # Let the full LeLab web app start for non-SO101/custom backends. Recording
+    # still requires LeRobot and will raise when the recording path is used.
+    class _MissingLeRobot:
+        def __init__(self, *args, **kwargs) -> None:
+            raise ModuleNotFoundError("LeRobot is required for recording")
+
+    DatasetRecordConfig = _MissingLeRobot
+    LeRobotDataset = _MissingLeRobot
+    SO101FollowerConfig = _MissingLeRobot
+    RecordConfig = _MissingLeRobot
+    SO101LeaderConfig = _MissingLeRobot
 
 from .utils.config import setup_calibration_files, with_lelab_tag
 

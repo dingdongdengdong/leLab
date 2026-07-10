@@ -327,8 +327,92 @@ def get_default_robot_config(robot_type: str, available_configs: list):
 
 # Characters disallowed in a robot name (filesystem safety)
 _INVALID_NAME_CHARS = ("/", "\\", "..")
-_ROBOT_STRING_FIELDS = ("leader_port", "follower_port", "leader_config", "follower_config")
+_ROBOT_STRING_FIELDS = (
+    "leader_port",
+    "follower_port",
+    "leader_config",
+    "follower_config",
+    "robot_backend",
+    "isaacsim_config",
+    "superarm_ws_path",
+)
 _ROBOT_LIST_FIELDS = ("cameras",)
+_BUILTIN_SUPERARM_SOURCE_NAME = "SuperArm Source Arm"
+_BUILTIN_SUPERARM_AMAZINGHAND_NAME = "SuperArm AmazingHand"
+
+
+def _superarm_ws_path() -> str:
+    env_path = os.environ.get("SUPERARM_WS_PATH")
+    if env_path:
+        return env_path
+    container_path = Path("/workspaces/superarm_ws")
+    if container_path.exists():
+        return str(container_path)
+    repo_path = Path(__file__).resolve().parents[4]
+    if (repo_path / "isaacsim_test" / "lerobot").exists():
+        return str(repo_path)
+    return str(container_path)
+
+
+def _resolve_superarm_config_path(config_path: str, workspace: str | None = None) -> str:
+    path = Path(config_path)
+    if not path.is_absolute():
+        return str(Path(workspace or _superarm_ws_path()) / path)
+    if path.exists():
+        return str(path)
+    marker = Path("/workspaces/superarm_ws")
+    try:
+        relative = path.relative_to(marker)
+    except ValueError:
+        return str(path)
+    local_path = Path(_superarm_ws_path()) / relative
+    return str(local_path if local_path.exists() else path)
+
+
+def _builtin_superarm_source_arm_record() -> dict | None:
+    superarm_ws = _superarm_ws_path()
+    source_config = os.path.join(
+        superarm_ws,
+        "isaacsim_test",
+        "lerobot",
+        "source_arm_isaacsim_arm_only.yaml",
+    )
+    if not os.path.exists(source_config):
+        return None
+    return {
+        "name": _BUILTIN_SUPERARM_SOURCE_NAME,
+        "leader_port": "unused",
+        "follower_port": "unused",
+        "leader_config": "unused",
+        "follower_config": source_config,
+        "robot_backend": "isaacsim_rpo_arm",
+        "isaacsim_config": source_config,
+        "superarm_ws_path": superarm_ws,
+        "cameras": [],
+    }
+
+
+def _builtin_superarm_amazinghand_record() -> dict | None:
+    superarm_ws = _superarm_ws_path()
+    hand_config = os.path.join(
+        superarm_ws,
+        "isaacsim_test",
+        "lerobot",
+        "amazinghand_isaacsim_hand_only.yaml",
+    )
+    if not os.path.exists(hand_config):
+        return None
+    return {
+        "name": _BUILTIN_SUPERARM_AMAZINGHAND_NAME,
+        "leader_port": "unused",
+        "follower_port": "unused",
+        "leader_config": "unused",
+        "follower_config": hand_config,
+        "robot_backend": "isaacsim_rpo_arm",
+        "isaacsim_config": hand_config,
+        "superarm_ws_path": superarm_ws,
+        "cameras": [],
+    }
 
 
 def _robot_record_path(name: str) -> str:
@@ -348,6 +432,7 @@ def _empty_record(name: str) -> dict:
     record: dict = {"name": name}
     for field in _ROBOT_STRING_FIELDS:
         record[field] = ""
+    record["robot_backend"] = "so101"
     for field in _ROBOT_LIST_FIELDS:
         record[field] = []
     return record
@@ -355,6 +440,12 @@ def _empty_record(name: str) -> dict:
 
 def get_robot_record(name: str) -> dict | None:
     """Return the robot record by name, or None if missing."""
+    builtin = _builtin_superarm_source_arm_record()
+    if name == _BUILTIN_SUPERARM_SOURCE_NAME and builtin is not None:
+        return builtin
+    builtin = _builtin_superarm_amazinghand_record()
+    if name == _BUILTIN_SUPERARM_AMAZINGHAND_NAME and builtin is not None:
+        return builtin
     path = _robot_record_path(name)
     if not os.path.exists(path):
         return None
@@ -372,14 +463,22 @@ def get_robot_record(name: str) -> dict | None:
 
 
 def list_robot_records() -> list[dict]:
-    """Return all robot records on disk."""
-    if not os.path.exists(ROBOTS_PATH):
-        return []
+    """Return all robot records on disk plus available built-in backends."""
     records = []
+    builtin = _builtin_superarm_source_arm_record()
+    if builtin is not None:
+        records.append(builtin)
+    builtin = _builtin_superarm_amazinghand_record()
+    if builtin is not None:
+        records.append(builtin)
+    if not os.path.exists(ROBOTS_PATH):
+        return records
     for filename in sorted(os.listdir(ROBOTS_PATH)):
         if not filename.endswith(".json"):
             continue
         name = os.path.splitext(filename)[0]
+        if name in (_BUILTIN_SUPERARM_SOURCE_NAME, _BUILTIN_SUPERARM_AMAZINGHAND_NAME):
+            continue
         record = get_robot_record(name)
         if record is not None:
             records.append(record)
@@ -435,13 +534,25 @@ def delete_robot_record(name: str) -> bool:
 
 def is_robot_record_clean(record: dict) -> bool:
     """
-    A record is 'clean' when all four operational fields are populated AND both
-    referenced calibration files exist on disk. Cameras are optional and don't
-    affect cleanliness.
+    A record is 'clean' when its selected backend has enough configuration to
+    start. SO-101 still requires serial ports plus existing calibration files.
+    Custom Isaac Sim follower records do not use SO-101 calibration files; they
+    require a backend, workspace path, and a readable Isaac/LeRobot YAML config.
+    Cameras are optional and don't affect cleanliness.
     """
     if not record:
         return False
-    for field in _ROBOT_STRING_FIELDS:
+
+    robot_backend = record.get("robot_backend") or "so101"
+    if robot_backend == "isaacsim_rpo_arm":
+        config_path = record.get("isaacsim_config") or record.get("follower_config")
+        if not isinstance(config_path, str) or not config_path.strip():
+            return False
+        workspace = record.get("superarm_ws_path") or _superarm_ws_path()
+        config_path = _resolve_superarm_config_path(config_path, workspace)
+        return os.path.exists(config_path)
+
+    for field in ("leader_port", "follower_port", "leader_config", "follower_config"):
         value = record.get(field, "")
         if not isinstance(value, str) or not value.strip():
             return False

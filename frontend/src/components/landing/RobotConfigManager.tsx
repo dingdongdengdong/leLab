@@ -32,6 +32,12 @@ const RobotConfigManager: React.FC<RobotConfigManagerProps> = ({
     navigate("/calibration", { state: { robot_name: name } });
   };
 
+  const handleManualLeader = (robot: RobotRecord) => {
+    navigate(`/manual-leader?robot=${encodeURIComponent(robot.name)}`, {
+      state: { robot_name: robot.name },
+    });
+  };
+
   const handleTeleop = async (robot: RobotRecord) => {
     try {
       const res = await fetchWithHeaders(`${baseUrl}/move-arm`, {
@@ -42,6 +48,9 @@ const RobotConfigManager: React.FC<RobotConfigManagerProps> = ({
           follower_port: robot.follower_port,
           leader_config: robot.leader_config,
           follower_config: robot.follower_config,
+          robot_backend: robot.robot_backend || "so101",
+          isaacsim_config: robot.isaacsim_config || undefined,
+          superarm_ws_path: robot.superarm_ws_path || undefined,
         }),
       });
       const data = await res.json();
@@ -80,6 +89,7 @@ const RobotConfigManager: React.FC<RobotConfigManagerProps> = ({
       onCreateNew={createRobot}
       onConfigure={handleConfigure}
       onTeleop={handleTeleop}
+      onManualLeader={handleManualLeader}
       onDelete={deleteRobot}
     />
   );

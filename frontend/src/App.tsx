@@ -12,6 +12,7 @@ import Training from "@/pages/Training";
 import Inference from "@/pages/Inference";
 import EditDataset from "@/pages/EditDataset";
 import Upload from "@/pages/Upload";
+import ManualLeader from "@/pages/ManualLeader";
 
 import NotFound from "@/pages/NotFound";
 import SingleTabGuard from "@/components/SingleTabGuard";
@@ -39,6 +40,7 @@ function App() {
                       <Routes>
                         <Route path="/" element={<Landing />} />
                         <Route path="/teleoperation" element={<Teleoperation />} />
+                        <Route path="/manual-leader" element={<ManualLeader />} />
                         <Route path="/recording" element={<Recording />} />
                         <Route path="/upload" element={<Upload />} />
                         <Route path="/training" element={<Training />} />

@@ -10,6 +10,9 @@ export interface RobotRecord {
   follower_port: string;
   leader_config: string;
   follower_config: string;
+  robot_backend?: string;
+  isaacsim_config?: string;
+  superarm_ws_path?: string;
   cameras: CameraConfig[];
   is_clean: boolean;
 }
