@@ -23,6 +23,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+superarm = [
+    "mujoco==3.10.0",
+    "rustypot==1.5.0",
+]
 dev = [
     "pytest>=7.0",
     "ruff>=0.6",
@@ -43,6 +47,7 @@ include = ["lelab*", "frontend"]
 
 [tool.setuptools.package-data]
 frontend = ["dist/**/*"]
+"lelab.superarm" = ["data/*.yaml"]
 
 [tool.ruff]
 target-version = "py312"

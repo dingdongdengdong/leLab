@@ -18,6 +18,12 @@
 
 🤗 Install and run everything with a single command.
 
+### SuperArm + AmazingHand
+
+This branch adds a MuJoCo-first source-arm + official AmazingHand dashboard at
+`/superarm`. See [SUPERARM_MUJOCO.md](SUPERARM_MUJOCO.md) for runtime boundaries,
+API endpoints, program storage, and serial safety behavior.
+
 ## Quick Start
 
 Grab the one-liner from the [LeLab Space](https://huggingface.co/spaces/lerobot/LeLab) — it installs and runs LeLab + LeRobot in a single command.

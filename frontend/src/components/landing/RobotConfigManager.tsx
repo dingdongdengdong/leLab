@@ -80,7 +80,23 @@ const RobotConfigManager: React.FC<RobotConfigManagerProps> = ({
   };
 
   return (
-    <RobotTile
+    <div className="grid gap-3">
+      <div className="rounded-lg border border-cyan-700/60 bg-gradient-to-r from-slate-900 to-cyan-950 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">New controller</p>
+            <h3 className="text-lg font-semibold text-white">SuperArm + AmazingHand</h3>
+            <p className="text-sm text-slate-300">Full closed-loop MJCF hand on the five-joint source arm. MuJoCo is ready; Isaac Sim stays unchanged.</p>
+          </div>
+          <Button
+            onClick={() => navigate("/superarm")}
+            className="bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+          >
+            Open dashboard
+          </Button>
+        </div>
+      </div>
+      <RobotTile
       robot={selectedRecord}
       selectedName={selectedName}
       availableNames={availableNames}
@@ -91,7 +107,8 @@ const RobotConfigManager: React.FC<RobotConfigManagerProps> = ({
       onTeleop={handleTeleop}
       onManualLeader={handleManualLeader}
       onDelete={deleteRobot}
-    />
+      />
+    </div>
   );
 };
 

@@ -49,6 +49,8 @@ from .jobs import (
     job_registry,
 )
 from .manual_leader import build_manual_leader_config
+from .superarm.api import router as superarm_router
+from .superarm.service import service as superarm_service
 
 # Import our custom recording functionality
 from .record import (
@@ -145,6 +147,10 @@ _FLAVOR_CACHE_TTL_SECONDS = 300.0
 
 
 app = FastAPI()
+# FastAPI 0.135 keeps included routers as a private nested route object. LeLab's
+# route introspection and SPA fallback expect concrete routes, so extend the
+# application router with this dedicated namespace directly.
+app.router.routes.extend(superarm_router.routes)
 
 # In dev mode the React app runs on :8080 while the API runs on :8000; in
 # prod they share an origin and CORS is unnecessary. allow_credentials with
@@ -1295,6 +1301,7 @@ async def shutdown_event():
 
     if manager:
         manager.stop_broadcast_thread()
+    superarm_service.disconnect()
     logger.info("✅ Cleanup completed")
 
 
