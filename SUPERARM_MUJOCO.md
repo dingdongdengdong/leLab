@@ -60,3 +60,11 @@ Physical serial hardware was not attached during this implementation. Do not
 claim hardware validation until the opt-in eight-servo discovery, motion,
 telemetry, timeout, and torque-disable checks pass on the actual hand.
 
+
+## Official MJCF motor direction
+
+UI degrees remain positive and hardware-compatible. In the official MJCF,
+`motor2` uses the opposite hinge direction for flexion: open maps to `-0.02 rad`
+and 110 degrees maps to `-1.10 rad`. Applying both motors as positive radians
+mostly spreads the linkage sideways and is covered by the fingertip-motion
+regression test.

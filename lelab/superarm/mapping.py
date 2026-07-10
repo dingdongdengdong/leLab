@@ -42,11 +42,16 @@ def clamp(value: float, lower: float, upper: float) -> float:
 
 
 def degrees_to_mujoco(motor: int, degrees: float) -> float:
-    """Apply the calibrated UI-degree to official MJCF actuator mapping."""
+    """Apply calibrated UI degrees and the official MJCF joint directions.
+
+    The second servo's mechanical direction is inverted. Driving both official
+    MJCF hinges positive mostly abducts the linkage; motor 2 must be negative
+    for the fingertip to flex toward the palm.
+    """
     if motor == 1:
         radians = 0.05 + float(degrees) * (0.95 - 0.05) / 110.0
     elif motor == 2:
-        radians = 0.02 + float(degrees) * (1.10 - 0.02) / 110.0
+        radians = -(0.02 + float(degrees) * (1.10 - 0.02) / 110.0)
     else:
         raise ValueError(f"Unknown motor index: {motor}")
     return clamp(radians, HAND_ACTUATOR_MIN_RAD, HAND_ACTUATOR_MAX_RAD)
@@ -95,4 +100,3 @@ def estimate_current_ma(load_value: float | None) -> float | None:
     magnitude = abs(float(load_value))
     percent = magnitude * 100.0 if magnitude <= 1.5 else magnitude / 10.23
     return round(clamp(percent, 0.0, 150.0) / 100.0 * 1200.0, 1)
-

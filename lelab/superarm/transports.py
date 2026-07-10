@@ -89,7 +89,13 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
         self._data: Any = None
         self._actuator_ids: dict[str, int] = {}
         self._joint_qpos: dict[str, int] = {}
-        self._targets = dict.fromkeys([*ARM_JOINTS, *HAND_ACTUATORS], 0.0)
+        self._targets = dict.fromkeys(ARM_JOINTS, 0.0)
+        self._targets.update(
+            {
+                name: (0.05 if name.endswith("motor1") else -0.02)
+                for name in HAND_ACTUATORS
+            }
+        )
         self._latest_frame: bytes | None = None
         self._latest_state: dict[str, Any] = {}
         self._frame_sequence = 0
@@ -138,6 +144,18 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
                 joint_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_JOINT, name)
                 self._joint_qpos[name] = int(self._model.jnt_qposadr[joint_id])
             renderer = mujoco.Renderer(self._model, height=480, width=640)
+            camera = mujoco.MjvCamera()
+            camera.type = mujoco.mjtCamera.mjCAMERA_FREE
+            mujoco.mj_forward(self._model, self._data)
+            hand_body = mujoco.mj_name2id(
+                self._model,
+                mujoco.mjtObj.mjOBJ_BODY,
+                "r_wrist_interface",
+            )
+            camera.lookat[:] = self._data.xpos[hand_body]
+            camera.distance = 0.34
+            camera.azimuth = 135
+            camera.elevation = -15
             self._connected = True
             ready.set()
             next_step = time.monotonic()
@@ -156,7 +174,7 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
                     # Rendering replaces the previous frame. Consumers always get
                     # the freshest image, so a slow client never blocks physics.
                     with self._lock:
-                        renderer.update_scene(self._data)
+                        renderer.update_scene(self._data, camera=camera)
                         rgb = renderer.render().copy()
                     buffer = io.BytesIO()
                     Image.fromarray(rgb).save(buffer, format="JPEG", quality=82)

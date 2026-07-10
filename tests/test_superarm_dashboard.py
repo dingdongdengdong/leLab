@@ -26,10 +26,10 @@ from lelab.superarm.service import SuperArmService
 def test_calibrated_mujoco_interpolation_and_clamping() -> None:
     assert degrees_to_mujoco(1, 0) == pytest.approx(0.05)
     assert degrees_to_mujoco(1, 110) == pytest.approx(0.95)
-    assert degrees_to_mujoco(2, 0) == pytest.approx(0.02)
-    assert degrees_to_mujoco(2, 110) == pytest.approx(1.10)
+    assert degrees_to_mujoco(2, 0) == pytest.approx(-0.02)
+    assert degrees_to_mujoco(2, 110) == pytest.approx(-1.10)
     assert degrees_to_mujoco(1, -400) == pytest.approx(-math.pi / 2)
-    assert degrees_to_mujoco(2, 400) == pytest.approx(math.pi / 2)
+    assert degrees_to_mujoco(2, 400) == pytest.approx(-math.pi / 2)
 
 
 def test_even_hardware_servo_is_inverted() -> None:
@@ -111,13 +111,22 @@ def test_session_exclusivity_emergency_stop_and_clean_shutdown(tmp_path: Path) -
         with pytest.raises(RuntimeError, match="emergency stop"):
             service.action(arm_rad={"joint_rev_1": 0.0})
         assert service.emergency_stop(False)["emergency_stopped"] is False
-        service.action(hand_deg={"pointer": [40, 5]})
-        first_sequence, _ = service.runtime.frame()
+        open_hand = {finger: [0, 0] for finger in ("pointer", "middle", "ring", "thumb")}
+        closed_hand = {finger: [110, 110] for finger in ("pointer", "middle", "ring", "thumb")}
+        service.action(hand_deg=open_hand)
+        time.sleep(0.5)
+        first_sequence, open_frame = service.runtime.frame()
+        assert open_frame and open_frame.startswith(b"\xff\xd8")
+        service.action(hand_deg=closed_hand)
         time.sleep(1.05)
         sequence, frame = service.runtime.frame()
         assert sequence - first_sequence >= 14
         assert frame and frame.startswith(b"\xff\xd8")
-        assert np.asarray(Image.open(io.BytesIO(frame))).std() > 2.0
+        open_pixels = np.asarray(Image.open(io.BytesIO(open_frame)), dtype=np.float32)
+        close_pixels = np.asarray(Image.open(io.BytesIO(frame)), dtype=np.float32)
+        assert close_pixels.std() > 2.0
+        assert np.abs(close_pixels - open_pixels).mean() > 5.0
+        assert service.telemetry()["state"]["hand"]["finger1_motor2"]["target"] == pytest.approx(-1.10)
         assert len(service.telemetry()["state"]["hand"]) == 8
     finally:
         assert service.disconnect()["connected"] is False
