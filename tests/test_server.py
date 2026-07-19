@@ -295,6 +295,18 @@ def test_spa_deep_link_serves_index_html(client: TestClient) -> None:
     assert response.text.lstrip().lower().startswith("<!doctype html")
 
 
+def test_superarm_teleoperation_deep_link_survives_browser_reentry(client: TestClient) -> None:
+    """The primary SuperArm route reloads directly with its robot query intact."""
+    if not _spa_mounted(client):
+        pytest.skip("frontend/dist not built; SPA not mounted")
+    response = client.get(
+        "/teleoperation?robot=SuperArm%20%2B%20AmazingHand",
+        headers=BROWSER_ACCEPT,
+    )
+    assert response.status_code == 200
+    assert response.text.lstrip().lower().startswith("<!doctype html")
+
+
 def test_spa_fallback_does_not_mask_api_404(client: TestClient) -> None:
     """Non-HTML clients (XHR, curl, API typos) still get a real 404, not the SPA shell."""
     response = client.get("/recording", headers={"accept": "application/json"})

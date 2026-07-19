@@ -12,10 +12,8 @@ schemaVersion: 1
 
 # Exact AmazingHand MJCF visuals in the LeLab URDF showroom
 
-# Exact AmazingHand MJCF visuals in the LeLab URDF showroom
-
-Date: 2026-07-19  
-Branch: `feature/mujoco-web-lerobot`  
+Date: 2026-07-19
+Branch: `feature/mujoco-web-lerobot`
 Supersedes the approximation described in [[superarm-urdf-amazinghand-showroom-motion-fix]].
 
 ## Result
@@ -59,7 +57,7 @@ The LeRobot action contract is unchanged: `5 arm joints + 1 amazinghand_motion`.
 
 ### Live browser
 
-The production LeLab server was rebuilt and started with the configured combined URDF/MJCF, and Firefox/WebGL loaded the normal `/teleoperation?robot=SuperArm%20%2B%20AmazingHand` route.
+The production LeLab server was rebuilt and started with the configured combined URDF/MJCF. A fresh Firefox/WebGL session hard-navigated directly to `/teleoperation?robot=SuperArm%20%2B%20AmazingHand` and loaded the exact layer. The same request with a browser `Accept: text/html` header returns the SPA shell with HTTP 200; non-HTML curl/XHR requests intentionally retain a real 404 so the SPA fallback cannot mask API mistakes.
 
 - DOM/Three scene: 33 `mjcf-body:*` groups and 162 meshes.
 - Missing-mesh fallback proxies: 0.
@@ -86,4 +84,3 @@ The production LeLab server was rebuilt and started with the configured combined
 - Secondary reference: MuJoCo renderer/video.
 - Control: existing six-value LeRobot/manual contract.
 - Not included: Isaac Sim, a new website, an independent 13-DOF policy action space, or synthetic replacement hand geometry.
-
