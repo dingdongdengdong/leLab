@@ -27,7 +27,7 @@ from .mapping import (
     hardware_radians_to_degrees,
     named_hand_to_mujoco,
 )
-from .showroom import aligned_mujoco_model_path
+from .showroom import aligned_mujoco_model_path, amazinghand_body_ids, amazinghand_visual_pose
 
 
 def configure_superarm_camera(model: Any, data: Any, camera: Any) -> None:
@@ -101,6 +101,7 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
         self._data: Any = None
         self._actuator_ids: dict[str, int] = {}
         self._joint_qpos: dict[str, int] = {}
+        self._hand_body_ids: list[int] = []
         self._targets = dict.fromkeys(ARM_JOINTS, 0.0)
         self._targets.update(
             {
@@ -111,6 +112,7 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
         self._latest_frame: bytes | None = None
         self._latest_state: dict[str, Any] = {}
         self._frame_sequence = 0
+        self._visual_sequence = 0
 
     @property
     def connected(self) -> bool:
@@ -148,6 +150,7 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
             with aligned_mujoco_model_path(self.model_path) as runtime_model_path:
                 self._model = mujoco.MjModel.from_xml_path(str(runtime_model_path))
             self._data = mujoco.MjData(self._model)
+            self._hand_body_ids = amazinghand_body_ids(self._model)
             self._actuator_ids = {
                 name: mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_ACTUATOR, name)
                 for name in [*ARM_JOINTS, *HAND_ACTUATORS]
@@ -173,7 +176,7 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
                     mujoco.mj_step(self._model, self._data)
                 if now >= next_state:
                     self._capture_state(now)
-                    next_state = now + 0.1
+                    next_state = now + 0.05
                 if now >= next_render:
                     # Rendering replaces the previous frame. Consumers always get
                     # the freshest image, so a slow client never blocks physics.
@@ -207,6 +210,13 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
                 for name, address in self._joint_qpos.items()
             }
             target = dict(self._targets)
+            visual_bodies = amazinghand_visual_pose(
+                self._model,
+                self._data,
+                self._hand_body_ids,
+            )
+            self._visual_sequence += 1
+            visual_sequence = self._visual_sequence
         state = {
             "timestamp": timestamp,
             "runtime": "mujoco",
@@ -235,6 +245,13 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
                 for name in HAND_ACTUATORS
             },
             "frame_sequence": self._frame_sequence,
+            "visual_pose": {
+                "sequence": visual_sequence,
+                "timestamp": timestamp,
+                "root_link": "r_wrist_interface",
+                "coordinate_frame": "root-relative, meters, quaternion-wxyz",
+                "bodies": visual_bodies,
+            },
             "error": self._failure,
         }
         self._latest_state = state

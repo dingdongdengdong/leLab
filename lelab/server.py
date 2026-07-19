@@ -76,7 +76,7 @@ from .superarm.service import service as superarm_service
 from .superarm.showroom import (
     align_amazinghand_attachment,
     align_joint5_urdf,
-    stabilize_amazinghand_visuals,
+    remove_amazinghand_visuals,
 )
 from .superarm_teleoperator import set_manual_recording_action
 
@@ -1234,7 +1234,7 @@ def _robot_urdf_document(name: str, record: dict) -> tuple[bytes, list[Path]]:
     if (record.get("robot_backend") or "") == "superarm_mujoco":
         align_joint5_urdf(root)
         align_amazinghand_attachment(root)
-        stabilize_amazinghand_visuals(root)
+        remove_amazinghand_visuals(root)
 
     assets: list[Path] = []
     asset_indices: dict[Path, int] = {}
@@ -1348,6 +1348,54 @@ def get_robot_urdf_asset(name: str, asset_index: int, asset_name: str | None = N
     if asset_name is not None and asset_name != asset.name:
         raise HTTPException(status_code=404, detail="Robot mesh asset not found")
     return FileResponse(asset)
+
+
+def _superarm_record_model(record: dict) -> tuple[str | Path | None, str | Path | None]:
+    return record.get("superarm_asset_root"), record.get("mujoco_model_path")
+
+
+@app.get("/robots/{name}/mujoco-visual-manifest")
+def get_robot_mujoco_visual_manifest(name: str):
+    """Serve the exact MJCF hand-visual manifest for a saved SuperArm record."""
+    if not is_valid_robot_name(name):
+        raise HTTPException(status_code=400, detail="Invalid robot name")
+    record = get_robot_record(name)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Robot not found")
+    if (record.get("robot_backend") or "") != "superarm_mujoco":
+        raise HTTPException(status_code=404, detail="Robot does not define MuJoCo visuals")
+    workspace_root, model_path = _superarm_record_model(record)
+    try:
+        return superarm_service.amazinghand_visual_manifest(
+            workspace_root,
+            model_path,
+            asset_url_prefix=f"/robots/{quote(name, safe='')}/mujoco-visual-assets",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/robots/{name}/mujoco-visual-assets/{mesh_name}")
+def get_robot_mujoco_visual_asset(name: str, mesh_name: str):
+    """Serve only mesh definitions referenced by the saved record's MJCF hand."""
+    if not is_valid_robot_name(name):
+        raise HTTPException(status_code=400, detail="Invalid robot name")
+    record = get_robot_record(name)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Robot not found")
+    if (record.get("robot_backend") or "") != "superarm_mujoco":
+        raise HTTPException(status_code=404, detail="Robot does not define MuJoCo visuals")
+    workspace_root, model_path = _superarm_record_model(record)
+    try:
+        return FileResponse(
+            superarm_service.amazinghand_visual_asset_path(
+                mesh_name,
+                workspace_root,
+                model_path,
+            )
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/manual-leader-config/{name}")

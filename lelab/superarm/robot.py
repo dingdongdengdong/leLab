@@ -137,6 +137,13 @@ class SuperArmMujocoRobot(Robot):
         )
         return physical
 
+    def get_visualization_pose(self) -> dict[str, Any] | None:
+        """Return the exact root-relative MuJoCo hand-body pose frame."""
+        runtime = self.runtime_service.runtime
+        state = runtime.observe() if runtime else {}
+        visual_pose = state.get("visual_pose")
+        return dict(visual_pose) if isinstance(visual_pose, dict) else None
+
     def disconnect(self) -> None:
         for camera in self.cameras.values():
             if camera.is_connected:

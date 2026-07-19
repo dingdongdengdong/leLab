@@ -26,7 +26,7 @@ from lelab.superarm.service import SuperArmService
 from lelab.superarm.showroom import (
     align_joint5_mjcf,
     align_joint5_urdf,
-    stabilize_amazinghand_visuals,
+    remove_amazinghand_visuals,
 )
 from lelab.superarm.transports import configure_superarm_camera
 
@@ -167,7 +167,7 @@ def test_joint5_urdf_rotates_motor_and_keeps_shell_fixed_to_it() -> None:
     assert shell_mount.find("axis") is None
 
 
-def test_amazinghand_showroom_uses_joint_local_motion_visuals() -> None:
+def test_amazinghand_urdf_visuals_are_removed_for_exact_mujoco_overlay() -> None:
     root = ET.fromstring(
         "<robot name='superarm'>"
         "<link name='r_wrist_interface'><visual name='wrist'><geometry><mesh filename='wrist.stl'/></geometry></visual></link>"
@@ -194,26 +194,13 @@ def test_amazinghand_showroom_uses_joint_local_motion_visuals() -> None:
         "</robot>"
     )
 
-    assert stabilize_amazinghand_visuals(root) == 6
-
-    proximal_visuals = root.findall(".//link[@name='finger1_proximal']/visual")
-    distal_visuals = root.findall(".//link[@name='finger1_distal']/visual")
-    assert len(proximal_visuals) == 1
-    assert len(distal_visuals) == 2
-    assert not root.findall(".//link[@name='finger1_proximal']/visual/geometry/mesh")
-    assert not root.findall(".//link[@name='finger1_distal']/visual/geometry/mesh")
-    assert proximal_visuals[0].find("origin").attrib == {"xyz": "0 0.029 0", "rpy": "1.57079633 0 0"}
-    assert proximal_visuals[0].find("geometry/cylinder").attrib == {"radius": "0.009", "length": "0.058"}
-    assert distal_visuals[0].find("geometry/cylinder").attrib == {"radius": "0.008", "length": "0.05"}
-    assert distal_visuals[1].find("geometry/sphere").attrib == {"radius": "0.013"}
-    assert all(visual.find("material/color").get("rgba") for visual in proximal_visuals + distal_visuals)
-
-    wrist_meshes = {
-        Path(mesh.get("filename")).name
-        for mesh in root.findall(".//link[@name='r_wrist_interface']/visual/geometry/mesh")
-    }
-    assert wrist_meshes == {"wrist.stl"}
-    assert stabilize_amazinghand_visuals(root) == 0
+    assert remove_amazinghand_visuals(root) == 7
+    assert not root.findall(".//link[@name='r_wrist_interface']/visual")
+    assert not root.findall(".//link[@name='finger1_proximal']/visual")
+    assert not root.findall(".//link[@name='finger1_distal']/visual")
+    assert root.find(".//link[@name='finger1_proximal']/collision") is not None
+    assert root.find(".//joint[@name='finger1_motor1']") is not None
+    assert remove_amazinghand_visuals(root) == 0
 
 
 def test_joint5_mjcf_moves_pivot_to_motor_without_moving_zero_pose() -> None:
@@ -305,6 +292,14 @@ def test_session_reconnect_emergency_stop_and_clean_shutdown(tmp_path: Path) -> 
         assert np.abs(close_pixels - open_pixels).mean() > 0.5
         assert service.telemetry()["state"]["hand"]["finger1_motor2"]["target"] == pytest.approx(-1.10)
         assert len(service.telemetry()["state"]["hand"]) == 8
+        visual_pose = service.telemetry()["state"]["visual_pose"]
+        assert visual_pose["root_link"] == "r_wrist_interface"
+        assert visual_pose["sequence"] >= 20
+        assert len(visual_pose["bodies"]) == 33
+        assert visual_pose["bodies"]["r_wrist_interface"] == {
+            "position_m": [0.0, 0.0, 0.0],
+            "quaternion_wxyz": [1.0, 0.0, 0.0, 0.0],
+        }
     finally:
         assert service.disconnect()["connected"] is False
         assert not any(
@@ -415,6 +410,10 @@ def test_api_namespace_is_registered() -> None:
     assert "/api/superarm/action" in paths
     assert "/api/superarm/video" in paths
     assert "/api/superarm/urdf" in paths
+    assert "/api/superarm/mujoco-visual-manifest" in paths
+    assert "/api/superarm/mujoco-visual-assets/{mesh_name}" in paths
+    assert "/robots/{name}/mujoco-visual-manifest" in paths
+    assert "/robots/{name}/mujoco-visual-assets/{mesh_name}" in paths
     assert "/ws/superarm" in paths
     response = TestClient(app).get("/api/superarm/capabilities")
     assert response.status_code == 200

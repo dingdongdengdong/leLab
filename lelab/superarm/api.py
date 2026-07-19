@@ -112,6 +112,28 @@ def source_arm_mesh(filename: str):
         raise api_error(exc) from exc
 
 
+@router.get("/api/superarm/mujoco-visual-manifest")
+def amazinghand_visual_manifest(workspace_root: str | None = None, model_path: str | None = None):
+    try:
+        return service.amazinghand_visual_manifest(workspace_root, model_path)
+    except Exception as exc:
+        raise api_error(exc) from exc
+
+
+@router.get("/api/superarm/mujoco-visual-assets/{mesh_name}")
+def amazinghand_visual_asset(
+    mesh_name: str,
+    workspace_root: str | None = None,
+    model_path: str | None = None,
+):
+    try:
+        return FileResponse(
+            service.amazinghand_visual_asset_path(mesh_name, workspace_root, model_path)
+        )
+    except Exception as exc:
+        raise api_error(exc) from exc
+
+
 @router.post("/api/superarm/session")
 def start_session(request: SessionRequest):
     try:

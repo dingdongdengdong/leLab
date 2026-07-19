@@ -191,6 +191,47 @@ def test_robot_showroom_rejects_urdf_outside_workspace(
     assert client.get("/robots/unsafe/urdf").status_code == 404
 
 
+def test_robot_showroom_serves_record_scoped_mujoco_visuals(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lelab import server
+
+    asset = tmp_path / "proximal_shell.stl"
+    asset.write_bytes(b"solid proximal\nendsolid proximal\n")
+    record = {
+        "name": "Exact Hand",
+        "robot_backend": "superarm_mujoco",
+        "superarm_asset_root": str(tmp_path),
+        "mujoco_model_path": str(tmp_path / "combined.xml"),
+    }
+    monkeypatch.setattr(server, "get_robot_record", lambda name: record if name == "Exact Hand" else None)
+    monkeypatch.setattr(
+        server.superarm_service,
+        "amazinghand_visual_manifest",
+        lambda workspace_root, model_path, asset_url_prefix: {
+            "root_link": "r_wrist_interface",
+            "bodies": [],
+            "default_pose": {"bodies": {}},
+            "asset_url_prefix": asset_url_prefix,
+        },
+    )
+    monkeypatch.setattr(
+        server.superarm_service,
+        "amazinghand_visual_asset_path",
+        lambda mesh_name, workspace_root, model_path: asset
+        if mesh_name == "proximal_shell"
+        else (_ for _ in ()).throw(FileNotFoundError(mesh_name)),
+    )
+
+    manifest = client.get("/robots/Exact%20Hand/mujoco-visual-manifest")
+    assert manifest.status_code == 200
+    assert manifest.json()["asset_url_prefix"] == "/robots/Exact%20Hand/mujoco-visual-assets"
+    served_asset = client.get("/robots/Exact%20Hand/mujoco-visual-assets/proximal_shell")
+    assert served_asset.status_code == 200
+    assert served_asset.content == asset.read_bytes()
+    assert client.get("/robots/Exact%20Hand/mujoco-visual-assets/not-allowlisted").status_code == 404
+
+
 def test_recording_action_rejects_when_manual_superarm_recording_is_idle(client: TestClient) -> None:
     response = client.post("/recording-action", json={"action": [0.0] * 6})
 

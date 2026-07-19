@@ -14,7 +14,13 @@ from urllib.parse import quote
 
 from .mapping import ARM_JOINTS, UI_FINGERS
 from .programs import ProgramStore
-from .showroom import align_amazinghand_attachment, align_joint5_urdf, stabilize_amazinghand_visuals
+from .showroom import (
+    align_amazinghand_attachment,
+    align_joint5_urdf,
+    amazinghand_visual_assets,
+    build_amazinghand_visual_manifest,
+    remove_amazinghand_visuals,
+)
 from .transports import MuJoCoRuntime, SerialAmazingHandTransport
 
 
@@ -115,7 +121,7 @@ class SuperArmService:
         root = ET.parse(urdf_path).getroot()
         align_joint5_urdf(root)
         align_amazinghand_attachment(root)
-        stabilize_amazinghand_visuals(root)
+        remove_amazinghand_visuals(root)
         for mesh in root.findall(".//mesh"):
             filename = mesh.get("filename")
             if filename:
@@ -143,6 +149,33 @@ class SuperArmService:
                 if path.resolve().is_file():
                     return path.resolve()
         raise FileNotFoundError(f"Source-arm mesh is missing: {filename}")
+
+    def amazinghand_visual_manifest(
+        self,
+        workspace_root: str | Path | None = None,
+        model_path: str | Path | None = None,
+        *,
+        asset_url_prefix: str = "/api/superarm/mujoco-visual-assets",
+    ) -> dict[str, Any]:
+        resolved_model = self.model_path(workspace_root, model_path)
+        return build_amazinghand_visual_manifest(
+            resolved_model,
+            asset_url_prefix=asset_url_prefix,
+        )
+
+    def amazinghand_visual_asset_path(
+        self,
+        mesh_name: str,
+        workspace_root: str | Path | None = None,
+        model_path: str | Path | None = None,
+    ) -> Path:
+        if not mesh_name or Path(mesh_name).name != mesh_name:
+            raise ValueError("Invalid AmazingHand visual asset name")
+        resolved_model = self.model_path(workspace_root, model_path)
+        asset = amazinghand_visual_assets(resolved_model).get(mesh_name)
+        if asset is None:
+            raise FileNotFoundError(f"AmazingHand visual asset is missing: {mesh_name}")
+        return asset
 
     def start_session(
         self,

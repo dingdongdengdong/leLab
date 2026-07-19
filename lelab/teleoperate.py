@@ -177,10 +177,18 @@ def get_joint_positions_from_robot(robot) -> dict[str, float]:
             logger.info("[joint-debug]\n  " + "\n  ".join(debug_rows))
 
         return joint_positions
-
     except Exception as e:
         logger.error(f"Error getting joint positions: {e}")
         return dict.fromkeys(motor_to_urdf_mapping.values(), 0.0)
+
+
+def get_visual_pose_from_robot(robot) -> dict[str, Any] | None:
+    """Read an optional exact visual-pose frame from a custom robot backend."""
+    get_visualization_pose = getattr(robot, "get_visualization_pose", None)
+    if not callable(get_visualization_pose):
+        return None
+    visual_pose = get_visualization_pose()
+    return dict(visual_pose) if isinstance(visual_pose, dict) else None
 
 
 def _create_superarm_mujoco_robot(request: TeleoperateRequest):
@@ -222,6 +230,9 @@ def _handle_start_superarm_teleoperation(request: TeleoperateRequest, websocket_
                             "timestamp": current_time,
                             "robot_backend": "superarm_mujoco",
                         }
+                        visual_pose = get_visual_pose_from_robot(robot)
+                        if visual_pose is not None:
+                            joint_data["visual_pose"] = visual_pose
                         if websocket_manager and websocket_manager.active_connections:
                             websocket_manager.broadcast_joint_data_sync(joint_data)
                         last_broadcast_time = current_time

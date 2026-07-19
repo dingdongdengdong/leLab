@@ -197,6 +197,13 @@ def test_superarm_mujoco_backend_uses_custom_robot_and_action_endpoint(
                 **{f"finger{finger}_motor{motor}": 0.0 for finger in range(1, 5) for motor in range(1, 3)},
             }
 
+        def get_visualization_pose(self) -> dict:
+            return {
+                "sequence": 1,
+                "root_link": "r_wrist_interface",
+                "bodies": {},
+            }
+
         def send_action(self, action):
             self.last_action = action
             return action
@@ -217,6 +224,7 @@ def test_superarm_mujoco_backend_uses_custom_robot_and_action_endpoint(
     assert result["success"] is True
     assert result["robot_backend"] == "superarm_mujoco"
     assert result["joint_positions"]["joint_rev_1"] == 0.1
+    assert teleop.get_visual_pose_from_robot(created)["root_link"] == "r_wrist_interface"
 
     action = [0.2, -0.2, 0.3, -0.3, 0.4, 1.0]
     action_result = teleop.handle_send_joint_action(teleop.JointActionRequest(action=action))
