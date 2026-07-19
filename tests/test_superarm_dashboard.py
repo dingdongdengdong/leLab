@@ -307,7 +307,10 @@ def test_session_reconnect_emergency_stop_and_clean_shutdown(tmp_path: Path) -> 
         assert len(service.telemetry()["state"]["hand"]) == 8
     finally:
         assert service.disconnect()["connected"] is False
-        assert not any(thread.name == "superarm-mujoco" and thread.is_alive() for thread in __import__("threading").enumerate())
+        assert not any(
+            thread.name == "superarm-mujoco" and thread.is_alive()
+            for thread in __import__("threading").enumerate()
+        )
 
 
 def test_source_arm_urdf_is_browser_loadable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -353,9 +356,14 @@ def test_live_command_throttle_and_timeout(tmp_path: Path) -> None:
         connected = True
         failure = None
 
-        def command(self, *args, **kwargs): pass
-        def stop(self): self.stopped = True
-        def observe(self): return {}
+        def command(self, *args, **kwargs):
+            pass
+
+        def stop(self):
+            self.stopped = True
+
+        def observe(self):
+            return {}
 
     service = SuperArmService(ProgramStore(tmp_path / "programs.yaml"))
     service.runtime = Runtime()
@@ -374,9 +382,14 @@ def test_sequence_worker_is_cancelable_and_nonblocking(tmp_path: Path) -> None:
         connected = True
         failure = None
 
-        def command(self, *args, **kwargs): pass
-        def stop(self): pass
-        def observe(self): return {}
+        def command(self, *args, **kwargs):
+            pass
+
+        def stop(self):
+            pass
+
+        def observe(self):
+            return {}
 
     store = ProgramStore(tmp_path / "programs.yaml")
     store.save_pose("home", {"arm_rad": {"joint_rev_1": 0.0}})

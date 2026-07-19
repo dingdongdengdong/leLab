@@ -140,11 +140,7 @@ def align_joint5_mjcf(root: ET.Element) -> bool:
     if moving is None:
         return False
     parent = next(
-        (
-            body
-            for body in root.findall(".//body")
-            if moving in body.findall("body")
-        ),
+        (body for body in root.findall(".//body") if moving in body.findall("body")),
         None,
     )
     joint = moving.find("joint[@name='joint_rev_5']")
@@ -167,18 +163,14 @@ def align_joint5_mjcf(root: ET.Element) -> bool:
             position = _parse_vector(node)
             node.set(
                 "pos",
-                _format_vector(
-                    [value + offset for value, offset in zip(position, delta, strict=True)]
-                ),
+                _format_vector([value + offset for value, offset in zip(position, delta, strict=True)]),
             )
 
     parent.remove(motor_geom)
     motor_position = _parse_vector(motor_geom)
     motor_geom.set(
         "pos",
-        _format_vector(
-            [value - offset for value, offset in zip(motor_position, new_body_pos, strict=True)]
-        ),
+        _format_vector([value - offset for value, offset in zip(motor_position, new_body_pos, strict=True)]),
     )
     moving.insert(1, motor_geom)
     return True

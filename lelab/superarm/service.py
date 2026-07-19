@@ -94,9 +94,7 @@ class SuperArmService:
             candidate = Path.home() / ".cache/huggingface/lerobot/amazinghand/model/superarm_amazinghand.xml"
         candidate = candidate.resolve()
         if not candidate.is_file():
-            raise FileNotFoundError(
-                "SuperArm MuJoCo model is missing; set SUPERARM_MUJOCO_MODEL_PATH"
-            )
+            raise FileNotFoundError("SuperArm MuJoCo model is missing; set SUPERARM_MUJOCO_MODEL_PATH")
         return candidate
 
     def _urdf_path(self, workspace_root: str | Path | None = None) -> Path:
@@ -167,9 +165,7 @@ class SuperArmService:
             resolved_model_path = self.model_path(workspace_root, model_path)
             runtime = MuJoCoRuntime(
                 resolved_model_path,
-                state_callback=lambda state: self.publish(
-                    {"type": "state", **self.status(), "state": state}
-                ),
+                state_callback=lambda state: self.publish({"type": "state", **self.status(), "state": state}),
             )
             serial = None
             try:

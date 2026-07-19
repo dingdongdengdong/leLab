@@ -89,7 +89,10 @@ class SuperArmMujocoRobot(Robot):
             raise RuntimeError("SuperArm MuJoCo robot is disconnected")
         state = self.runtime_service.runtime.observe()
         arm = state.get("arm", {})
-        values = [float(arm.get(name, {}).get("position", self._logical[index])) for index, name in enumerate(ARM_JOINTS)]
+        values = [
+            float(arm.get(name, {}).get("position", self._logical[index]))
+            for index, name in enumerate(ARM_JOINTS)
+        ]
         values.append(self._logical[-1])
         observation = dict(zip(CANONICAL_FEATURES, values, strict=True))
         for name, camera in self.cameras.items():

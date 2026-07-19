@@ -21,11 +21,7 @@ MUJOCO_FINGERS = {
     "ring": "finger3",
     "thumb": "finger4",
 }
-HAND_ACTUATORS = [
-    f"finger{finger}_motor{motor}"
-    for finger in range(1, 5)
-    for motor in range(1, 3)
-]
+HAND_ACTUATORS = [f"finger{finger}_motor{motor}" for finger in range(1, 5) for motor in range(1, 3)]
 
 SERVO_MIN_DEG = -40.0
 SERVO_MAX_DEG = 110.0

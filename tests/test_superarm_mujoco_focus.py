@@ -20,8 +20,7 @@ class _FakeRuntime:
     def observe(self):
         return {
             "arm": {
-                f"joint_rev_{index}": {"position": index / 10, "target": index / 10}
-                for index in range(1, 6)
+                f"joint_rev_{index}": {"position": index / 10, "target": index / 10} for index in range(1, 6)
             },
             "hand": {
                 f"finger{finger}_motor{motor}": {
@@ -75,9 +74,7 @@ def test_direct_mujoco_robot_keeps_policy_action_six_dimensional():
         "joint_rev_4": pytest.approx(-0.4),
         "joint_rev_5": pytest.approx(0.5),
     }
-    assert fake.actions[-1]["hand_deg"] == dict.fromkeys(
-        ["pointer", "middle", "ring", "thumb"], [55.0, 55.0]
-    )
+    assert fake.actions[-1]["hand_deg"] == dict.fromkeys(["pointer", "middle", "ring", "thumb"], [55.0, 55.0])
     visualization = robot.get_visualization_joints()
     assert len(visualization) == 13
     for finger in range(1, 5):
