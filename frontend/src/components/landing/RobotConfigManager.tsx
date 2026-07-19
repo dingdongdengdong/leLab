@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useApi } from "@/contexts/ApiContext";
 import { useToast } from "@/hooks/use-toast";
 import { RobotRecord } from "@/hooks/useRobots";
+import { Button } from "@/components/ui/button";
 import RobotTile from "./RobotTile";
 
 interface RobotConfigManagerProps {
