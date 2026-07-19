@@ -146,12 +146,6 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({
     const viewer = createUrdfViewer(containerRef.current, true);
     viewerRef.current = viewer; // Store reference to the viewer
 
-    // Setup mesh loading function with appropriate URL modifier
-    const activeUrlModifier = useSo101Model
-      ? defaultUrlModifier
-      : urlModifierFunc;
-    setupMeshLoader(viewer, activeUrlModifier);
-
     // Determine which URDF to load - fixed path to match the actual available file
     const urdfPath = useRecordModel
       ? `/robots/${encodeURIComponent(robotName || "")}/urdf`
@@ -162,18 +156,6 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({
     // Set the package path for the default model
     if (useSo101Model) {
       packageRef.current = "/"; // Set to root so we can handle full path resolution in URL modifier
-    }
-
-    // Setup model loading if a path is available
-    let cleanupModelLoading = () => {};
-    if (urdfPath) {
-      cleanupModelLoading = setupModelLoading(
-        viewer,
-        urdfPath,
-        packageRef.current,
-        setCustomUrdfPath,
-        alternativeUrdfModels
-      );
     }
 
     // Setup joint highlighting
@@ -242,6 +224,33 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({
       fitRobotToView(viewer);
     };
 
+    // URDF processing finishes before external STL files necessarily do. Fit
+    // again after the final burst of mesh callbacks so a full custom robot is
+    // framed instead of only the links that happened to be ready first.
+    let meshFitTimer: number | undefined;
+    const scheduleMeshFit = () => {
+      window.clearTimeout(meshFitTimer);
+      meshFitTimer = window.setTimeout(onRobotLoad, 100);
+    };
+
+    const activeUrlModifier = useSo101Model
+      ? defaultUrlModifier
+      : urlModifierFunc;
+    setupMeshLoader(viewer, activeUrlModifier, scheduleMeshFit);
+
+    // Setup model loading after the mesh callback is ready so even fast local
+    // assets participate in the final camera fit.
+    let cleanupModelLoading = () => {};
+    if (urdfPath) {
+      cleanupModelLoading = setupModelLoading(
+        viewer,
+        urdfPath,
+        packageRef.current,
+        setCustomUrdfPath,
+        alternativeUrdfModels
+      );
+    }
+
     // Setup animation event handler for the default model or when hasAnimation is true
     const onModelProcessed = () => {
       hasInitializedRef.current = true;
@@ -265,6 +274,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({
         cleanupAnimationRef.current = null;
       }
       hasInitializedRef.current = false;
+      window.clearTimeout(meshFitTimer);
       cleanupJointHighlighting();
       cleanupModelLoading();
       viewer.removeEventListener("urdf-processed", onModelProcessed);

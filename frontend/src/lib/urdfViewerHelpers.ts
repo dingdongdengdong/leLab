@@ -77,7 +77,8 @@ export function createUrdfViewer(
  */
 export function setupMeshLoader(
   viewer: URDFViewerElement,
-  urlModifierFunc: ((url: string) => string) | null
+  urlModifierFunc: ((url: string) => string) | null,
+  onMeshLoaded?: () => void
 ): void {
   if ("loadMeshFunc" in viewer) {
     viewer.loadMeshFunc = (
@@ -97,6 +98,7 @@ export function setupMeshLoader(
             done(null);
           } else {
             done(result);
+            onMeshLoaded?.();
           }
         });
       } catch (err) {
