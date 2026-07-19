@@ -170,10 +170,7 @@ def amazinghand_visual_pose(model: Any, data: Any, body_ids: list[int] | None = 
     bodies: dict[str, dict[str, list[float]]] = {}
     for body_id in ids:
         name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, body_id)
-        world_offset = [
-            float(data.xpos[body_id][axis]) - root_position[axis]
-            for axis in range(3)
-        ]
+        world_offset = [float(data.xpos[body_id][axis]) - root_position[axis] for axis in range(3)]
         position = _rotate_vector(root_inverse, world_offset)
         quaternion = _normalize_quaternion(
             _quaternion_multiply(root_inverse, _normalize_quaternion(data.xquat[body_id]))
@@ -247,8 +244,7 @@ def build_amazinghand_visual_manifest(
     assets = _mesh_sources(path)
 
     actuator_ids = {
-        name: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, name)
-        for name in HAND_OPEN_TARGETS
+        name: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, name) for name in HAND_OPEN_TARGETS
     }
     if any(actuator_id < 0 for actuator_id in actuator_ids.values()):
         raise ValueError("MuJoCo model is missing an AmazingHand actuator")
@@ -277,20 +273,15 @@ def build_amazinghand_visual_manifest(
         geom_quaternion = _normalize_quaternion(model.geom_quat[geom_id])
         mesh_quaternion = _normalize_quaternion(model.mesh_quat[mesh_id])
         mesh_inverse = [mesh_quaternion[0], *(-value for value in mesh_quaternion[1:])]
-        raw_mesh_quaternion = _normalize_quaternion(
-            _quaternion_multiply(geom_quaternion, mesh_inverse)
-        )
+        raw_mesh_quaternion = _normalize_quaternion(_quaternion_multiply(geom_quaternion, mesh_inverse))
         mesh_offset = _rotate_vector(
             raw_mesh_quaternion,
             [-float(value) for value in model.mesh_pos[mesh_id]],
         )
         visuals_by_body[body_id].append(
             {
-                "mesh_url": f"{asset_url_prefix.rstrip('/')}/{quote(mesh_name, safe='')}",
-                "position_m": [
-                    float(model.geom_pos[geom_id][axis]) + mesh_offset[axis]
-                    for axis in range(3)
-                ],
+                "mesh_url": f"{asset_url_prefix.rstrip('/')}/{quote(mesh_name, safe='')}.stl",
+                "position_m": [float(model.geom_pos[geom_id][axis]) + mesh_offset[axis] for axis in range(3)],
                 "quaternion_wxyz": raw_mesh_quaternion,
                 "scale": [float(value) for value in model.mesh_scale[mesh_id]],
                 "rgba": [float(value) for value in model.geom_rgba[geom_id]],
@@ -317,6 +308,7 @@ def build_amazinghand_visual_manifest(
             "equalities": int(model.neq),
         },
         "bodies": bodies,
+        "hand_joint_names": list(HAND_OPEN_TARGETS),
         "default_pose": {
             "timestamp": 0.0,
             "bodies": amazinghand_visual_pose(model, data, body_ids),

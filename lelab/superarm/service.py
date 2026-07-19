@@ -171,6 +171,8 @@ class SuperArmService:
     ) -> Path:
         if not mesh_name or Path(mesh_name).name != mesh_name:
             raise ValueError("Invalid AmazingHand visual asset name")
+        if mesh_name.endswith(".stl"):
+            mesh_name = mesh_name.removesuffix(".stl")
         resolved_model = self.model_path(workspace_root, model_path)
         asset = amazinghand_visual_assets(resolved_model).get(mesh_name)
         if asset is None:

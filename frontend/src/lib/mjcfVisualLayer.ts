@@ -210,7 +210,7 @@ const defaultMeshLoader: MeshLoader = (url) => new Promise((resolve, reject) => 
   loadMeshFile(url, new LoadingManager(), (object, error) => {
     if (error || !object) reject(error || new Error(`Mesh unavailable: ${url}`));
     else resolve(object);
-  });
+  }, { allowFallback: false });
 });
 
 const cloneMaterials = (object: Object3D, rgba?: [number, number, number, number]) => {

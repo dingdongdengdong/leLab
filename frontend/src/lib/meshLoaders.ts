@@ -20,7 +20,8 @@ import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 export const loadMeshFile = (
   path: string,
   manager: LoadingManager,
-  done: (result: Object3D | Group | Mesh | null, err?: Error) => void
+  done: (result: Object3D | Group | Mesh | null, err?: Error) => void,
+  options: { allowFallback?: boolean } = {},
 ) => {
   // First try to get extension from the original path
   let ext = path.split(/\./g).pop()?.toLowerCase();
@@ -81,6 +82,11 @@ export const loadMeshFile = (
         },
         (err) => {
           console.error(`❌ STL loading failed: ${path}`, err);
+
+          if (options.allowFallback === false) {
+            done(null, err as Error);
+            return;
+          }
 
           // Create a fallback basic geometry when STL fails to load
           console.log(`🔄 Creating fallback geometry for: ${path}`);
