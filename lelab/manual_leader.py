@@ -70,6 +70,20 @@ def _amazinghand_presets(joint_count: int) -> list[dict[str, Any]]:
     ]
 
 
+def _combined_presets(motion_codes: dict[str, float]) -> list[dict[str, Any]]:
+    home = [0.0, 0.0, 0.0, 0.0, 0.0]
+    reach = [0.25, -0.20, 0.30, -0.35, 0.20]
+    return [
+        {"name": "Home / open", "action": [*home, motion_codes["open"]]},
+        {"name": "Safe reach / open", "action": [*reach, motion_codes["open"]]},
+        {
+            "name": "Safe reach / half close",
+            "action": [*reach, motion_codes["half_close"]],
+        },
+        {"name": "Home / close", "action": [*home, motion_codes["close"]]},
+    ]
+
+
 def _manual_leader_kind(raw_config: dict, record: dict) -> str:
     manual = raw_config.get("manual_leader") or {}
     if isinstance(manual, dict) and isinstance(manual.get("kind"), str):
@@ -93,7 +107,50 @@ def build_manual_leader_config(record: dict) -> dict[str, Any]:
 
     manual = raw.get("manual_leader") if isinstance(raw.get("manual_leader"), dict) else {}
     kind = _manual_leader_kind(raw, record)
-    if kind == "amazinghand":
+    hand_motions: list[dict[str, Any]] = []
+    physical_joint_names = raw.get("physical_joint_names") or list(joint_names)
+    if kind == "superarm_amazinghand":
+        if len(joint_names) != 6 or joint_names[-1] != "amazinghand_motion":
+            raise ValueError("Combined SuperArm config must define five arm joints plus amazinghand_motion.")
+        arm_limits = raw.get("arm_limits")
+        if not isinstance(arm_limits, dict):
+            raise ValueError("Combined SuperArm config does not define arm_limits.")
+        sliders = []
+        for joint_name in joint_names[:5]:
+            limit = arm_limits.get(joint_name)
+            if not isinstance(limit, dict):
+                raise ValueError(f"Combined SuperArm config is missing limits for {joint_name}.")
+            sliders.append(
+                {
+                    "name": joint_name,
+                    "label": joint_name,
+                    "min": float(limit["min"]),
+                    "max": float(limit["max"]),
+                    "step": float(limit.get("step", 0.01)),
+                    "default": float(limit.get("default", 0.0)),
+                }
+            )
+        hand_joint_names = [name for name in physical_joint_names if name not in joint_names[:5]]
+        configured_motions = raw.get("hand_motions")
+        if not isinstance(configured_motions, list) or not configured_motions:
+            raise ValueError("Combined SuperArm config does not define hand_motions.")
+        for motion in configured_motions:
+            targets = motion.get("joint_targets") if isinstance(motion, dict) else None
+            if not isinstance(targets, list) or len(targets) != len(hand_joint_names):
+                raise ValueError("Each AmazingHand motion must target every physical hand joint.")
+            hand_motions.append(
+                {
+                    "name": str(motion["name"]),
+                    "label": str(motion["name"]).replace("_", " ").title(),
+                    "code": float(motion["code"]),
+                    "joint_targets": dict(zip(hand_joint_names, map(float, targets), strict=True)),
+                }
+            )
+        motion_codes = {motion["name"]: motion["code"] for motion in hand_motions}
+        if not {"open", "half_close", "close"}.issubset(motion_codes):
+            raise ValueError("Combined SuperArm hand_motions must include open, half_close, and close.")
+        presets = _combined_presets(motion_codes)
+    elif kind == "amazinghand":
         slider_min = float(manual.get("slider_min", 0.0))
         slider_max = float(manual.get("slider_max", 1.2))
         slider_step = float(manual.get("slider_step", 0.01))
@@ -104,17 +161,18 @@ def build_manual_leader_config(record: dict) -> dict[str, Any]:
         slider_step = float(manual.get("slider_step", 0.01))
         presets = _default_manual_leader_presets(len(joint_names))
 
-    sliders = [
-        {
-            "name": joint_name,
-            "label": joint_name,
-            "min": slider_min,
-            "max": slider_max,
-            "step": slider_step,
-            "default": 0.0,
-        }
-        for joint_name in joint_names
-    ]
+    if kind != "superarm_amazinghand":
+        sliders = [
+            {
+                "name": joint_name,
+                "label": joint_name,
+                "min": slider_min,
+                "max": slider_max,
+                "step": slider_step,
+                "default": 0.0,
+            }
+            for joint_name in joint_names
+        ]
     start_request = {
         "leader_port": record.get("leader_port") or "unused",
         "follower_port": record.get("follower_port") or "unused",
@@ -129,7 +187,9 @@ def build_manual_leader_config(record: dict) -> dict[str, Any]:
         "robot_name": record["name"],
         "robot_backend": "isaacsim_rpo_arm",
         "joint_names": joint_names,
+        "physical_joint_names": physical_joint_names,
         "sliders": sliders,
+        "hand_motions": hand_motions,
         "presets": presets,
         "start_endpoint": "/move-arm",
         "action_endpoint": "/send-joint-action",

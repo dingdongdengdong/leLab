@@ -21,8 +21,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
 import yaml
+from pydantic import BaseModel
 
 try:
     from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
@@ -103,6 +103,13 @@ def get_joint_positions_from_robot(robot) -> dict[str, float]:
     Returns:
         Dictionary mapping URDF joint names to radian values
     """
+    get_visualization_joints = getattr(robot, "get_visualization_joints", None)
+    if callable(get_visualization_joints):
+        return {
+            str(name): float(value)
+            for name, value in get_visualization_joints().items()
+        }
+
     try:
         observation = robot.get_observation()
     except AttributeError:
@@ -535,10 +542,13 @@ def handle_send_joint_action(request: JointActionRequest) -> dict[str, Any]:
         return {"success": False, "message": "No active teleoperation session"}
     try:
         sent = current_robot.send_action(request.action)
+        physical_targets = get_joint_positions_from_robot(current_robot)
         return {
             "success": True,
             "sent_action": sent.tolist() if hasattr(sent, "tolist") else sent,
-            "joint_positions": get_joint_positions_from_robot(current_robot),
+            "resolved_logical_action": sent.tolist() if hasattr(sent, "tolist") else sent,
+            "physical_targets": physical_targets,
+            "joint_positions": physical_targets,
             "timestamp": time.time(),
         }
     except Exception as e:

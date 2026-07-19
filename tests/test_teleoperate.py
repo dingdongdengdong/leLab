@@ -54,6 +54,22 @@ def test_get_joint_positions_from_robot_uses_provided_object() -> None:
     assert isinstance(positions, dict)
 
 
+def test_get_joint_positions_uses_physical_viewer_state_for_combined_robot() -> None:
+    from lelab.teleoperate import get_joint_positions_from_robot
+
+    class _CombinedRobot:
+        def get_visualization_joints(self) -> dict[str, float]:
+            return {"joint_rev_1": 0.25, "finger1_motor1": 0.95}
+
+        def get_observation(self) -> dict[str, float]:
+            raise AssertionError("logical policy state must not drive the physical viewer")
+
+    assert get_joint_positions_from_robot(_CombinedRobot()) == {
+        "joint_rev_1": 0.25,
+        "finger1_motor1": 0.95,
+    }
+
+
 def test_start_teleoperation_reports_connection_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
