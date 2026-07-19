@@ -23,13 +23,14 @@ import subprocess
 import sys
 import threading
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import quote
 
-import yaml
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.datastructures import Headers
@@ -49,8 +50,6 @@ from .jobs import (
     job_registry,
 )
 from .manual_leader import build_manual_leader_config
-from .superarm.api import router as superarm_router
-from .superarm.service import service as superarm_service
 
 # Import our custom recording functionality
 from .record import (
@@ -72,6 +71,8 @@ from .rollout import (
     handle_start_inference,
     handle_stop_inference,
 )
+from .superarm.api import router as superarm_router
+from .superarm.service import service as superarm_service
 
 # Import our custom teleoperation functionality
 from .teleoperate import (
@@ -1180,6 +1181,53 @@ def _resolve_robot_config_path(record: dict) -> Path | None:
     return path
 
 
+def _allowlisted_robot_urdf(record: dict) -> tuple[Path, Path]:
+    workspace = Path(record.get("superarm_ws_path") or config._superarm_ws_path()).resolve()
+    raw_path = record.get("urdf_path")
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise HTTPException(status_code=404, detail="Robot does not define a showroom URDF")
+    urdf_path = Path(raw_path)
+    if not urdf_path.is_absolute():
+        urdf_path = workspace / urdf_path
+    urdf_path = urdf_path.resolve()
+    if not urdf_path.is_relative_to(workspace) or not urdf_path.is_file():
+        raise HTTPException(status_code=404, detail="Robot showroom URDF is unavailable")
+    return workspace, urdf_path
+
+
+def _robot_urdf_document(name: str, record: dict) -> tuple[bytes, list[Path]]:
+    workspace, urdf_path = _allowlisted_robot_urdf(record)
+    try:
+        root = ET.parse(urdf_path).getroot()
+    except (ET.ParseError, OSError) as exc:
+        raise HTTPException(status_code=422, detail="Robot showroom URDF is invalid") from exc
+
+    assets: list[Path] = []
+    asset_indices: dict[Path, int] = {}
+    for mesh in root.findall(".//mesh"):
+        filename = mesh.get("filename")
+        if not filename:
+            continue
+        if filename.startswith("file://"):
+            filename = filename.removeprefix("file://")
+        mesh_path = Path(filename)
+        if not mesh_path.is_absolute():
+            mesh_path = urdf_path.parent / mesh_path
+        mesh_path = mesh_path.resolve()
+        if not mesh_path.is_relative_to(workspace) or not mesh_path.is_file():
+            raise HTTPException(
+                status_code=422,
+                detail=f"URDF mesh is missing or outside the SuperArm workspace: {mesh.get('filename')}",
+            )
+        asset_index = asset_indices.get(mesh_path)
+        if asset_index is None:
+            asset_index = len(assets)
+            asset_indices[mesh_path] = asset_index
+            assets.append(mesh_path)
+        mesh.set("filename", f"/robots/{quote(name, safe='')}/assets/{asset_index}")
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True), assets
+
+
 def _default_manual_leader_presets(joint_count: int) -> list[dict[str, Any]]:
     def pad(values: list[float]) -> list[float]:
         padded = values[:joint_count]
@@ -1228,6 +1276,39 @@ def get_robot(name: str):
     if record is None:
         return JSONResponse(status_code=404, content={"status": "error", "message": "Robot not found"})
     return {"status": "success", "robot": _record_with_clean(record)}
+
+
+@app.get("/robots/{name}/urdf")
+def get_robot_urdf(name: str):
+    """Serve an allowlisted record URDF with mesh URLs rewritten to safe endpoints."""
+    if not is_valid_robot_name(name):
+        raise HTTPException(status_code=400, detail="Invalid robot name")
+    record = get_robot_record(name)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Robot not found")
+    document, assets = _robot_urdf_document(name, record)
+    return Response(
+        content=document,
+        media_type="application/xml",
+        headers={
+            "X-LeLab-Robot-Name": name,
+            "X-LeLab-URDF-Mesh-Count": str(len(assets)),
+        },
+    )
+
+
+@app.get("/robots/{name}/assets/{asset_index}")
+def get_robot_urdf_asset(name: str, asset_index: int):
+    """Serve only mesh files referenced by the selected record's allowlisted URDF."""
+    if not is_valid_robot_name(name):
+        raise HTTPException(status_code=400, detail="Invalid robot name")
+    record = get_robot_record(name)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Robot not found")
+    _, assets = _robot_urdf_document(name, record)
+    if asset_index < 0 or asset_index >= len(assets):
+        raise HTTPException(status_code=404, detail="Robot mesh asset not found")
+    return FileResponse(assets[asset_index])
 
 
 @app.get("/manual-leader-config/{name}")

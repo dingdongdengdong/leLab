@@ -101,6 +101,62 @@ def test_manual_leader_config_rejects_so101_records(client: TestClient, tmp_lero
     assert "manual web leader" in response.json()["message"].lower()
 
 
+def test_robot_showroom_serves_only_record_urdf_and_referenced_meshes(
+    client: TestClient, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lelab import server
+
+    workspace = tmp_path / "superarm_ws"
+    mesh_path = workspace / "meshes/arm.stl"
+    urdf_path = workspace / "models/superarm.urdf"
+    mesh_path.parent.mkdir(parents=True)
+    urdf_path.parent.mkdir(parents=True)
+    mesh_path.write_bytes(b"solid arm\nendsolid arm\n")
+    urdf_path.write_text(
+        f"<robot name='superarm'><link name='base'><visual><geometry><mesh filename='{mesh_path}'/></geometry></visual></link></robot>",
+        encoding="utf-8",
+    )
+    record = {
+        "name": "SuperArm + AmazingHand",
+        "superarm_ws_path": str(workspace),
+        "urdf_path": str(urdf_path),
+    }
+    monkeypatch.setattr(server, "get_robot_record", lambda name: record if name == record["name"] else None)
+
+    response = client.get("/robots/SuperArm%20%2B%20AmazingHand/urdf")
+
+    assert response.status_code == 200
+    assert response.headers["x-lelab-urdf-mesh-count"] == "1"
+    assert "/robots/SuperArm%20%2B%20AmazingHand/assets/0" in response.text
+    assert str(mesh_path) not in response.text
+    asset = client.get("/robots/SuperArm%20%2B%20AmazingHand/assets/0")
+    assert asset.status_code == 200
+    assert asset.content == mesh_path.read_bytes()
+    assert client.get("/robots/SuperArm%20%2B%20AmazingHand/assets/1").status_code == 404
+
+
+def test_robot_showroom_rejects_urdf_outside_workspace(
+    client: TestClient, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lelab import server
+
+    workspace = tmp_path / "superarm_ws"
+    outside = tmp_path / "outside.urdf"
+    workspace.mkdir()
+    outside.write_text("<robot name='outside' />", encoding="utf-8")
+    monkeypatch.setattr(
+        server,
+        "get_robot_record",
+        lambda name: {
+            "name": name,
+            "superarm_ws_path": str(workspace),
+            "urdf_path": str(outside),
+        },
+    )
+
+    assert client.get("/robots/unsafe/urdf").status_code == 404
+
+
 def test_unknown_route_returns_404(client: TestClient) -> None:
     response = client.get("/this-does-not-exist")
     assert response.status_code == 404
