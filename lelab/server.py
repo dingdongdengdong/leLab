@@ -1249,7 +1249,7 @@ def _robot_urdf_document(name: str, record: dict) -> tuple[bytes, list[Path]]:
             asset_indices[mesh_path] = asset_index
             assets.append(mesh_path)
         asset_name = quote(mesh_path.name, safe="")
-        mesh.set("filename", f"/robots/{quote(name, safe='')}/assets/{asset_index}/{asset_name}")
+        mesh.set("filename", f"assets/{asset_index}/{asset_name}")
     return ET.tostring(root, encoding="utf-8", xml_declaration=True), assets
 
 
