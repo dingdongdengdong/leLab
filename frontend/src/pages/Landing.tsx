@@ -17,6 +17,11 @@ import { useDatasets } from "@/hooks/useDatasets";
 import { DatasetItem } from "@/lib/replayApi";
 import { CameraConfig } from "@/components/recording/CameraConfiguration";
 import { isHostedSpace } from "@/lib/isHostedSpace";
+import {
+  buildSuperArmLeaderFields,
+  isSuperArmLeaderReady,
+  SuperArmInputMode,
+} from "@/lib/superarmRecording";
 
 const ON_SPACE = isHostedSpace();
 
@@ -45,6 +50,10 @@ const Landing = () => {
   const [resetTimeS, setResetTimeS] = useState(15);
   const [streamingEncoding, setStreamingEncoding] = useState(true);
   const [cameras, setCameras] = useState<CameraConfig[]>([]);
+  const [superarmInputMode, setSuperarmInputMode] =
+    useState<SuperArmInputMode>("manual");
+  const [superarmLeaderPort, setSuperarmLeaderPort] = useState("");
+  const [superarmLeaderConfig, setSuperarmLeaderConfig] = useState("");
 
   const releaseStreamsRef = useRef<(() => void) | null>(null);
 
@@ -149,6 +158,23 @@ const Landing = () => {
       return;
     }
 
+    const isSuperArm = robot.robot_backend === "superarm_mujoco";
+    if (
+      isSuperArm &&
+      !isSuperArmLeaderReady(
+        superarmInputMode,
+        superarmLeaderPort,
+        superarmLeaderConfig,
+      )
+    ) {
+      toast({
+        title: "Missing SO101 leader details",
+        description: "Enter the leader serial port and calibration ID.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const datasetRepoId =
       auth.status === "authenticated"
         ? `${auth.username}/${datasetName}`
@@ -197,11 +223,23 @@ const Landing = () => {
       >,
     );
 
+    const leaderFields = isSuperArm
+      ? buildSuperArmLeaderFields(
+          superarmInputMode,
+          superarmLeaderPort,
+          superarmLeaderConfig,
+        )
+      : {
+          input_mode: "so101" as const,
+          leader_port: robot.leader_port,
+          leader_config: robot.leader_config,
+        };
+
     const recordingConfig = {
       robot_name: robot.name,
-      leader_port: robot.leader_port,
+      leader_port: leaderFields.leader_port,
       follower_port: robot.follower_port,
-      leader_config: robot.leader_config,
+      leader_config: leaderFields.leader_config,
       follower_config: robot.follower_config,
       dataset_repo_id: datasetRepoId,
       single_task: singleTask,
@@ -218,7 +256,7 @@ const Landing = () => {
       superarm_config: robot.superarm_config || undefined,
       superarm_asset_root: robot.superarm_asset_root || undefined,
       mujoco_model_path: robot.mujoco_model_path || undefined,
-      input_mode: robot.robot_backend === "superarm_mujoco" ? "manual" : "so101",
+      input_mode: leaderFields.input_mode,
     };
 
     setShowRecordingModal(false);
@@ -317,6 +355,12 @@ const Landing = () => {
         setStreamingEncoding={setStreamingEncoding}
         cameras={cameras}
         setCameras={setCameras}
+        superarmInputMode={superarmInputMode}
+        setSuperarmInputMode={setSuperarmInputMode}
+        superarmLeaderPort={superarmLeaderPort}
+        setSuperarmLeaderPort={setSuperarmLeaderPort}
+        superarmLeaderConfig={superarmLeaderConfig}
+        setSuperarmLeaderConfig={setSuperarmLeaderConfig}
         onStart={handleStartRecording}
         releaseStreamsRef={releaseStreamsRef}
       />

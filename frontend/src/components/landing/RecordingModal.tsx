@@ -23,6 +23,10 @@ import CameraConfiguration, {
 } from "@/components/recording/CameraConfiguration";
 import { useHfAuth } from "@/contexts/HfAuthContext";
 import { RobotRecord } from "@/hooks/useRobots";
+import {
+  isSuperArmLeaderReady,
+  SuperArmInputMode,
+} from "@/lib/superarmRecording";
 
 interface RecordingModalProps {
   open: boolean;
@@ -42,6 +46,12 @@ interface RecordingModalProps {
   setStreamingEncoding: (value: boolean) => void;
   cameras: CameraConfig[];
   setCameras: (cameras: CameraConfig[]) => void;
+  superarmInputMode: SuperArmInputMode;
+  setSuperarmInputMode: (value: SuperArmInputMode) => void;
+  superarmLeaderPort: string;
+  setSuperarmLeaderPort: (value: string) => void;
+  superarmLeaderConfig: string;
+  setSuperarmLeaderConfig: (value: string) => void;
   onStart: () => void;
   releaseStreamsRef?: React.MutableRefObject<(() => void) | null>;
 }
@@ -64,12 +74,27 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
   setStreamingEncoding,
   cameras,
   setCameras,
+  superarmInputMode,
+  setSuperarmInputMode,
+  superarmLeaderPort,
+  setSuperarmLeaderPort,
+  superarmLeaderConfig,
+  setSuperarmLeaderConfig,
   onStart,
   releaseStreamsRef,
 }) => {
   const { auth } = useHfAuth();
 
-  const canStart = !!robot && robot.is_clean;
+  const isSuperArm = robot?.robot_backend === "superarm_mujoco";
+  const canStart =
+    !!robot &&
+    robot.is_clean &&
+    (!isSuperArm ||
+      isSuperArmLeaderReady(
+        superarmInputMode,
+        superarmLeaderPort,
+        superarmLeaderConfig,
+      ));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -111,11 +136,92 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
                   </AlertDescription>
                 </Alert>
               ) : (
-                <div className="flex items-center gap-2 text-sm">
-                  <CheckCircle className="w-4 h-4 text-green-400" />
-                  <span className="text-slate-200">
-                    Recording with <strong>{robot.name}</strong>
-                  </span>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    <CheckCircle className="w-4 h-4 text-green-400" />
+                    <span className="text-slate-200">
+                      Recording with <strong>{robot.name}</strong>
+                    </span>
+                  </div>
+
+                  {isSuperArm && (
+                    <div className="space-y-3 rounded-lg border border-gray-700 bg-gray-800/60 p-4">
+                      <div className="space-y-1">
+                        <Label className="text-sm font-medium text-gray-200">
+                          SuperArm input
+                        </Label>
+                        <p className="text-xs text-gray-400">
+                          Both inputs produce five arm joints plus one fixed
+                          AmazingHand motion value for LeRobot.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          variant={
+                            superarmInputMode === "manual"
+                              ? "default"
+                              : "outline"
+                          }
+                          aria-pressed={superarmInputMode === "manual"}
+                          onClick={() => setSuperarmInputMode("manual")}
+                        >
+                          Manual Web Leader
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={
+                            superarmInputMode === "so101"
+                              ? "default"
+                              : "outline"
+                          }
+                          aria-pressed={superarmInputMode === "so101"}
+                          onClick={() => setSuperarmInputMode("so101")}
+                        >
+                          SO101 Leader
+                        </Button>
+                      </div>
+
+                      {superarmInputMode === "so101" && (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label
+                              htmlFor="superarmLeaderPort"
+                              className="text-sm text-gray-300"
+                            >
+                              Leader serial port *
+                            </Label>
+                            <Input
+                              id="superarmLeaderPort"
+                              value={superarmLeaderPort}
+                              onChange={(event) =>
+                                setSuperarmLeaderPort(event.target.value)
+                              }
+                              placeholder="/dev/ttyACM0"
+                              className="bg-gray-900 border-gray-700 text-white"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label
+                              htmlFor="superarmLeaderConfig"
+                              className="text-sm text-gray-300"
+                            >
+                              Calibration ID *
+                            </Label>
+                            <Input
+                              id="superarmLeaderConfig"
+                              value={superarmLeaderConfig}
+                              onChange={(event) =>
+                                setSuperarmLeaderConfig(event.target.value)
+                              }
+                              placeholder="so101_leader"
+                              className="bg-gray-900 border-gray-700 text-white"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
