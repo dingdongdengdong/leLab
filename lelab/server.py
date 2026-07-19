@@ -73,6 +73,7 @@ from .rollout import (
 )
 from .superarm.api import router as superarm_router
 from .superarm.service import service as superarm_service
+from .superarm.showroom import align_amazinghand_attachment
 from .superarm_teleoperator import set_manual_recording_action
 
 # Import our custom teleoperation functionality
@@ -1225,6 +1226,9 @@ def _robot_urdf_document(name: str, record: dict) -> tuple[bytes, list[Path]]:
         root = ET.parse(urdf_path).getroot()
     except (ET.ParseError, OSError) as exc:
         raise HTTPException(status_code=422, detail="Robot showroom URDF is invalid") from exc
+
+    if (record.get("robot_backend") or "") == "superarm_mujoco":
+        align_amazinghand_attachment(root)
 
     assets: list[Path] = []
     asset_indices: dict[Path, int] = {}

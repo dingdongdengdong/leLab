@@ -148,7 +148,10 @@ def test_source_arm_urdf_is_browser_loadable(tmp_path: Path, monkeypatch: pytest
     mesh_path.write_bytes(b"solid motor\nendsolid motor\n")
     urdf_path = workspace / "superarm_amazinghand.urdf"
     urdf_path.write_text(
-        f"<robot name='superarm'><link name='base'><visual><geometry><mesh filename='{mesh_path}'/></geometry></visual></link></robot>",
+        f"<robot name='superarm'><link name='base'><visual><geometry><mesh filename='{mesh_path}'/></geometry></visual></link>"
+        "<link name='wrist'/><link name='hand'/><joint name='wrist_adapter_to_amazinghand' type='fixed'>"
+        "<parent link='wrist'/><child link='hand'/><origin xyz='0.005 -0.00014 0.600003' rpy='0 0 0'/>"
+        "</joint></robot>",
         encoding="utf-8",
     )
     monkeypatch.setenv("SUPERARM_URDF_PATH", str(urdf_path))
@@ -156,6 +159,7 @@ def test_source_arm_urdf_is_browser_loadable(tmp_path: Path, monkeypatch: pytest
     urdf = service.source_arm_urdf_xml(workspace)
     assert b"/api/superarm/urdf/meshes/" in urdf
     assert b"/home/" not in urdf
+    assert b'xyz="0 0 0.011753"' in urdf
     mesh = service.source_arm_mesh_path("motor_1.stl", workspace)
     assert mesh.is_file()
 

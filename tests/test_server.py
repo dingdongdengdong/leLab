@@ -129,11 +129,15 @@ def test_robot_showroom_serves_only_record_urdf_and_referenced_meshes(
     urdf_path.parent.mkdir(parents=True)
     mesh_path.write_bytes(b"solid arm\nendsolid arm\n")
     urdf_path.write_text(
-        f"<robot name='superarm'><link name='base'><visual><geometry><mesh filename='{mesh_path}'/></geometry></visual></link></robot>",
+        f"<robot name='superarm'><link name='base'><visual><geometry><mesh filename='{mesh_path}'/></geometry></visual></link>"
+        "<link name='wrist'/><link name='hand'/><joint name='wrist_adapter_to_amazinghand' type='fixed'>"
+        "<parent link='wrist'/><child link='hand'/><origin xyz='0.005 -0.00014 0.600003' rpy='0 0 0'/>"
+        "</joint></robot>",
         encoding="utf-8",
     )
     record = {
         "name": "SuperArm + AmazingHand",
+        "robot_backend": "superarm_mujoco",
         "superarm_asset_root": str(workspace),
         "urdf_path": str(urdf_path),
     }
@@ -145,6 +149,7 @@ def test_robot_showroom_serves_only_record_urdf_and_referenced_meshes(
     assert response.headers["x-lelab-urdf-mesh-count"] == "1"
     asset_url = "/robots/SuperArm%20%2B%20AmazingHand/assets/0/arm.stl"
     assert "assets/0/arm.stl" in response.text
+    assert 'xyz="0 0 0.011753"' in response.text
     assert str(mesh_path) not in response.text
     asset = client.get(asset_url)
     assert asset.status_code == 200
