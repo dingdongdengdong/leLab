@@ -29,6 +29,17 @@ from .mapping import (
 )
 
 
+def configure_superarm_camera(model: Any, data: Any, camera: Any) -> None:
+    """Frame the complete arm-hand assembly instead of a misleading wrist crop."""
+    import mujoco
+
+    camera.type = mujoco.mjtCamera.mjCAMERA_FREE
+    camera.lookat[:] = model.stat.center
+    camera.distance = max(1.05, float(model.stat.extent) * 1.2)
+    camera.azimuth = 135
+    camera.elevation = -15
+
+
 class ArmTransport(ABC):
     @abstractmethod
     def connect(self) -> None: ...
@@ -145,17 +156,8 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
                 self._joint_qpos[name] = int(self._model.jnt_qposadr[joint_id])
             renderer = mujoco.Renderer(self._model, height=480, width=640)
             camera = mujoco.MjvCamera()
-            camera.type = mujoco.mjtCamera.mjCAMERA_FREE
             mujoco.mj_forward(self._model, self._data)
-            hand_body = mujoco.mj_name2id(
-                self._model,
-                mujoco.mjtObj.mjOBJ_BODY,
-                "r_wrist_interface",
-            )
-            camera.lookat[:] = self._data.xpos[hand_body]
-            camera.distance = 0.34
-            camera.azimuth = 135
-            camera.elevation = -15
+            configure_superarm_camera(self._model, self._data, camera)
             self._connected = True
             ready.set()
             next_step = time.monotonic()

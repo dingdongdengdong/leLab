@@ -85,7 +85,7 @@ const RobotConfigManager: React.FC<RobotConfigManagerProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">New controller</p>
-            <h3 className="text-lg font-semibold text-white">SuperArm + AmazingHand</h3>
+            <h3 className="text-lg font-semibold text-white">SuperArm + Hand</h3>
             <p className="text-sm text-slate-300">Full closed-loop MJCF hand on the five-joint source arm. MuJoCo is ready; Isaac Sim stays unchanged.</p>
           </div>
           <Button

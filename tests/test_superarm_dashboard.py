@@ -21,6 +21,7 @@ from lelab.superarm.mapping import (
 )
 from lelab.superarm.programs import ProgramStore
 from lelab.superarm.service import SuperArmService
+from lelab.superarm.transports import configure_superarm_camera
 
 
 def test_calibrated_mujoco_interpolation_and_clamping() -> None:
@@ -98,14 +99,19 @@ def test_sequence_parsing_and_validation(tmp_path: Path) -> None:
         store.save_sequence("bad", {"steps": [{"pose": "home", "hand_speed": 7}]})
 
 
-def test_session_exclusivity_emergency_stop_and_clean_shutdown(tmp_path: Path) -> None:
+def test_session_reconnect_emergency_stop_and_clean_shutdown(tmp_path: Path) -> None:
     workspace = Path(__file__).resolve().parents[3]
     service = SuperArmService(ProgramStore(tmp_path / "programs.yaml"))
     started = service.start_session("mujoco", workspace_root=workspace)
     try:
         assert started["connected"] is True
-        with pytest.raises(RuntimeError, match="already active"):
-            service.start_session("mujoco", workspace_root=workspace)
+        runtime = service.runtime
+        reconnected = service.start_session("mujoco", workspace_root=workspace)
+        assert reconnected["connected"] is True
+        assert reconnected["runtime"] == "mujoco"
+        assert service.runtime is runtime
+        with pytest.raises(RuntimeError, match="mujoco runtime session is already active"):
+            service.start_session("hybrid_serial", workspace_root=workspace)
         assert service.action(arm_rad={"joint_rev_1": 0.2})["accepted"]
         assert service.emergency_stop(True)["emergency_stopped"] is True
         with pytest.raises(RuntimeError, match="emergency stop"):
@@ -125,12 +131,39 @@ def test_session_exclusivity_emergency_stop_and_clean_shutdown(tmp_path: Path) -
         open_pixels = np.asarray(Image.open(io.BytesIO(open_frame)), dtype=np.float32)
         close_pixels = np.asarray(Image.open(io.BytesIO(frame)), dtype=np.float32)
         assert close_pixels.std() > 2.0
-        assert np.abs(close_pixels - open_pixels).mean() > 5.0
+        # The full-assembly camera intentionally shows more arm and less hand than
+        # the old wrist crop, so global pixel difference is smaller but non-zero.
+        assert np.abs(close_pixels - open_pixels).mean() > 0.5
         assert service.telemetry()["state"]["hand"]["finger1_motor2"]["target"] == pytest.approx(-1.10)
         assert len(service.telemetry()["state"]["hand"]) == 8
     finally:
         assert service.disconnect()["connected"] is False
         assert not any(thread.name == "superarm-mujoco" and thread.is_alive() for thread in __import__("threading").enumerate())
+
+
+def test_source_arm_urdf_is_browser_loadable(tmp_path: Path) -> None:
+    workspace = Path(__file__).resolve().parents[3]
+    service = SuperArmService(ProgramStore(tmp_path / "programs.yaml"))
+    urdf = service.source_arm_urdf_xml(workspace)
+    assert b"/api/superarm/urdf/meshes/" in urdf
+    assert b"/home/" not in urdf
+    mesh = service.source_arm_mesh_path("motor_1.stl", workspace)
+    assert mesh.is_file()
+
+
+def test_mujoco_camera_frames_the_complete_assembly(tmp_path: Path) -> None:
+    workspace = Path(__file__).resolve().parents[3]
+    service = SuperArmService(ProgramStore(tmp_path / "programs.yaml"))
+    model_path = service.model_path(workspace)
+    import mujoco
+
+    model = mujoco.MjModel.from_xml_path(str(model_path))
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    camera = mujoco.MjvCamera()
+    configure_superarm_camera(model, data, camera)
+    assert np.allclose(camera.lookat, model.stat.center)
+    assert camera.distance >= model.stat.extent * 1.2
 
 
 def test_live_command_throttle_and_timeout(tmp_path: Path) -> None:
@@ -186,7 +219,11 @@ def test_api_namespace_is_registered() -> None:
     assert "/api/superarm/session" in paths
     assert "/api/superarm/action" in paths
     assert "/api/superarm/video" in paths
+    assert "/api/superarm/urdf" in paths
     assert "/ws/superarm" in paths
     response = TestClient(app).get("/api/superarm/capabilities")
     assert response.status_code == 200
     assert response.json()["runtimes"]["isaac_sim"]["enabled"] is False
+    session = TestClient(app).get("/api/superarm/session")
+    assert session.status_code == 200
+    assert session.json()["connected"] is False

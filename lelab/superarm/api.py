@@ -10,7 +10,7 @@ from typing import Literal
 
 import yaml
 from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from .mapping import ARM_JOINTS, ARM_MAX_RAD, ARM_MIN_RAD, UI_FINGERS
@@ -92,6 +92,25 @@ def capabilities(workspace_root: str | None = None):
     return service.capabilities(workspace_root)
 
 
+@router.get("/api/superarm/urdf")
+def source_arm_urdf(workspace_root: str | None = None):
+    try:
+        return Response(
+            content=service.source_arm_urdf_xml(workspace_root),
+            media_type="application/xml",
+        )
+    except Exception as exc:
+        raise api_error(exc) from exc
+
+
+@router.get("/api/superarm/urdf/meshes/{filename}")
+def source_arm_mesh(filename: str):
+    try:
+        return FileResponse(service.source_arm_mesh_path(filename))
+    except Exception as exc:
+        raise api_error(exc) from exc
+
+
 @router.post("/api/superarm/session")
 def start_session(request: SessionRequest):
     try:
@@ -102,6 +121,11 @@ def start_session(request: SessionRequest):
         )
     except Exception as exc:
         raise api_error(exc) from exc
+
+
+@router.get("/api/superarm/session")
+def session_status():
+    return service.status()
 
 
 @router.delete("/api/superarm/session")

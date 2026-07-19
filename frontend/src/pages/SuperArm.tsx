@@ -24,6 +24,7 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import SuperArmUrdfViewer from "@/components/SuperArmUrdfViewer";
 import { Switch } from "@/components/ui/switch";
 import { useApi } from "@/contexts/ApiContext";
 import { useToast } from "@/hooks/use-toast";
@@ -90,6 +91,7 @@ type SequenceStep =
 interface RuntimeStatus {
   connected: boolean;
   emergency_stopped: boolean;
+  runtime: Runtime | null;
 }
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -152,6 +154,14 @@ const SuperArm = () => {
   useEffect(() => {
     request<{ runtimes: { hybrid_serial: { serial_ports: string[] } } }>("/api/superarm/capabilities")
       .then((data) => setAvailablePorts(data.runtimes.hybrid_serial.serial_ports || []))
+      .catch((error) => setStatusText(error.message));
+    request<RuntimeStatus>("/api/superarm/session")
+      .then((status) => {
+        setConnected(status.connected);
+        setEmergencyStopped(status.emergency_stopped);
+        if (status.runtime) setRuntime(status.runtime);
+        setStatusText(status.connected ? `Connected: ${status.runtime}` : "Disconnected");
+      })
       .catch((error) => setStatusText(error.message));
     refreshPrograms().catch(() => undefined);
   }, [request, refreshPrograms]);
@@ -361,6 +371,16 @@ const SuperArm = () => {
     return telemetry.serial_hand?.[chartChannel] || telemetry.hand?.[chartChannel] || {};
   }, [telemetry, chartChannel]);
 
+  const urdfJointPositions = useMemo(
+    () => Object.fromEntries(
+      ARM_JOINTS.map((joint) => {
+        const measured = telemetry.arm?.[joint]?.position;
+        return [joint, typeof measured === "number" ? measured : arm[joint]];
+      }),
+    ),
+    [arm, telemetry.arm],
+  );
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <header className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur">
@@ -370,7 +390,7 @@ const SuperArm = () => {
               <ArrowLeft />
             </Button>
             <div>
-              <h1 className="text-xl font-semibold">SuperArm + AmazingHand</h1>
+              <h1 className="text-xl font-semibold">SuperArm + Hand</h1>
               <p className="text-xs text-cyan-400">Source arm · official closed-loop MJCF · 13 actuators</p>
             </div>
           </div>
@@ -419,12 +439,27 @@ const SuperArm = () => {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-slate-800 bg-black aspect-[4/3]">
-            {connected ? (
-              <img src={`${baseUrl}/api/superarm/video`} alt="Live MuJoCo SuperArm and AmazingHand" className="h-full w-full object-contain" />
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center text-slate-500"><Hand className="mb-3 h-16 w-16" />Connect MuJoCo to start the 640×480 stream</div>
-            )}
+          <div className="grid gap-4 2xl:grid-cols-2">
+            <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+              <div className="border-b border-slate-800 px-4 py-3">
+                <h2 className="font-semibold">LeLab URDF showroom</h2>
+                <p className="text-xs text-slate-400">Browser-side kinematic reference using LeLab’s standard Three.js viewer.</p>
+              </div>
+              <SuperArmUrdfViewer jointPositions={urdfJointPositions} />
+            </div>
+            <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+              <div className="border-b border-slate-800 px-4 py-3">
+                <h2 className="font-semibold">MuJoCo physics</h2>
+                <p className="text-xs text-slate-400">Server-rendered closed-loop hand and full arm assembly at 15 FPS.</p>
+              </div>
+              <div className="aspect-[4/3] bg-black">
+                {connected ? (
+                  <img src={`${baseUrl}/api/superarm/video`} alt="Live MuJoCo SuperArm and Hand" className="h-full w-full object-contain" />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center text-slate-500"><Hand className="mb-3 h-16 w-16" />Connect MuJoCo to start the 640×480 stream</div>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
@@ -442,7 +477,7 @@ const SuperArm = () => {
 
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <h2 className="mr-auto font-semibold">AmazingHand</h2>
+              <h2 className="mr-auto font-semibold">Hand</h2>
               <span className="text-sm">Global speed</span>
               <input type="range" min="1" max="6" value={globalSpeed} onChange={(event) => {
                 const next = Number(event.target.value); setGlobalSpeed(next); setSpeeds(Object.fromEntries(FINGERS.map((finger) => [finger, [next, next]])) as Record<FingerName, Pair>);

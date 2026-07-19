@@ -7,8 +7,10 @@ import queue
 import sys
 import threading
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from .mapping import ARM_JOINTS, UI_FINGERS
 from .programs import ProgramStore
@@ -29,6 +31,8 @@ class SuperArmService:
         self._sequence_thread: threading.Thread | None = None
         self._sequence_stop = threading.Event()
         self._sequence_pause = threading.Event()
+        self._model_assets: dict[str, Any] | None = None
+        self._model_workspace: Path | None = None
 
     def capabilities(self, workspace_root: str | Path | None = None) -> dict[str, Any]:
         errors: list[str] = []
@@ -77,26 +81,81 @@ class SuperArmService:
                 return resolved
         return None
 
-    def _model_path(self, workspace_root: str | Path | None) -> Path:
+    def _prepare_model_assets(
+        self,
+        workspace_root: str | Path | None,
+    ) -> dict[str, Any]:
         workspace = self.resolve_workspace(workspace_root)
         if workspace is None:
             raise RuntimeError("Could not locate SuperArm workspace with robot_arm_hand_package.zip")
-        generator_path = workspace / "isaacsim_test/mujoco_models/generate_superarm_amazinghand.py"
-        spec = importlib.util.spec_from_file_location("superarm_mujoco_generator", generator_path)
-        if spec is None or spec.loader is None:
-            raise RuntimeError(f"Could not load model generator: {generator_path}")
-        module = importlib.util.module_from_spec(spec)
-        inserted = str(workspace) not in sys.path
-        if inserted:
-            sys.path.insert(0, str(workspace))
-        try:
-            spec.loader.exec_module(module)
-        finally:
+        with self._lock:
+            cached_model = (
+                Path(self._model_assets["model_path"])
+                if self._model_assets is not None
+                else None
+            )
+            if (
+                self._model_workspace == workspace
+                and cached_model is not None
+                and cached_model.is_file()
+            ):
+                return self._model_assets
+            generator_path = workspace / "isaacsim_test/mujoco_models/generate_superarm_amazinghand.py"
+            spec = importlib.util.spec_from_file_location(
+                "superarm_mujoco_generator",
+                generator_path,
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError(f"Could not load model generator: {generator_path}")
+            module = importlib.util.module_from_spec(spec)
+            inserted = str(workspace) not in sys.path
             if inserted:
-                sys.path.remove(str(workspace))
-        output = Path.home() / ".cache/huggingface/lerobot/amazinghand/model"
-        result = module.generate_combined_model(workspace_root=workspace, output_dir=output)
-        return Path(result["model_path"])
+                sys.path.insert(0, str(workspace))
+            try:
+                spec.loader.exec_module(module)
+            finally:
+                if inserted:
+                    sys.path.remove(str(workspace))
+            output = Path.home() / ".cache/huggingface/lerobot/amazinghand/model"
+            self._model_assets = module.generate_combined_model(
+                workspace_root=workspace,
+                output_dir=output,
+            )
+            self._model_workspace = workspace
+            return self._model_assets
+
+    def model_path(self, workspace_root: str | Path | None = None) -> Path:
+        return Path(self._prepare_model_assets(workspace_root)["model_path"])
+
+    def source_arm_urdf_xml(
+        self,
+        workspace_root: str | Path | None = None,
+    ) -> bytes:
+        assets = self._prepare_model_assets(workspace_root)
+        output = Path(assets["model_path"]).parent
+        root = ET.parse(output / assets["sanitized_arm_urdf"]).getroot()
+        for mesh in root.findall(".//mesh"):
+            filename = mesh.get("filename")
+            if filename:
+                mesh.set(
+                    "filename",
+                    f"/api/superarm/urdf/meshes/{quote(Path(filename).name)}",
+                )
+        ET.indent(root, space="  ")
+        return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+    def source_arm_mesh_path(
+        self,
+        filename: str,
+        workspace_root: str | Path | None = None,
+    ) -> Path:
+        if Path(filename).name != filename:
+            raise ValueError("Invalid source-arm mesh filename")
+        assets = self._prepare_model_assets(workspace_root)
+        path = Path(assets["model_path"]).parent / "assets" / "arm" / filename
+        if not path.is_file():
+            raise FileNotFoundError(f"Source-arm mesh is missing: {filename}")
+        return path
 
     def start_session(
         self,
@@ -109,8 +168,13 @@ class SuperArmService:
             raise ValueError("Runtime must be mujoco or hybrid_serial")
         with self._lock:
             if self.runtime is not None:
-                raise RuntimeError("A SuperArm runtime session is already active")
-            model_path = self._model_path(workspace_root)
+                if self.mode == mode and self.runtime.connected:
+                    return self.status()
+                raise RuntimeError(
+                    f"A SuperArm {self.mode} runtime session is already active; "
+                    f"disconnect it before starting {mode}"
+                )
+            model_path = self.model_path(workspace_root)
             runtime = MuJoCoRuntime(
                 model_path,
                 state_callback=lambda state: self.publish(
