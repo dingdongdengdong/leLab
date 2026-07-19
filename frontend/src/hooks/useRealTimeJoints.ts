@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { URDFViewerElement } from "@/lib/urdfViewerHelpers";
 import { useApi } from "@/contexts/ApiContext";
+import { extractVisualPose, MjcfVisualPose } from "@/lib/mjcfVisualLayer";
 
 interface JointData {
   type: "joint_update";
   joints: Record<string, number>;
   timestamp: number;
+  visual_pose?: unknown;
 }
 
 interface UseRealTimeJointsProps {
   viewerRef: React.RefObject<URDFViewerElement>;
   enabled?: boolean;
   websocketUrl?: string;
+  shouldApplyJoint?: (jointName: string) => boolean;
 }
 
 const INITIAL_RECONNECT_DELAY_MS = 1000;
@@ -21,6 +24,7 @@ export const useRealTimeJoints = ({
   viewerRef,
   enabled = true,
   websocketUrl,
+  shouldApplyJoint = () => true,
 }: UseRealTimeJointsProps) => {
   const { wsBaseUrl } = useApi();
   const finalWebSocketUrl = websocketUrl || `${wsBaseUrl}/ws/joint-data`;
@@ -31,6 +35,7 @@ export const useRealTimeJoints = ({
   const intentionallyClosedRef = useRef(false);
   const [isConnected, setIsConnected] = useState(false);
   const [jointNames, setJointNames] = useState<string[]>([]);
+  const [visualPose, setVisualPose] = useState<MjcfVisualPose | null>(null);
 
   const updateJointValues = useCallback(
     (joints: Record<string, number>) => {
@@ -38,6 +43,7 @@ export const useRealTimeJoints = ({
       const viewer = viewerRef.current;
       if (!viewer || typeof viewer.setJointValue !== "function") return;
       Object.entries(joints).forEach(([jointName, value]) => {
+        if (!shouldApplyJoint(jointName)) return;
         try {
           viewer.setJointValue(jointName, value);
         } catch (error) {
@@ -45,7 +51,7 @@ export const useRealTimeJoints = ({
         }
       });
     },
-    [viewerRef]
+    [shouldApplyJoint, viewerRef]
   );
 
   useEffect(() => {
@@ -80,6 +86,8 @@ export const useRealTimeJoints = ({
           const data = JSON.parse(event.data) as JointData;
           if (data.type === "joint_update" && data.joints) {
             updateJointValues(data.joints);
+            const pose = extractVisualPose(data);
+            if (pose) setVisualPose(pose);
           }
         } catch (error) {
           console.error("Error parsing WebSocket message:", error);
@@ -128,5 +136,5 @@ export const useRealTimeJoints = ({
     };
   }, [enabled, finalWebSocketUrl, updateJointValues]);
 
-  return { isConnected, jointNames };
+  return { isConnected, jointNames, visualPose };
 };

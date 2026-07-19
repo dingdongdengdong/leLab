@@ -45,7 +45,7 @@ export const loadMeshFile = (
     case "glb":
       new GLTFLoader(manager).load(
         path,
-        (result) => done(result.scene),
+        (result) => done(result?.scene || null),
         undefined,
         (err) => done(null, err as Error)
       );
@@ -61,7 +61,7 @@ export const loadMeshFile = (
     case "dae":
       new ColladaLoader(manager).load(
         path,
-        (result) => done(result.scene),
+        (result) => done(result?.scene || null),
         undefined,
         (err) => done(null, err as Error)
       );

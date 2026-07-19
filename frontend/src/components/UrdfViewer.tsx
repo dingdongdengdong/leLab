@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import URDFManipulator from "urdf-loader/src/urdf-manipulator-element.js";
 import { useUrdf } from "@/hooks/useUrdf";
 import { useRealTimeJoints } from "@/hooks/useRealTimeJoints";
+import { useMjcfVisualLayer } from "@/hooks/useMjcfVisualLayer";
+import { isAmazingHandJoint } from "@/lib/mjcfVisualLayer";
 import {
   createUrdfViewer,
   setupMeshLoader,
@@ -24,12 +26,6 @@ if (typeof window !== "undefined" && !customElements.get("urdf-viewer")) {
   customElements.define("urdf-viewer", URDFManipulator);
 }
 import * as THREE from "three";
-
-// Extend the interface for the URDF viewer element to include background property
-interface UrdfViewerElement extends HTMLElement {
-  background?: string;
-  setJointValue?: (jointName: string, value: number) => void;
-}
 
 interface UrdfViewerProps {
   robotName?: string;
@@ -49,16 +45,38 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({
 
   const cleanupAnimationRef = useRef<(() => void) | null>(null);
   const viewerRef = useRef<URDFViewerElement | null>(null);
+  const overlayActiveRef = useRef(false);
   const hasInitializedRef = useRef<boolean>(false);
+  const [robotRevision, setRobotRevision] = useState(0);
+  const handJointNamesRef = useRef<string[]>([]);
 
   // Real-time joint updates via WebSocket
-  const { isConnected: isWebSocketConnected, jointNames: liveJointNames } = useRealTimeJoints({
+  const shouldApplyJoint = useCallback(
+    (jointName: string) => !overlayActiveRef.current || !isAmazingHandJoint(jointName, handJointNamesRef.current),
+    [],
+  );
+  const {
+    isConnected: isWebSocketConnected,
+    jointNames: liveJointNames,
+    visualPose,
+  } = useRealTimeJoints({
     viewerRef,
     enabled: true,
+    shouldApplyJoint,
   });
   const useRecordModel = showroomUrdf && Boolean(robotName);
   const useSo101Model = isDefaultModel && !useRecordModel;
   const liveJointCoverage = physicalJointNames.filter((name) => liveJointNames.includes(name)).length;
+  const { isActive: exactHandActive, handJointNames } = useMjcfVisualLayer({
+    viewerRef,
+    manifestUrl: useRecordModel
+      ? `/robots/${encodeURIComponent(robotName || "")}/mujoco-visual-manifest`
+      : undefined,
+    visualPose,
+    robotRevision,
+  });
+  overlayActiveRef.current = exactHandActive;
+  handJointNamesRef.current = handJointNames;
 
   // Add state for custom URDF path
   const [customUrdfPath, setCustomUrdfPath] = useState<string | null>(null);
@@ -254,6 +272,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({
     // Setup animation event handler for the default model or when hasAnimation is true
     const onModelProcessed = () => {
       hasInitializedRef.current = true;
+      setRobotRevision((revision) => revision + 1);
       if ("setJointValue" in viewer) {
         // Clear any existing animation
         if (cleanupAnimationRef.current) {
@@ -333,6 +352,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({
               {physicalJointNames.length > 0 && liveJointCoverage !== physicalJointNames.length && (
                 <div className="mt-1">Runtime/URDF joint mismatch</div>
               )}
+              <div className="mt-1">{exactHandActive ? "Exact MuJoCo hand visuals" : "URDF hand fallback"}</div>
             </div>
           )}
         </div>

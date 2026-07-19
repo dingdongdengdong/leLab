@@ -35,6 +35,7 @@ import {
   keyboardFocusProtected,
   reorderSequenceStep,
 } from "@/lib/superarmControl";
+import { extractVisualPose, MjcfVisualPose } from "@/lib/mjcfVisualLayer";
 
 type FingerName = "pointer" | "middle" | "ring" | "thumb";
 type Pair = [number, number];
@@ -117,6 +118,7 @@ const SuperArm = () => {
   const [liveMode, setLiveMode] = useState(false);
   const [selectedFinger, setSelectedFinger] = useState<FingerName>("ring");
   const [telemetry, setTelemetry] = useState<RuntimeTelemetry>({});
+  const [visualPose, setVisualPose] = useState<MjcfVisualPose | null>(null);
   const [history, setHistory] = useState<TelemetryPoint[]>([]);
   const [chartChannel, setChartChannel] = useState("joint_rev_1");
   const [poses, setPoses] = useState<Record<string, SavedPose>>({});
@@ -172,6 +174,8 @@ const SuperArm = () => {
     socket.current = ws;
     ws.onmessage = (event) => {
       const message = JSON.parse(event.data);
+      const nextVisualPose = extractVisualPose(message);
+      if (nextVisualPose) setVisualPose(nextVisualPose);
       if (typeof message.connected === "boolean") setConnected(message.connected);
       if (typeof message.emergency_stopped === "boolean") setEmergencyStopped(message.emergency_stopped);
       if (message.error) setStatusText(message.error);
@@ -444,7 +448,7 @@ const SuperArm = () => {
                 <h2 className="font-semibold">LeLab URDF showroom</h2>
                 <p className="text-xs text-slate-400">Browser-side kinematic reference using LeLab’s standard Three.js viewer.</p>
               </div>
-              <SuperArmUrdfViewer jointPositions={urdfJointPositions} />
+              <SuperArmUrdfViewer jointPositions={urdfJointPositions} visualPose={visualPose} />
             </div>
             <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
               <div className="border-b border-slate-800 px-4 py-3">

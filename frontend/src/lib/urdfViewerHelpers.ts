@@ -26,7 +26,9 @@ export interface URDFViewerElement extends HTMLElement {
     target: Vector3;
     update: () => void;
   };
-  robot: Object3D;
+  robot: Object3D & {
+    links?: Record<string, Object3D>;
+  };
   redraw: () => void;
   up: string;
   scene: Scene;

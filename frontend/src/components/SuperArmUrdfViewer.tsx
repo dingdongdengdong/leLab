@@ -9,6 +9,8 @@ import {
   setupModelLoading,
   URDFViewerElement,
 } from "@/lib/urdfViewerHelpers";
+import { useMjcfVisualLayer } from "@/hooks/useMjcfVisualLayer";
+import { filterScalarJoints, MjcfVisualPose } from "@/lib/mjcfVisualLayer";
 
 if (typeof window !== "undefined" && !customElements.get("urdf-viewer")) {
   customElements.define("urdf-viewer", URDFManipulator);
@@ -16,6 +18,7 @@ if (typeof window !== "undefined" && !customElements.get("urdf-viewer")) {
 
 interface SuperArmUrdfViewerProps {
   jointPositions: Record<string, number>;
+  visualPose?: MjcfVisualPose | null;
 }
 
 const fitRobotToView = (viewer: URDFViewerElement) => {
@@ -37,11 +40,18 @@ const fitRobotToView = (viewer: URDFViewerElement) => {
   viewer.redraw();
 };
 
-const SuperArmUrdfViewer = ({ jointPositions }: SuperArmUrdfViewerProps) => {
+const SuperArmUrdfViewer = ({ jointPositions, visualPose }: SuperArmUrdfViewerProps) => {
   const { baseUrl } = useApi();
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<URDFViewerElement | null>(null);
   const [status, setStatus] = useState("Loading source-arm URDF…");
+  const [robotRevision, setRobotRevision] = useState(0);
+  const { isActive, handJointNames } = useMjcfVisualLayer({
+    viewerRef,
+    manifestUrl: `${baseUrl}/api/superarm/mujoco-visual-manifest`,
+    visualPose,
+    robotRevision,
+  });
 
   const resolveApiUrl = useCallback(
     (path: string) => {
@@ -60,7 +70,8 @@ const SuperArmUrdfViewer = ({ jointPositions }: SuperArmUrdfViewerProps) => {
 
     const onProcessed = () => {
       fitRobotToView(viewer);
-      setStatus("LeLab URDF reference · live joint mirror");
+      setRobotRevision((revision) => revision + 1);
+      setStatus("LeLab URDF reference · loading exact hand…");
     };
     const onError = () => setStatus("URDF reference unavailable");
     viewer.addEventListener("urdf-processed", onProcessed);
@@ -85,11 +96,17 @@ const SuperArmUrdfViewer = ({ jointPositions }: SuperArmUrdfViewerProps) => {
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer) return;
-    Object.entries(jointPositions).forEach(([joint, value]) => {
+    Object.entries(filterScalarJoints(jointPositions, isActive, handJointNames)).forEach(([joint, value]) => {
       viewer.setJointValue(joint, value);
     });
     viewer.redraw();
-  }, [jointPositions]);
+  }, [handJointNames, isActive, jointPositions]);
+
+  useEffect(() => {
+    if (robotRevision > 0) {
+      setStatus(isActive ? "LeLab URDF arm · exact MuJoCo hand" : "LeLab URDF reference · hand fallback");
+    }
+  }, [isActive, robotRevision]);
 
   return (
     <div className="relative h-full min-h-[360px] overflow-hidden bg-black">
