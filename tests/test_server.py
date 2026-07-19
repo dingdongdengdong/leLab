@@ -143,11 +143,13 @@ def test_robot_showroom_serves_only_record_urdf_and_referenced_meshes(
 
     assert response.status_code == 200
     assert response.headers["x-lelab-urdf-mesh-count"] == "1"
-    assert "/robots/SuperArm%20%2B%20AmazingHand/assets/0" in response.text
+    asset_url = "/robots/SuperArm%20%2B%20AmazingHand/assets/0/arm.stl"
+    assert asset_url in response.text
     assert str(mesh_path) not in response.text
-    asset = client.get("/robots/SuperArm%20%2B%20AmazingHand/assets/0")
+    asset = client.get(asset_url)
     assert asset.status_code == 200
     assert asset.content == mesh_path.read_bytes()
+    assert client.get("/robots/SuperArm%20%2B%20AmazingHand/assets/0/wrong.stl").status_code == 404
     assert client.get("/robots/SuperArm%20%2B%20AmazingHand/assets/1").status_code == 404
 
 

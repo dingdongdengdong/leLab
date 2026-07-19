@@ -1248,7 +1248,8 @@ def _robot_urdf_document(name: str, record: dict) -> tuple[bytes, list[Path]]:
             asset_index = len(assets)
             asset_indices[mesh_path] = asset_index
             assets.append(mesh_path)
-        mesh.set("filename", f"/robots/{quote(name, safe='')}/assets/{asset_index}")
+        asset_name = quote(mesh_path.name, safe="")
+        mesh.set("filename", f"/robots/{quote(name, safe='')}/assets/{asset_index}/{asset_name}")
     return ET.tostring(root, encoding="utf-8", xml_declaration=True), assets
 
 
@@ -1322,7 +1323,8 @@ def get_robot_urdf(name: str):
 
 
 @app.get("/robots/{name}/assets/{asset_index}")
-def get_robot_urdf_asset(name: str, asset_index: int):
+@app.get("/robots/{name}/assets/{asset_index}/{asset_name}")
+def get_robot_urdf_asset(name: str, asset_index: int, asset_name: str | None = None):
     """Serve only mesh files referenced by the selected record's allowlisted URDF."""
     if not is_valid_robot_name(name):
         raise HTTPException(status_code=400, detail="Invalid robot name")
@@ -1332,7 +1334,10 @@ def get_robot_urdf_asset(name: str, asset_index: int):
     _, assets = _robot_urdf_document(name, record)
     if asset_index < 0 or asset_index >= len(assets):
         raise HTTPException(status_code=404, detail="Robot mesh asset not found")
-    return FileResponse(assets[asset_index])
+    asset = assets[asset_index]
+    if asset_name is not None and asset_name != asset.name:
+        raise HTTPException(status_code=404, detail="Robot mesh asset not found")
+    return FileResponse(asset)
 
 
 @app.get("/manual-leader-config/{name}")
