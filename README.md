@@ -20,9 +20,10 @@
 
 ### SuperArm + AmazingHand
 
-This branch adds a MuJoCo-first source-arm + official AmazingHand dashboard at
-`/superarm`. See [SUPERARM_MUJOCO.md](SUPERARM_MUJOCO.md) for runtime boundaries,
-API endpoints, program storage, and serial safety behavior.
+This branch adds the custom SuperArm + AmazingHand to the normal LeLab and
+LeRobot workflow. Its policy action is five arm joints plus one fixed grasp.
+The original LeLab pages are primary; `/superarm` is an additional MuJoCo
+diagnostic dashboard. See [SUPERARM_MUJOCO.md](SUPERARM_MUJOCO.md).
 
 ## Quick Start
 
@@ -67,7 +68,11 @@ A page will automatically open in your browser and you are ready to go.
 
 ## SuperArm MuJoCo + LeRobot backend
 
-This branch adds the custom SuperArm + AmazingHand as a direct MuJoCo-backed LeRobot robot. The policy action remains six-dimensional: five arm joints plus one fixed AmazingHand motion. See [SUPERARM_MUJOCO.md](SUPERARM_MUJOCO.md).
+This branch adds the custom SuperArm + AmazingHand as a direct MuJoCo-backed
+LeRobot robot inside the official LeLab application. The policy action remains
+six-dimensional: five arm joints plus one fixed AmazingHand motion. The normal
+LeLab workflow is primary and `/superarm` is an additional diagnostic page.
+See [SUPERARM_MUJOCO.md](SUPERARM_MUJOCO.md).
 
 ## Resources
 

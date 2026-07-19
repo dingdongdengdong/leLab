@@ -1,68 +1,94 @@
-# SuperArm + AmazingHand dashboard
+# SuperArm + AmazingHand on LeLab, MuJoCo, and LeRobot
 
-LeLab exposes `/superarm`, a unified controller for the five-joint source arm
-and the official closed-loop AmazingHand MJCF model.
+This is an extension of the official
+[`huggingface/leLab`](https://github.com/huggingface/leLab) application. The
+normal LeLab workflow remains primary; `/superarm` is an additional MuJoCo
+diagnostic dashboard.
 
-## Runtime boundaries
+## Website split
 
-- **MuJoCo** is the default complete v1 runtime.
-- **Hybrid serial** keeps the arm simulated and controls an eight-servo physical
-  AmazingHand through `rustypot` while mirroring commands into MuJoCo.
-- A real source-arm transport is not implemented in v1; the `ArmTransport`
-  interface is the replacement point.
+1. **Normal LeLab workflow (primary)**
+   - the landing page selects `SuperArm + AmazingHand` when the built-in record
+     is available;
+   - Teleoperation uses LeLab's original Three.js URDF showroom;
+   - Manual Web Leader, SO101 leader input, recording, training, and inference
+     use LeRobot interfaces;
+   - leaving Teleoperation stops the active runtime so re-entry can connect
+     again.
+2. **MuJoCo diagnostics (additional)**
+   - `/superarm` renders the complete MuJoCo assembly and telemetry;
+   - it retains pose, sequence, emergency-stop, and optional hand-serial tools;
+   - it is not a replacement website or a second LeRobot action contract.
 
-The AmazingHand is not converted to the simplified URDF hand. The source arm's
-URDF is converted to MJCF, then the official `r_wrist_interface` body, eight
-position actuators, and 20 equality constraints are copied from
-`hand_mjcf/robot.xml` into the combined model.
+## Canonical LeRobot action
 
-## Install and run
+Policy, dataset, manual input, and SO101 adaptation all meet at exactly six
+features, in this order:
+
+```text
+joint_rev_1.pos
+joint_rev_2.pos
+joint_rev_3.pos
+joint_rev_4.pos
+joint_rev_5.pos
+amazinghand_motion.pos
+```
+
+`amazinghand_motion.pos` is quantized to fixed motions: `0.0` open, `0.5`
+half-close, or `1.0` close. The robot expands that one value into the eight
+physical AmazingHand actuator targets. SO101's five arm features map to the
+five SuperArm joints, and `gripper.pos` maps to the same fixed motion value.
+
+The action is therefore **6D**, not the 13 physical joints and not eight
+independent hand commands.
+
+## Focused runtime inputs
+
+This branch runs without any alternate simulator backend. Supply the custom
+assets explicitly:
 
 ```bash
-uv sync --extra superarm
+export SUPERARM_ASSET_ROOT="$HOME/.cache/huggingface/lerobot/superarm/showroom"
+export SUPERARM_URDF_PATH="$SUPERARM_ASSET_ROOT/superarm_amazinghand.urdf"
+export SUPERARM_MUJOCO_MODEL_PATH="$HOME/.cache/huggingface/lerobot/amazinghand/model/superarm_amazinghand.xml"
 MUJOCO_GL=egl lelab
 ```
 
-Open `http://localhost:8000/superarm`. The model generator locates the SuperArm
-workspace through `robot_arm_hand_package.zip`; pass `workspace_root` to the
-session API if it is not discoverable.
+The URDF and every referenced mesh must stay under `SUPERARM_ASSET_ROOT`; the
+showroom endpoint allowlists only those files. LeLab preserves mesh file
+extensions for Three.js and corrects the known
+`wrist_adapter_to_amazinghand` display transform to the transform used by the
+attached MuJoCo assembly. The input asset itself is not modified.
 
-Generated portable model inputs are cached under
-`~/.cache/huggingface/lerobot/amazinghand/model/`. Programs are atomically
-persisted at `~/.cache/huggingface/lerobot/amazinghand/programs.yaml`.
+## Manual dataset check
 
-On first use, bundled AmazingHandControl defaults from inspected revision
-`2a59fd8` are translated from Ring/Middle/Pointer/Thumb arrays into named hand
-fields.
+Select **Manual Web Leader**, start a local recording with the
+`superarm_mujoco` backend, and send six-value actions through
+`POST /recording-action`. A valid episode has `action` and
+`observation.state` arrays of width six; the sixth value is one of
+`0.0`, `0.5`, or `1.0`.
 
-## API
+The same schema is camera-ready for ACT/VLA policies. A state-only recording
+proves the control and dataset boundary, not camera acquisition or a trained
+policy rollout.
+
+## MuJoCo dashboard API
 
 - `GET /api/superarm/capabilities`
 - `POST|DELETE /api/superarm/session`
 - `PUT /api/superarm/action`
 - `POST /api/superarm/emergency-stop`
 - CRUD under `/api/superarm/poses` and `/api/superarm/sequences`
-- sequence play, pause, and stop endpoints
-- `GET /api/superarm/video` (640×480 MJPEG at 15 FPS)
-- `WS /ws/superarm` (10 Hz state, telemetry, runtime, and program events)
+- `GET /api/superarm/video`
+- `WS /ws/superarm`
 
-## Safety
+The official closed-loop AmazingHand model retains eight position actuators
+and 20 equality constraints. Its `motor2` hinge direction is negative for
+flexion: open maps to `-0.02 rad` and 110 degrees maps to `-1.10 rad`.
 
-Commands are rejected while disconnected or emergency-stopped. Live commands
-are capped at 20 Hz and stop after ten seconds without input. Serial mode scans
-`/dev/ttyACM*` and `/dev/ttyUSB*`, defaults to `/dev/ttyACM0` at 1,000,000 baud,
-requires all servo IDs 1–8, preserves even-servo inversion, and disables torque
-on stop, emergency stop, disconnect, or stale telemetry.
+## Validation boundary
 
-Physical serial hardware was not attached during this implementation. Do not
-claim hardware validation until the opt-in eight-servo discovery, motion,
-telemetry, timeout, and torque-disable checks pass on the actual hand.
-
-
-## Official MJCF motor direction
-
-UI degrees remain positive and hardware-compatible. In the official MJCF,
-`motor2` uses the opposite hinge direction for flexion: open maps to `-0.02 rad`
-and 110 degrees maps to `-1.10 rad`. Applying both motors as positive radians
-mostly spreads the linkage sideways and is covered by the fingertip-motion
-regression test.
+MuJoCo, browser control, URDF rendering, and state-only LeRobot recording can
+be validated without hardware. Physical source-arm motion, the eight-servo
+hand transport, real cameras, and a trained ACT/VLA rollout remain unverified
+until the corresponding devices and policy are present.
