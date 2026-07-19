@@ -21,6 +21,8 @@ import time
 from pathlib import Path
 from typing import Literal
 
+import yaml
+
 logger = logging.getLogger(__name__)
 
 RobotSide = Literal["leader", "follower"]
@@ -335,10 +337,13 @@ _ROBOT_STRING_FIELDS = (
     "robot_backend",
     "isaacsim_config",
     "superarm_ws_path",
+    "urdf_path",
+    "purpose",
 )
 _ROBOT_LIST_FIELDS = ("cameras",)
 _BUILTIN_SUPERARM_SOURCE_NAME = "SuperArm Source Arm"
 _BUILTIN_SUPERARM_AMAZINGHAND_NAME = "SuperArm AmazingHand"
+_BUILTIN_SUPERARM_COMBINED_NAME = "SuperArm + AmazingHand"
 
 
 def _superarm_ws_path() -> str:
@@ -392,6 +397,38 @@ def _builtin_superarm_source_arm_record() -> dict | None:
     }
 
 
+def _builtin_superarm_combined_record() -> dict | None:
+    superarm_ws = _superarm_ws_path()
+    config_path = Path(superarm_ws) / "isaacsim_test/lerobot/source_arm_amazinghand.yaml"
+    if not config_path.exists():
+        return None
+    try:
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    relative_urdf = raw.get("combined_urdf_path")
+    if not isinstance(relative_urdf, str) or not relative_urdf.strip():
+        return None
+    urdf_path = Path(relative_urdf)
+    if not urdf_path.is_absolute():
+        urdf_path = Path(superarm_ws) / urdf_path
+    if not urdf_path.exists():
+        return None
+    return {
+        "name": _BUILTIN_SUPERARM_COMBINED_NAME,
+        "leader_port": "unused",
+        "follower_port": "unused",
+        "leader_config": "manual_or_so101",
+        "follower_config": str(config_path),
+        "robot_backend": "isaacsim_rpo_arm",
+        "isaacsim_config": str(config_path),
+        "superarm_ws_path": superarm_ws,
+        "urdf_path": str(urdf_path),
+        "purpose": "primary",
+        "cameras": [],
+    }
+
+
 def _builtin_superarm_amazinghand_record() -> dict | None:
     superarm_ws = _superarm_ws_path()
     hand_config = os.path.join(
@@ -440,6 +477,9 @@ def _empty_record(name: str) -> dict:
 
 def get_robot_record(name: str) -> dict | None:
     """Return the robot record by name, or None if missing."""
+    builtin = _builtin_superarm_combined_record()
+    if name == _BUILTIN_SUPERARM_COMBINED_NAME and builtin is not None:
+        return builtin
     builtin = _builtin_superarm_source_arm_record()
     if name == _BUILTIN_SUPERARM_SOURCE_NAME and builtin is not None:
         return builtin
@@ -465,6 +505,9 @@ def get_robot_record(name: str) -> dict | None:
 def list_robot_records() -> list[dict]:
     """Return all robot records on disk plus available built-in backends."""
     records = []
+    builtin = _builtin_superarm_combined_record()
+    if builtin is not None:
+        records.append(builtin)
     builtin = _builtin_superarm_source_arm_record()
     if builtin is not None:
         records.append(builtin)
@@ -477,7 +520,11 @@ def list_robot_records() -> list[dict]:
         if not filename.endswith(".json"):
             continue
         name = os.path.splitext(filename)[0]
-        if name in (_BUILTIN_SUPERARM_SOURCE_NAME, _BUILTIN_SUPERARM_AMAZINGHAND_NAME):
+        if name in (
+            _BUILTIN_SUPERARM_COMBINED_NAME,
+            _BUILTIN_SUPERARM_SOURCE_NAME,
+            _BUILTIN_SUPERARM_AMAZINGHAND_NAME,
+        ):
             continue
         record = get_robot_record(name)
         if record is not None:

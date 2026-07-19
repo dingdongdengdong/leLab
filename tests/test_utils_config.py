@@ -191,6 +191,35 @@ def test_list_robot_records_includes_builtin_superarm_source_arm(tmp_path: Path,
     assert builtin["isaacsim_config"] == str(source_config)
     assert cfg.is_robot_record_clean(builtin) is True
 
+
+def test_list_robot_records_prioritizes_combined_superarm_when_assets_exist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lelab.utils import config as cfg
+
+    superarm_ws = tmp_path / "superarm_ws"
+    config_path = superarm_ws / "isaacsim_test/lerobot/source_arm_amazinghand.yaml"
+    urdf_path = superarm_ws / "isaacsim_test/outputs/combined/superarm_amazinghand.urdf"
+    config_path.parent.mkdir(parents=True)
+    urdf_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        "_type: isaacsim_rpo_arm\n"
+        "joint_names: [joint_rev_1, joint_rev_2, joint_rev_3, joint_rev_4, joint_rev_5, amazinghand_motion]\n"
+        "combined_urdf_path: isaacsim_test/outputs/combined/superarm_amazinghand.urdf\n",
+        encoding="utf-8",
+    )
+    urdf_path.write_text("<robot name='superarm_amazinghand' />\n", encoding="utf-8")
+    monkeypatch.setenv("SUPERARM_WS_PATH", str(superarm_ws))
+
+    records = cfg.list_robot_records()
+
+    assert records[0]["name"] == "SuperArm + AmazingHand"
+    assert records[0]["follower_config"] == str(config_path)
+    assert records[0]["urdf_path"] == str(urdf_path)
+    assert records[0]["purpose"] == "primary"
+    assert cfg.get_robot_record("SuperArm + AmazingHand") == records[0]
+    assert cfg.is_robot_record_clean(records[0]) is True
+
 def test_setup_calibration_files_copies_configs(
     tmp_lerobot_home: Path,
 ) -> None:
