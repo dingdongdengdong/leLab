@@ -221,9 +221,8 @@ def create_record_config(request: RecordingRequest) -> RecordConfig:
 
 
 def _create_superarm_record_config(request: RecordingRequest) -> RecordConfig:
-    from .superarm_teleoperator import SuperArmTeleoperatorConfig
-
     from .superarm.robot import SuperArmMujocoRobotConfig
+    from .superarm_teleoperator import SuperArmTeleoperatorConfig
 
     asset_root = Path(request.superarm_asset_root or Path.cwd())
     config_path = Path(request.superarm_config or request.follower_config)

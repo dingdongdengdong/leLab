@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-
 CANONICAL_FEATURES = [
     "joint_rev_1.pos",
     "joint_rev_2.pos",

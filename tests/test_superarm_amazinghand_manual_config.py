@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import importlib
-from pathlib import Path
-
 
 HAND_JOINTS = [
     f"finger{finger}_motor{motor}"
