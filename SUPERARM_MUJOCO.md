@@ -61,6 +61,16 @@ extensions for Three.js and corrects the known
 `wrist_adapter_to_amazinghand` display transform to the transform used by the
 attached MuJoCo assembly. The input asset itself is not modified.
 
+### Joint 5 motor-cover alignment
+
+The generated asset originally placed `joint_rev_5` between `motor_5` and
+`arm_link3b`, retaining a 25 mm fixed shell offset as the rotation pivot. That
+caused the cover to move away from the motor. LeLab corrects both served URDF
+and runtime MJCF non-destructively: `joint_rev_5` rotates
+`arm_link2b -> motor_5` at `0.02 0 0.05` around `0 0 -1`, while
+`motor_5 -> arm_link3b` remains fixed. The configured source files are not
+rewritten.
+
 ## Recording input check
 
 The normal LeLab recording modal exposes both supported control sources.
