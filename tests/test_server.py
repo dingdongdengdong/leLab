@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import uuid
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -130,6 +131,11 @@ def test_robot_showroom_serves_only_record_urdf_and_referenced_meshes(
     mesh_path.write_bytes(b"solid arm\nendsolid arm\n")
     urdf_path.write_text(
         f"<robot name='superarm'><link name='base'><visual><geometry><mesh filename='{mesh_path}'/></geometry></visual></link>"
+        "<link name='arm_link2b'/><link name='motor_5'/><link name='arm_link3b'/>"
+        "<joint name='joint_fix_43' type='fixed'><parent link='arm_link2b'/><child link='motor_5'/>"
+        "<origin xyz='0.02 0 0.05' rpy='0 0 0'/></joint>"
+        "<joint name='joint_rev_5' type='continuous'><parent link='motor_5'/><child link='arm_link3b'/>"
+        "<origin xyz='0 0.025 0.00175' rpy='0 0 0'/><axis xyz='0 0 1'/></joint>"
         "<link name='wrist'/><link name='hand'/><joint name='wrist_adapter_to_amazinghand' type='fixed'>"
         "<parent link='wrist'/><child link='hand'/><origin xyz='0.005 -0.00014 0.600003' rpy='0 0 0'/>"
         "</joint></robot>",
@@ -150,6 +156,11 @@ def test_robot_showroom_serves_only_record_urdf_and_referenced_meshes(
     asset_url = "/robots/SuperArm%20%2B%20AmazingHand/assets/0/arm.stl"
     assert "assets/0/arm.stl" in response.text
     assert 'xyz="0 0 0.011753"' in response.text
+    served_root = ET.fromstring(response.content)
+    served_joints = {joint.get("name"): joint for joint in served_root.findall("joint")}
+    assert served_joints["joint_rev_5"].find("child").get("link") == "motor_5"
+    assert served_joints["joint_rev_5"].find("axis").get("xyz") == "0 0 -1"
+    assert served_joints["joint_fix_28"].find("child").get("link") == "arm_link3b"
     assert str(mesh_path) not in response.text
     asset = client.get(asset_url)
     assert asset.status_code == 200

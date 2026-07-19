@@ -160,6 +160,23 @@ def test_session_reconnect_emergency_stop_and_clean_shutdown(tmp_path: Path) -> 
     try:
         assert started["connected"] is True
         runtime = service.runtime
+        import mujoco
+
+        joint_id = mujoco.mj_name2id(runtime._model, mujoco.mjtObj.mjOBJ_JOINT, "joint_rev_5")
+        assert np.allclose(runtime._model.jnt_axis[joint_id], [0, 0, -1])
+        motor_mesh = mujoco.mj_name2id(runtime._model, mujoco.mjtObj.mjOBJ_MESH, "motor_5")
+        shell_mesh = mujoco.mj_name2id(runtime._model, mujoco.mjtObj.mjOBJ_MESH, "arm_link3b")
+        motor_geom = next(
+            geom_id
+            for geom_id in range(runtime._model.ngeom)
+            if runtime._model.geom_dataid[geom_id] == motor_mesh
+        )
+        shell_geom = next(
+            geom_id
+            for geom_id in range(runtime._model.ngeom)
+            if runtime._model.geom_dataid[geom_id] == shell_mesh
+        )
+        assert runtime._model.geom_bodyid[motor_geom] == runtime._model.geom_bodyid[shell_geom]
         reconnected = service.start_session("mujoco", workspace_root=workspace)
         assert reconnected["connected"] is True
         assert reconnected["runtime"] == "mujoco"
