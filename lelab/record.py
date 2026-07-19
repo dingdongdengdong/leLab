@@ -15,9 +15,11 @@
 import logging
 import re
 import shutil
+import sys
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
@@ -86,6 +88,10 @@ class RecordingRequest(BaseModel):
     streaming_encoding: bool = True
     cameras: dict = {}
     test_mode: bool = False  # Skip robot connection for testing
+    robot_backend: str = "so101"
+    isaacsim_config: str | None = None
+    superarm_ws_path: str | None = None
+    input_mode: str = "so101"
 
 
 class UploadRequest(BaseModel):
@@ -159,6 +165,9 @@ def _build_camera_configs(cameras: dict, default_backend) -> dict:
 
 def create_record_config(request: RecordingRequest) -> RecordConfig:
     """Create a RecordConfig from the recording request"""
+    if request.robot_backend == "isaacsim_rpo_arm":
+        return _create_superarm_record_config(request)
+
     # Setup calibration files
     leader_config_name, follower_config_name = setup_calibration_files(
         request.leader_config, request.follower_config
@@ -209,6 +218,60 @@ def create_record_config(request: RecordingRequest) -> RecordConfig:
     )
 
     return record_config
+
+
+def _create_superarm_record_config(request: RecordingRequest) -> RecordConfig:
+    from .superarm_teleoperator import SuperArmTeleoperatorConfig
+
+    superarm_ws = Path(request.superarm_ws_path or "/workspaces/superarm_ws")
+    if not superarm_ws.exists() and superarm_ws == Path("/workspaces/superarm_ws"):
+        superarm_ws = Path(__file__).resolve().parents[2]
+    lerobot_dir = superarm_ws / "isaacsim_test/lerobot"
+    if str(lerobot_dir) not in sys.path:
+        sys.path.insert(0, str(lerobot_dir))
+    from isaacsim_rpo_arm_robot import IsaacSimRpoArmConfig
+
+    config_path = Path(request.isaacsim_config or request.follower_config)
+    if not config_path.is_absolute():
+        config_path = superarm_ws / config_path
+    import yaml
+
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    raw.pop("_type", None)
+    raw.pop("manual_leader", None)
+    robot_config = IsaacSimRpoArmConfig(**raw)
+    teleop_config = SuperArmTeleoperatorConfig(
+        id=f"superarm_{request.input_mode}",
+        source=request.input_mode,
+        port=request.leader_port,
+        leader_id=request.leader_config or "superarm_so101",
+        superarm_ws_path=str(superarm_ws),
+        arm_mapping=list(raw.get("so101_leader_mapping") or []),
+        arm_limits=dict(raw.get("arm_limits") or {}),
+        gripper_feature=str(raw.get("so101_gripper_feature") or "gripper.pos"),
+        motion_hysteresis=float(raw.get("motion_hysteresis", 0.05)),
+    )
+    dataset_config = DatasetRecordConfig(
+        repo_id=request.dataset_repo_id,
+        single_task=request.single_task,
+        num_episodes=request.num_episodes,
+        episode_time_s=request.episode_time_s,
+        reset_time_s=request.reset_time_s,
+        fps=request.fps,
+        video=request.video,
+        push_to_hub=request.push_to_hub,
+        tags=with_lelab_tag(request.tags) if request.push_to_hub else None,
+        private=request.private,
+        streaming_encoding=request.streaming_encoding,
+    )
+    return RecordConfig(
+        robot=robot_config,
+        teleop=teleop_config,
+        dataset=dataset_config,
+        resume=request.resume,
+        display_data=False,
+        play_sounds=False,
+    )
 
 
 def handle_start_recording(request: RecordingRequest) -> dict[str, Any]:
@@ -600,7 +663,12 @@ def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDatase
     global current_phase, phase_start_time, current_episode, saved_episodes
 
     robot = make_robot_from_config(cfg.robot)
-    teleop = make_teleoperator_from_config(cfg.teleop) if cfg.teleop is not None else None
+    if cfg.teleop is not None and cfg.teleop.type == "superarm_input":
+        from .superarm_teleoperator import SuperArmTeleoperator
+
+        teleop = SuperArmTeleoperator(cfg.teleop)
+    else:
+        teleop = make_teleoperator_from_config(cfg.teleop) if cfg.teleop is not None else None
 
     teleop_action_processor, robot_action_processor, robot_observation_processor = make_default_processors()
 

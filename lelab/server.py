@@ -73,6 +73,7 @@ from .rollout import (
 )
 from .superarm.api import router as superarm_router
 from .superarm.service import service as superarm_service
+from .superarm_teleoperator import set_manual_recording_action
 
 # Import our custom teleoperation functionality
 from .teleoperate import (
@@ -1159,6 +1160,29 @@ def get_robot_config(robot_type: RobotSideLiteral, available_configs: str = ""):
     saved_config = config.get_saved_robot_config(robot_type)
     default_config = config.get_default_robot_config(robot_type, available_configs_list)
     return {"status": "success", "saved_config": saved_config, "default_config": default_config}
+
+
+@app.post("/recording-action")
+def set_recording_action(body: JointActionRequest):
+    """Update the six-control browser teleoperator used by an active recording."""
+    from . import record as recording_module
+
+    active_config = recording_module.recording_config
+    if (
+        not recording_module.recording_active
+        or active_config is None
+        or active_config.robot_backend != "isaacsim_rpo_arm"
+        or active_config.input_mode != "manual"
+    ):
+        return JSONResponse(
+            status_code=409,
+            content={"success": False, "message": "No manual SuperArm recording is active"},
+        )
+    try:
+        resolved = set_manual_recording_action(body.action)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"success": False, "message": str(exc)})
+    return {"success": True, "resolved_logical_action": resolved}
 
 
 # ============================================================================

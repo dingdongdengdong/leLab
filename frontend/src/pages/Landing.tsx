@@ -198,6 +198,7 @@ const Landing = () => {
     );
 
     const recordingConfig = {
+      robot_name: robot.name,
       leader_port: robot.leader_port,
       follower_port: robot.follower_port,
       leader_config: robot.leader_config,
@@ -213,6 +214,10 @@ const Landing = () => {
       resume: false,
       streaming_encoding: streamingEncoding,
       cameras: cameraDict,
+      robot_backend: robot.robot_backend || "so101",
+      isaacsim_config: robot.isaacsim_config || undefined,
+      superarm_ws_path: robot.superarm_ws_path || undefined,
+      input_mode: robot.robot_backend === "isaacsim_rpo_arm" ? "manual" : "so101",
     };
 
     setShowRecordingModal(false);

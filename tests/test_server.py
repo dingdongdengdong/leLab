@@ -157,6 +157,37 @@ def test_robot_showroom_rejects_urdf_outside_workspace(
     assert client.get("/robots/unsafe/urdf").status_code == 404
 
 
+def test_recording_action_rejects_when_manual_superarm_recording_is_idle(client: TestClient) -> None:
+    response = client.post("/recording-action", json={"action": [0.0] * 6})
+
+    assert response.status_code == 409
+    assert "no manual superarm recording" in response.json()["message"].lower()
+
+
+def test_recording_action_quantizes_manual_superarm_motion(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lelab import record
+
+    request = record.RecordingRequest(
+        leader_port="unused",
+        follower_port="unused",
+        leader_config="manual",
+        follower_config="unused",
+        dataset_repo_id="local/test",
+        single_task="test",
+        robot_backend="isaacsim_rpo_arm",
+        input_mode="manual",
+    )
+    monkeypatch.setattr(record, "recording_active", True)
+    monkeypatch.setattr(record, "recording_config", request)
+
+    response = client.post("/recording-action", json={"action": [0.1, -0.2, 0.3, -0.4, 0.5, 0.77]})
+
+    assert response.status_code == 200
+    assert response.json()["resolved_logical_action"]["amazinghand_motion.pos"] == 1.0
+
+
 def test_unknown_route_returns_404(client: TestClient) -> None:
     response = client.get("/this-does-not-exist")
     assert response.status_code == 404

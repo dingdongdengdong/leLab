@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 interface RecordingConfig {
+  robot_name?: string;
   leader_port: string;
   follower_port: string;
   leader_config: string;
@@ -52,6 +53,22 @@ interface RecordingConfig {
   push_to_hub: boolean;
   resume: boolean;
   streaming_encoding: boolean;
+  robot_backend?: string;
+  isaacsim_config?: string;
+  superarm_ws_path?: string;
+  input_mode?: "manual" | "so101";
+}
+
+interface ManualRecordingConfig {
+  sliders: Array<{
+    name: string;
+    label: string;
+    min: number;
+    max: number;
+    step: number;
+    default: number;
+  }>;
+  hand_motions: Array<{ name: string; label: string; code: number }>;
 }
 
 type Phase = "preparing" | "recording" | "resetting" | "completed";
@@ -98,6 +115,34 @@ const Recording = () => {
   const warningFiredForPhaseRef = useRef<{ phase: Phase | null; episode: number | null; tick: number }>({ phase: null, episode: null, tick: 0 });
   // Guards against React StrictMode double-invocation of the start effect.
   const startInitiatedRef = useRef(false);
+  const [manualConfig, setManualConfig] = useState<ManualRecordingConfig | null>(null);
+  const [manualValues, setManualValues] = useState<number[]>([]);
+  const [manualActionBusy, setManualActionBusy] = useState(false);
+
+  useEffect(() => {
+    if (
+      recordingConfig?.robot_backend !== "isaacsim_rpo_arm" ||
+      recordingConfig.input_mode !== "manual" ||
+      !recordingConfig.robot_name
+    ) return;
+    let cancelled = false;
+    fetchWithHeaders(
+      `${baseUrl}/manual-leader-config/${encodeURIComponent(recordingConfig.robot_name)}`
+    )
+      .then((response) => response.json())
+      .then((data) => {
+        if (cancelled || data.status !== "success") return;
+        setManualConfig(data);
+        setManualValues([
+          ...data.sliders.map((slider: ManualRecordingConfig["sliders"][number]) => slider.default),
+          data.hand_motions[0]?.code ?? 0,
+        ]);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUrl, fetchWithHeaders, recordingConfig]);
 
   const toggleMute = useCallback(() => {
     setMutedState((prev) => {
@@ -339,6 +384,27 @@ const Recording = () => {
     }
   }, [backendStatus, baseUrl, fetchWithHeaders, toast]);
 
+  const sendManualRecordingAction = useCallback(async (action: number[]) => {
+    setManualActionBusy(true);
+    try {
+      const response = await fetchWithHeaders(`${baseUrl}/recording-action`, {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || "Action rejected");
+      setManualValues(action);
+    } catch (error) {
+      toast({
+        title: "Manual action failed",
+        description: error instanceof Error ? error.message : "Action rejected",
+        variant: "destructive",
+      });
+    } finally {
+      setManualActionBusy(false);
+    }
+  }, [baseUrl, fetchWithHeaders, toast]);
+
   const requestStopRecording = useCallback(() => {
     if (!backendStatus?.available_controls.stop_recording) return;
     setShowStopConfirm(true);
@@ -551,6 +617,60 @@ const Recording = () => {
               }}
             />
           </div>
+
+          {manualConfig && (
+            <div className="mb-8 space-y-3 rounded-lg border border-cyan-800/60 bg-cyan-950/20 p-4">
+              <div>
+                <h2 className="font-semibold text-cyan-200">Manual SuperArm input</h2>
+                <p className="text-xs text-gray-400">Five arm radians plus one fixed AmazingHand motion are recorded as the 6D action.</p>
+              </div>
+              {manualConfig.sliders.map((slider, index) => (
+                <label key={slider.name} className="block text-xs text-gray-300">
+                  <span className="mb-1 flex justify-between">
+                    <span>{slider.label}</span>
+                    <span className="font-mono">{(manualValues[index] ?? slider.default).toFixed(2)}</span>
+                  </span>
+                  <input
+                    type="range"
+                    className="w-full accent-cyan-500"
+                    min={slider.min}
+                    max={slider.max}
+                    step={slider.step}
+                    value={manualValues[index] ?? slider.default}
+                    onChange={(event) => {
+                      const value = Number(event.target.value);
+                      setManualValues((current) => current.map((item, itemIndex) => itemIndex === index ? value : item));
+                    }}
+                  />
+                </label>
+              ))}
+              <div className="flex flex-wrap gap-2">
+                {manualConfig.hand_motions.map((motion) => (
+                  <Button
+                    key={motion.name}
+                    size="sm"
+                    variant="outline"
+                    disabled={manualActionBusy}
+                    className="border-cyan-700 bg-black text-white"
+                    onClick={() => void sendManualRecordingAction([
+                      ...manualValues.slice(0, manualConfig.sliders.length),
+                      motion.code,
+                    ])}
+                  >
+                    {motion.label}
+                  </Button>
+                ))}
+                <Button
+                  size="sm"
+                  disabled={manualActionBusy}
+                  className="bg-cyan-600 text-white hover:bg-cyan-500"
+                  onClick={() => void sendManualRecordingAction(manualValues)}
+                >
+                  Send 6D action
+                </Button>
+              </div>
+            </div>
+          )}
 
           <Button
             onClick={handleExitEarly}

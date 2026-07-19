@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 
@@ -119,3 +121,91 @@ def test_build_camera_configs_skips_non_opencv_type() -> None:
     configs = _build_camera_configs(cameras, Cv2Backends.ANY)
 
     assert configs == {}
+
+
+def test_create_record_config_uses_six_control_superarm_robot_and_manual_teleoperator() -> None:
+    import lelab.record as record
+
+    workspace = Path(__file__).resolve().parents[3]
+    config_path = workspace / "isaacsim_test/lerobot/source_arm_amazinghand.yaml"
+    request = record.RecordingRequest(
+        leader_port="unused",
+        follower_port="unused",
+        leader_config="manual",
+        follower_config=str(config_path),
+        isaacsim_config=str(config_path),
+        superarm_ws_path=str(workspace),
+        robot_backend="isaacsim_rpo_arm",
+        input_mode="manual",
+        dataset_repo_id="local/superarm_test",
+        single_task="test the fixed grasp",
+        video=False,
+    )
+
+    config = record.create_record_config(request)
+
+    from lerobot.robots import make_robot_from_config
+    from lerobot.utils.feature_utils import hw_to_dataset_features
+
+    robot = make_robot_from_config(config.robot)
+    assert list(robot.action_features) == [
+        "joint_rev_1.pos",
+        "joint_rev_2.pos",
+        "joint_rev_3.pos",
+        "joint_rev_4.pos",
+        "joint_rev_5.pos",
+        "amazinghand_motion.pos",
+    ]
+    assert config.teleop.type == "superarm_input"
+    assert config.teleop.source == "manual"
+    action_feature = hw_to_dataset_features(robot.action_features, "action", False)["action"]
+    observation_feature = hw_to_dataset_features(
+        robot.observation_features, "observation", False
+    )["observation.state"]
+    assert action_feature["shape"] == (6,)
+    assert observation_feature["shape"] == (6,)
+    assert action_feature["names"] == list(robot.action_features)
+
+
+def test_create_record_config_keeps_so101_mapping_before_dataset_boundary() -> None:
+    import lelab.record as record
+
+    workspace = Path(__file__).resolve().parents[3]
+    config_path = workspace / "isaacsim_test/lerobot/source_arm_amazinghand.yaml"
+    request = record.RecordingRequest(
+        leader_port="/dev/ttyACM0",
+        follower_port="unused",
+        leader_config="leader_calibration",
+        follower_config=str(config_path),
+        isaacsim_config=str(config_path),
+        superarm_ws_path=str(workspace),
+        robot_backend="isaacsim_rpo_arm",
+        input_mode="so101",
+        dataset_repo_id="local/superarm_so101_test",
+        single_task="test SO101 mapping",
+        video=False,
+    )
+
+    config = record.create_record_config(request)
+
+    assert config.teleop.source == "so101"
+    assert config.teleop.port == "/dev/ttyACM0"
+    assert len(config.teleop.arm_mapping) == 5
+    assert config.teleop.gripper_feature == "gripper.pos"
+
+
+def test_manual_superarm_teleoperator_quantizes_sixth_action() -> None:
+    from lelab.superarm_teleoperator import (
+        SuperArmTeleoperator,
+        SuperArmTeleoperatorConfig,
+        set_manual_recording_action,
+    )
+
+    teleop = SuperArmTeleoperator(SuperArmTeleoperatorConfig(id="test", source="manual"))
+    teleop.connect()
+    resolved = set_manual_recording_action([0.1, -0.2, 0.3, -0.4, 0.5, 0.77])
+
+    assert resolved["amazinghand_motion.pos"] == 1.0
+    assert teleop.get_action() == resolved
+    assert len(teleop.action_features) == 6
+    teleop.disconnect()
