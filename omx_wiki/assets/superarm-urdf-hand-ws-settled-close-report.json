@@ -1,0 +1,38 @@
+{
+  "start_success": true,
+  "joint_count": 13,
+  "finger_motor2": {
+    "finger1_motor2": 1.0999588263838176,
+    "finger2_motor2": 1.0999632271282145,
+    "finger3_motor2": 1.0998969772344818,
+    "finger4_motor2": 1.0997584550298083
+  },
+  "finger_motor1": {
+    "finger1_motor1": 0.9499388510558252,
+    "finger2_motor1": 0.9500071614394916,
+    "finger3_motor1": 0.9498522740630877,
+    "finger4_motor1": 0.949726990602974
+  },
+  "all_motor2_positive": true,
+  "all_motor1_close": true,
+  "last_message": {
+    "type": "joint_update",
+    "joints": {
+      "joint_rev_1": -3.212978297774381e-06,
+      "joint_rev_2": -0.014667903308314797,
+      "joint_rev_3": 0.0006290026757958305,
+      "joint_rev_4": -0.013882561436368209,
+      "joint_rev_5": 0.0001832405077453139,
+      "finger1_motor1": 0.9499388510558252,
+      "finger1_motor2": 1.0999588263838176,
+      "finger2_motor1": 0.9500071614394916,
+      "finger2_motor2": 1.0999632271282145,
+      "finger3_motor1": 0.9498522740630877,
+      "finger3_motor2": 1.0998969772344818,
+      "finger4_motor1": 0.949726990602974,
+      "finger4_motor2": 1.0997584550298083
+    },
+    "timestamp": 1784472992.58086,
+    "robot_backend": "superarm_mujoco"
+  }
+}

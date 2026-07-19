@@ -1,0 +1,27 @@
+{
+  "full_gif": "artifacts/urdf_hand_showroom_gif/superarm-urdf-hand-open-half-close.gif",
+  "closeup_gif": "artifacts/urdf_hand_showroom_gif/superarm-urdf-hand-open-half-close-closeup.gif",
+  "source_frames": [
+    "artifacts/urdf_hand_showroom_gif/open_live.png",
+    "artifacts/urdf_hand_showroom_gif/half_live.png",
+    "artifacts/urdf_hand_showroom_gif/close_live.png",
+    "artifacts/urdf_hand_showroom_gif/open_live.png"
+  ],
+  "crop_box_xyxy": [
+    250,
+    300,
+    460,
+    610
+  ],
+  "open_close_diff_bbox": [
+    311,
+    332,
+    403,
+    587
+  ],
+  "open_close_mean_abs_diff_rgb": [
+    0.48043576388888887,
+    0.4825277777777778,
+    0.4541467013888889
+  ]
+}
