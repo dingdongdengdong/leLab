@@ -27,12 +27,27 @@ interface ManualLeaderPreset {
   action: number[];
 }
 
+interface HandMotion {
+  name: string;
+  label: string;
+  code: number;
+  joint_targets: Record<string, number>;
+}
+
+interface ActionResult {
+  resolved_logical_action?: number[] | Record<string, number>;
+  physical_targets?: Record<string, number>;
+  joint_positions?: Record<string, number>;
+}
+
 interface ManualLeaderConfig {
   status: string;
   robot_name: string;
   robot_backend: string;
   joint_names: string[];
+  physical_joint_names: string[];
   sliders: ManualLeaderSlider[];
+  hand_motions: HandMotion[];
   presets: ManualLeaderPreset[];
   start_endpoint: string;
   action_endpoint: string;
@@ -40,7 +55,7 @@ interface ManualLeaderConfig {
   start_request: Record<string, unknown>;
 }
 
-const DEFAULT_ROBOT = "SuperArm Source Arm";
+const DEFAULT_ROBOT = "SuperArm + AmazingHand";
 
 const formatValue = (value: number): string => value.toFixed(2);
 
@@ -55,6 +70,7 @@ const ManualLeaderPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [lastSent, setLastSent] = useState<number[] | null>(null);
+  const [lastResult, setLastResult] = useState<ActionResult | null>(null);
   const connectedRef = useRef(false);
   const configRef = useRef<ManualLeaderConfig | null>(null);
 
@@ -79,7 +95,9 @@ const ManualLeaderPage: React.FC = () => {
         if (cancelled) return;
         setConfig(data);
         configRef.current = data;
-        setValues(data.sliders.map((slider: ManualLeaderSlider) => slider.default));
+        const armDefaults = data.sliders.map((slider: ManualLeaderSlider) => slider.default);
+        const defaultMotion = data.hand_motions?.[0]?.code;
+        setValues(defaultMotion === undefined ? armDefaults : [...armDefaults, defaultMotion]);
       } catch (error) {
         if (cancelled) return;
         toast({
@@ -175,6 +193,7 @@ const ManualLeaderPage: React.FC = () => {
       }
       setValues(action);
       setLastSent(action);
+      setLastResult(data);
       toast({
         title: "Slider action sent",
         description: action.map(formatValue).join(", "),
@@ -192,6 +211,11 @@ const ManualLeaderPage: React.FC = () => {
 
   const updateValue = (index: number, value: number) => {
     setValues((current) => current.map((v, i) => (i === index ? value : v)));
+  };
+
+  const selectHandMotion = (motion: HandMotion) => {
+    const armValues = values.slice(0, config?.sliders.length ?? 0);
+    void sendAction([...armValues, motion.code]);
   };
 
   const goBack = async () => {
@@ -230,8 +254,32 @@ const ManualLeaderPage: React.FC = () => {
                 <div className="grid gap-2 text-sm text-gray-300 sm:grid-cols-3">
                   <div>Robot: <span className="text-white">{config.robot_name}</span></div>
                   <div>Backend: <span className="text-white">{config.robot_backend}</span></div>
-                  <div>Joints: <span className="text-white">{config.joint_names.length}</span></div>
+                  <div>Policy controls: <span className="text-white">{config.joint_names.length}</span></div>
                 </div>
+
+                {config.hand_motions.length > 0 && (
+                  <div className="space-y-2 rounded-lg border border-cyan-800/60 bg-cyan-950/20 p-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-cyan-200">AmazingHand fixed motion</h3>
+                      <p className="text-xs text-gray-400">
+                        One logical control selects a complete eight-joint hand pose.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {config.hand_motions.map((motion) => (
+                        <Button
+                          key={motion.name}
+                          variant="outline"
+                          disabled={!connected || busy}
+                          className="border-cyan-700 bg-gray-950 text-white"
+                          onClick={() => selectHandMotion(motion)}
+                        >
+                          {motion.label} ({formatValue(motion.code)})
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={connect} disabled={connected || busy} className="bg-yellow-500 text-white hover:bg-yellow-600">
@@ -288,9 +336,26 @@ const ManualLeaderPage: React.FC = () => {
                 </div>
 
                 {lastSent && (
-                  <p className="text-xs text-gray-400">
-                    Last sent: <span className="font-mono text-gray-200">[{lastSent.map(formatValue).join(", ")}]</span>
-                  </p>
+                  <div className="space-y-1 rounded-lg border border-gray-800 bg-black/40 p-3 text-xs text-gray-400">
+                    <p>
+                      Sent 6D action: <span className="font-mono text-gray-200">[{lastSent.map(formatValue).join(", ")}]</span>
+                    </p>
+                    {lastResult?.resolved_logical_action && (
+                      <p className="break-all">
+                        Resolved logical: <span className="font-mono text-green-300">{JSON.stringify(lastResult.resolved_logical_action)}</span>
+                      </p>
+                    )}
+                    {lastResult?.physical_targets && (
+                      <p className="break-all">
+                        Expanded physical target: <span className="font-mono text-cyan-300">{JSON.stringify(lastResult.physical_targets)}</span>
+                      </p>
+                    )}
+                    {lastResult?.joint_positions && (
+                      <p className="break-all">
+                        Follower readback: <span className="font-mono text-yellow-300">{JSON.stringify(lastResult.joint_positions)}</span>
+                      </p>
+                    )}
+                  </div>
                 )}
               </>
             )}
