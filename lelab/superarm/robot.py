@@ -12,7 +12,7 @@ from lerobot.robots.config import RobotConfig
 from lerobot.robots.robot import Robot
 
 from .actions import CANONICAL_FEATURES, action_to_runtime_commands, normalize_superarm_action
-from .mapping import ARM_JOINTS, HAND_ACTUATORS
+from .mapping import ARM_JOINTS, HAND_ACTUATORS, mujoco_hand_to_urdf
 from .service import service
 
 
@@ -125,10 +125,12 @@ class SuperArmMujocoRobot(Robot):
             for index, name in enumerate(ARM_JOINTS)
         }
         physical.update(
-            {
-                name: float(state.get("hand", {}).get(name, {}).get("position", 0.0))
-                for name in HAND_ACTUATORS
-            }
+            mujoco_hand_to_urdf(
+                {
+                    name: float(state.get("hand", {}).get(name, {}).get("position", 0.0))
+                    for name in HAND_ACTUATORS
+                }
+            )
         )
         return physical
 

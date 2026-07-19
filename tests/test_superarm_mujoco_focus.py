@@ -24,7 +24,10 @@ class _FakeRuntime:
                 for index in range(1, 6)
             },
             "hand": {
-                f"finger{finger}_motor{motor}": {"position": finger + motor / 10, "target": 0.0}
+                f"finger{finger}_motor{motor}": {
+                    "position": 0.50 if motor == 1 else -0.56,
+                    "target": 0.0,
+                }
                 for finger in range(1, 5)
                 for motor in range(1, 3)
             },
@@ -75,7 +78,12 @@ def test_direct_mujoco_robot_keeps_policy_action_six_dimensional():
     assert fake.actions[-1]["hand_deg"] == dict.fromkeys(
         ["pointer", "middle", "ring", "thumb"], [55.0, 55.0]
     )
-    assert len(robot.get_visualization_joints()) == 13
+    visualization = robot.get_visualization_joints()
+    assert len(visualization) == 13
+    for finger in range(1, 5):
+        assert visualization[f"finger{finger}_motor1"] == pytest.approx(0.50)
+        assert visualization[f"finger{finger}_motor2"] == pytest.approx(0.56)
+    assert fake.runtime.observe()["hand"]["finger1_motor2"]["position"] == pytest.approx(-0.56)
 
 
 def test_focused_branch_has_no_isaac_backend_source():

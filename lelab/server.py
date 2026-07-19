@@ -73,7 +73,11 @@ from .rollout import (
 )
 from .superarm.api import router as superarm_router
 from .superarm.service import service as superarm_service
-from .superarm.showroom import align_amazinghand_attachment, align_joint5_urdf
+from .superarm.showroom import (
+    align_amazinghand_attachment,
+    align_joint5_urdf,
+    stabilize_amazinghand_visuals,
+)
 from .superarm_teleoperator import set_manual_recording_action
 
 # Import our custom teleoperation functionality
@@ -1230,6 +1234,7 @@ def _robot_urdf_document(name: str, record: dict) -> tuple[bytes, list[Path]]:
     if (record.get("robot_backend") or "") == "superarm_mujoco":
         align_joint5_urdf(root)
         align_amazinghand_attachment(root)
+        stabilize_amazinghand_visuals(root)
 
     assets: list[Path] = []
     asset_indices: dict[Path, int] = {}

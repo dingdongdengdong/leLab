@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from typing import Any
 
 ARM_JOINTS = [f"joint_rev_{index}" for index in range(1, 6)]
@@ -35,6 +36,10 @@ ARM_MIN_RAD = -1.57
 ARM_MAX_RAD = 1.57
 HAND_ACTUATOR_MIN_RAD = -math.pi / 2
 HAND_ACTUATOR_MAX_RAD = math.pi / 2
+URDF_MOTOR_LIMITS = {
+    1: (-0.05, 1.05),
+    2: (0.0, 1.2),
+}
 
 
 def clamp(value: float, lower: float, upper: float) -> float:
@@ -76,6 +81,25 @@ def named_hand_to_mujoco(hand_deg: dict[str, list[float]]) -> dict[str, float]:
         result[f"{prefix}_motor1"] = degrees_to_mujoco(1, values[0])
         result[f"{prefix}_motor2"] = degrees_to_mujoco(2, values[1])
     return result
+
+
+def mujoco_hand_to_urdf(positions: Mapping[str, float]) -> dict[str, float]:
+    """Project raw AmazingHand qpos into the simplified showroom joint frames.
+
+    The official MJCF flexes each second motor in the negative direction, while
+    the two-link showroom URDF models the same curl with a positive joint value.
+    This conversion is intentionally limited to visualization; runtime telemetry
+    and the LeRobot action contract remain in MuJoCo coordinates.
+    """
+    projected: dict[str, float] = {}
+    for name, raw_value in positions.items():
+        value = float(raw_value)
+        motor = 2 if name.endswith("_motor2") else 1
+        if motor == 2:
+            value = -value
+        lower, upper = URDF_MOTOR_LIMITS[motor]
+        projected[name] = clamp(value, lower, upper)
+    return projected
 
 
 def upstream_positions_to_named(positions: list[float]) -> dict[str, list[float]]:

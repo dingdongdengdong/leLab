@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import math
+import struct
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -17,12 +18,17 @@ from lelab.superarm.api import ActionRequest
 from lelab.superarm.mapping import (
     degrees_to_hardware_radians,
     degrees_to_mujoco,
+    mujoco_hand_to_urdf,
     named_to_upstream_positions,
     upstream_positions_to_named,
 )
 from lelab.superarm.programs import ProgramStore
 from lelab.superarm.service import SuperArmService
-from lelab.superarm.showroom import align_joint5_mjcf, align_joint5_urdf
+from lelab.superarm.showroom import (
+    align_joint5_mjcf,
+    align_joint5_urdf,
+    stabilize_amazinghand_visuals,
+)
 from lelab.superarm.transports import configure_superarm_camera
 
 
@@ -33,6 +39,50 @@ def test_calibrated_mujoco_interpolation_and_clamping() -> None:
     assert degrees_to_mujoco(2, 110) == pytest.approx(-1.10)
     assert degrees_to_mujoco(1, -400) == pytest.approx(-math.pi / 2)
     assert degrees_to_mujoco(2, 400) == pytest.approx(-math.pi / 2)
+
+
+@pytest.mark.parametrize(
+    ("motor1", "motor2", "expected_motor1", "expected_motor2"),
+    [
+        (0.05, -0.02, 0.05, 0.02),
+        (0.50, -0.56, 0.50, 0.56),
+        (0.95, -1.10, 0.95, 1.10),
+    ],
+)
+def test_mujoco_hand_positions_project_into_urdf_joint_limits(
+    motor1: float,
+    motor2: float,
+    expected_motor1: float,
+    expected_motor2: float,
+) -> None:
+    raw = {
+        f"finger{finger}_motor{motor}": motor1 if motor == 1 else motor2
+        for finger in range(1, 5)
+        for motor in range(1, 3)
+    }
+
+    projected = mujoco_hand_to_urdf(raw)
+
+    assert list(projected) == list(raw)
+    for finger in range(1, 5):
+        assert projected[f"finger{finger}_motor1"] == pytest.approx(expected_motor1)
+        assert projected[f"finger{finger}_motor2"] == pytest.approx(expected_motor2)
+        assert -0.05 <= projected[f"finger{finger}_motor1"] <= 1.05
+        assert 0.0 <= projected[f"finger{finger}_motor2"] <= 1.2
+
+
+def test_mujoco_hand_projection_clamps_runtime_overshoot_to_urdf_limits() -> None:
+    projected = mujoco_hand_to_urdf(
+        {
+            "finger1_motor1": 1.3,
+            "finger1_motor2": -1.4,
+        }
+    )
+
+    assert projected == {
+        "finger1_motor1": pytest.approx(1.05),
+        "finger1_motor2": pytest.approx(1.2),
+    }
 
 
 def test_even_hardware_servo_is_inverted() -> None:
@@ -116,6 +166,85 @@ def test_joint5_urdf_rotates_motor_and_keeps_shell_fixed_to_it() -> None:
     assert shell_mount.find("child").get("link") == "arm_link3b"
     assert shell_mount.find("origin").get("xyz") == "0 0.025 0.00175"
     assert shell_mount.find("axis") is None
+
+
+def test_amazinghand_showroom_moves_only_segment_shells_with_finger_links(tmp_path: Path) -> None:
+    def write_triangle_stl(name: str) -> Path:
+        path = tmp_path / name
+        header = bytes(80) + struct.pack("<I", 1)
+        triangle = struct.pack(
+            "<12fH",
+            0,
+            0,
+            1,
+            1,
+            2,
+            3,
+            5,
+            7,
+            11,
+            -1,
+            4,
+            -3,
+            0,
+        )
+        path.write_bytes(header + triangle)
+        return path
+
+    proximal = write_triangle_stl("proximal.stl")
+    proximal_shell = write_triangle_stl("proximal_shell.stl")
+    distal = write_triangle_stl("distal.stl")
+    distal_shell = write_triangle_stl("distal_shell.stl")
+    root = ET.fromstring(
+        "<robot name='superarm'>"
+        "<link name='r_wrist_interface'><visual name='wrist'><geometry><mesh filename='wrist.stl'/></geometry></visual></link>"
+        "<link name='palm'/>"
+        "<link name='finger1_proximal'>"
+        f"<visual name='proximal'><origin xyz='0 0.01 0'/><geometry><mesh filename='{proximal}'/></geometry></visual>"
+        f"<visual name='proximal-shell'><origin xyz='0 0.01 0'/><geometry><mesh filename='{proximal_shell}'/></geometry></visual>"
+        "<visual name='passive-rod'><origin xyz='0.01 0.02 0.03'/><geometry><mesh filename='m2_rod_l18.stl'/></geometry></visual>"
+        "</link>"
+        "<link name='finger1_distal'>"
+        f"<visual name='distal'><geometry><mesh filename='{distal}'/></geometry></visual>"
+        f"<visual name='distal-shell'><geometry><mesh filename='{distal_shell}'/></geometry></visual>"
+        "<visual name='passive-pin'><origin xyz='0 0.01 0.02'/><geometry><mesh filename='parallel_pin.stl'/></geometry></visual>"
+        "</link>"
+        "<joint name='wrist_to_palm' type='fixed'><parent link='r_wrist_interface'/><child link='palm'/>"
+        "<origin xyz='0.1 0.2 0.3' rpy='0 0 0'/></joint>"
+        "<joint name='finger1_motor1' type='revolute'><parent link='palm'/><child link='finger1_proximal'/>"
+        "<origin xyz='0.01 0.02 0.03' rpy='0 0 0'/></joint>"
+        "<joint name='finger1_motor2' type='revolute'><parent link='finger1_proximal'/><child link='finger1_distal'/>"
+        "<origin xyz='0 0.058 0' rpy='0 0 0'/></joint>"
+        "</robot>"
+    )
+
+    assert stabilize_amazinghand_visuals(root) == 2
+
+    proximal_meshes = {
+        Path(mesh.get("filename")).name
+        for mesh in root.findall(".//link[@name='finger1_proximal']/visual/geometry/mesh")
+    }
+    distal_meshes = {
+        Path(mesh.get("filename")).name
+        for mesh in root.findall(".//link[@name='finger1_distal']/visual/geometry/mesh")
+    }
+    assert proximal_meshes == {"proximal.stl", "proximal_shell.stl"}
+    assert distal_meshes == {"distal.stl", "distal_shell.stl"}
+    for visual in root.findall(".//link[@name='finger1_proximal']/visual") + root.findall(
+        ".//link[@name='finger1_distal']/visual"
+    ):
+        assert visual.find("origin").get("xyz") == "-2 -2 -4"
+        assert visual.find("origin").get("rpy") == "0 0 0"
+
+    wrist_visuals = {
+        visual.get("name"): visual
+        for visual in root.findall(".//link[@name='r_wrist_interface']/visual")
+    }
+    assert Path(wrist_visuals["passive-rod"].find("geometry/mesh").get("filename")).name == "m2_rod_l18.stl"
+    assert wrist_visuals["passive-rod"].find("origin").get("xyz") == "0.12 0.24 0.36"
+    assert Path(wrist_visuals["passive-pin"].find("geometry/mesh").get("filename")).name == "parallel_pin.stl"
+    assert wrist_visuals["passive-pin"].find("origin").get("xyz") == "0.11 0.288 0.35"
+    assert stabilize_amazinghand_visuals(root) == 0
 
 
 def test_joint5_mjcf_moves_pivot_to_motor_without_moving_zero_pose() -> None:

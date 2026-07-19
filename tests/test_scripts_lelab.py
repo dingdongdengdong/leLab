@@ -29,7 +29,9 @@ import pytest
 
 class FakeProcess:
     def __init__(self, returncode: int | None = None) -> None:
-        self.pid = 1234
+        # Use a PID that cannot collide with a real host process; launcher
+        # shutdown tests must not signal whatever process happens to own 1234.
+        self.pid = 999_999_999
         self.returncode = returncode
         self.signals: list[int] = []
         self.terminated = False
