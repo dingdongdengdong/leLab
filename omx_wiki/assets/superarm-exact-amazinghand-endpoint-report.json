@@ -1,0 +1,18 @@
+{
+  "counts": {
+    "bodies": 33,
+    "visuals": 162,
+    "mesh_definitions": 23,
+    "equalities": 20
+  },
+  "body_count": 33,
+  "visual_count": 162,
+  "unique_mesh_urls": 23,
+  "all_stl_urls": true,
+  "root_link": "r_wrist_interface",
+  "coordinate_frame": "root-relative, meters, quaternion-wxyz",
+  "source_model_sha256": "bb79766bee7ce5f844b17871d6756028144897788b1318540a8caf7fc5215e54",
+  "record_urls_are_scoped": true,
+  "sample_asset_bytes": 357784,
+  "sample_asset_sha256": "da46e0edefe0f245db0fc6b2230f97dd47a104da7c6c9cf10a923e8d27c742fa"
+}

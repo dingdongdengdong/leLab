@@ -15,6 +15,10 @@ schemaVersion: 1
 Date: 2026-07-19
 Branch: `feature/mujoco-web-lerobot`
 
+> Historical stage: this approximate visual policy was superseded by
+> [[exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom]], which renders
+> the exact official MJCF/STL visual instances and streamed body transforms.
+
 ## Diagnosis
 
 MuJoCo hand motion was correct, but the normal LeLab URDF showroom looked stuck or wrong because the two-link showroom URDF uses positive distal finger joint limits while the official AmazingHand MuJoCo model flexes each `finger*_motor2` in the negative direction. Sending raw MuJoCo qpos into `urdf-loader` caused motor-2 joints to clamp at zero.

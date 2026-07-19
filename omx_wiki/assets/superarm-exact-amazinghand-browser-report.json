@@ -1,0 +1,235 @@
+{
+  "status": "PASS",
+  "url": "http://127.0.0.1:8000/teleoperation?robot=SuperArm%20%2B%20AmazingHand",
+  "readiness": {
+    "viewer": true,
+    "robot": true,
+    "hand": true,
+    "layer": true,
+    "bodies": 33,
+    "meshes": 162,
+    "coverage": true,
+    "text": "Teleoperation\nLive Robot Data\nSuperArm + AmazingHand\n13/13 physical joints live\nExact MuJoCo hand visuals\nCameras\nOff\n\nTurn on to watch your cameras while you teleoperate."
+  },
+  "camera": {
+    "target": [
+      -0.013153102915060704,
+      0.677340535531278,
+      -0.26324721255597194
+    ],
+    "camera": [
+      0.14694295973928903,
+      0.842078210169319,
+      -0.10315114990162216
+    ],
+    "radius": 0.10357200691233916
+  },
+  "states": [
+    {
+      "label": "open",
+      "action": 0.0,
+      "api": {
+        "success": true,
+        "sent_action": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "resolved_logical_action": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "physical_targets": {
+          "joint_rev_1": 3.730422670740827e-15,
+          "joint_rev_2": -0.014670189220803723,
+          "joint_rev_3": 0.0006294259495156988,
+          "joint_rev_4": -0.013882281482964996,
+          "joint_rev_5": 0.00018326543000224974,
+          "finger1_motor1": 0.9500323274196412,
+          "finger1_motor2": 1.1000251483814911,
+          "finger2_motor1": 0.9500312572088884,
+          "finger2_motor2": 1.1000254528792226,
+          "finger3_motor1": 0.9500294388666936,
+          "finger3_motor2": 1.100025441037296,
+          "finger4_motor1": 0.9499916768021649,
+          "finger4_motor2": 1.0999934261909288
+        },
+        "joint_positions": {
+          "joint_rev_1": 3.730422670740827e-15,
+          "joint_rev_2": -0.014670189220803723,
+          "joint_rev_3": 0.0006294259495156988,
+          "joint_rev_4": -0.013882281482964996,
+          "joint_rev_5": 0.00018326543000224974,
+          "finger1_motor1": 0.9500323274196412,
+          "finger1_motor2": 1.1000251483814911,
+          "finger2_motor1": 0.9500312572088884,
+          "finger2_motor2": 1.1000254528792226,
+          "finger3_motor1": 0.9500294388666936,
+          "finger3_motor2": 1.100025441037296,
+          "finger4_motor1": 0.9499916768021649,
+          "finger4_motor2": 1.0999934261909288
+        },
+        "timestamp": 1784477427.7205849
+      },
+      "body_count": 33,
+      "visual_mesh_count": 162,
+      "orange_fallback_count": 0,
+      "telemetry_body_count": 33,
+      "telemetry_sequence": 4516,
+      "pose_messages": 42,
+      "max_position_error_m": 6.095193800531683e-06,
+      "max_quaternion_error_deg": 0.014288161527168271,
+      "mean_position_error_m": 1.2175490327343415e-06,
+      "mean_quaternion_error_deg": 0.003450930747465562
+    },
+    {
+      "label": "half",
+      "action": 0.5,
+      "api": {
+        "success": true,
+        "sent_action": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.5
+        ],
+        "resolved_logical_action": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.5
+        ],
+        "physical_targets": {
+          "joint_rev_1": -4.633984449551244e-09,
+          "joint_rev_2": -0.014669466725695789,
+          "joint_rev_3": 0.0006282861523560033,
+          "joint_rev_4": -0.013881748465988268,
+          "joint_rev_5": 0.000181099799550065,
+          "finger1_motor1": 0.05006342037298356,
+          "finger1_motor2": 0.020060180549989058,
+          "finger2_motor1": 0.050038386491108894,
+          "finger2_motor2": 0.020043951519544446,
+          "finger3_motor1": 0.050060563512275794,
+          "finger3_motor2": 0.020073298231927977,
+          "finger4_motor1": 0.04998535184485825,
+          "finger4_motor2": 0.019984962908599233
+        },
+        "joint_positions": {
+          "joint_rev_1": -4.633984449551244e-09,
+          "joint_rev_2": -0.014669466725695789,
+          "joint_rev_3": 0.0006282861523560033,
+          "joint_rev_4": -0.013881748465988268,
+          "joint_rev_5": 0.000181099799550065,
+          "finger1_motor1": 0.05006342037298356,
+          "finger1_motor2": 0.020060180549989058,
+          "finger2_motor1": 0.050038386491108894,
+          "finger2_motor2": 0.020043951519544446,
+          "finger3_motor1": 0.050060563512275794,
+          "finger3_motor2": 0.020073298231927977,
+          "finger4_motor1": 0.04998535184485825,
+          "finger4_motor2": 0.019984962908599233
+        },
+        "timestamp": 1784477429.7134132
+      },
+      "body_count": 33,
+      "visual_mesh_count": 162,
+      "orange_fallback_count": 0,
+      "telemetry_body_count": 33,
+      "telemetry_sequence": 4553,
+      "pose_messages": 80,
+      "max_position_error_m": 8.793627692738602e-06,
+      "max_quaternion_error_deg": 0.019649369065299075,
+      "mean_position_error_m": 2.0354905476342595e-06,
+      "mean_quaternion_error_deg": 0.005875684592792395
+    },
+    {
+      "label": "close",
+      "action": 1.0,
+      "api": {
+        "success": true,
+        "sent_action": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "resolved_logical_action": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "physical_targets": {
+          "joint_rev_1": -6.698742525025843e-10,
+          "joint_rev_2": -0.014673130000709732,
+          "joint_rev_3": 0.000629387546027023,
+          "joint_rev_4": -0.013884852983690564,
+          "joint_rev_5": 0.00018298095060178055,
+          "finger1_motor1": 0.5000071946171599,
+          "finger1_motor2": 0.5600067907692589,
+          "finger2_motor1": 0.5000107465881196,
+          "finger2_motor2": 0.5600140220779737,
+          "finger3_motor1": 0.49999952941107706,
+          "finger3_motor2": 0.5600084573047472,
+          "finger4_motor1": 0.4999517325170748,
+          "finger4_motor2": 0.5599549387862168
+        },
+        "joint_positions": {
+          "joint_rev_1": -6.698742525025843e-10,
+          "joint_rev_2": -0.014673130000709732,
+          "joint_rev_3": 0.000629387546027023,
+          "joint_rev_4": -0.013884852983690564,
+          "joint_rev_5": 0.00018298095060178055,
+          "finger1_motor1": 0.5000071946171599,
+          "finger1_motor2": 0.5600067907692589,
+          "finger2_motor1": 0.5000107465881196,
+          "finger2_motor2": 0.5600140220779737,
+          "finger3_motor1": 0.49999952941107706,
+          "finger3_motor2": 0.5600084573047472,
+          "finger4_motor1": 0.4999517325170748,
+          "finger4_motor2": 0.5599549387862168
+        },
+        "timestamp": 1784477431.7631218
+      },
+      "body_count": 33,
+      "visual_mesh_count": 162,
+      "orange_fallback_count": 0,
+      "telemetry_body_count": 33,
+      "telemetry_sequence": 4594,
+      "pose_messages": 121,
+      "max_position_error_m": 2.2108065396800664e-06,
+      "max_quaternion_error_deg": 0.004415833840882932,
+      "mean_position_error_m": 3.0283316859508106e-07,
+      "mean_quaternion_error_deg": 0.0008663275547830352
+    }
+  ],
+  "acceptance": {
+    "exact_body_count": true,
+    "exact_visual_count": true,
+    "no_fallback_proxy": true,
+    "telemetry_body_count": true,
+    "max_position_error_lte_1mm": true,
+    "max_angle_error_lte_1deg": true
+  },
+  "gif": "artifacts/amazinghand_exact_visual_20260719T1608Z/superarm-exact-amazinghand-lelab-mujoco.gif",
+  "paired_frames": [
+    "artifacts/amazinghand_exact_visual_20260719T1608Z/frames/00_open_paired.jpg",
+    "artifacts/amazinghand_exact_visual_20260719T1608Z/frames/01_half_paired.jpg",
+    "artifacts/amazinghand_exact_visual_20260719T1608Z/frames/02_close_paired.jpg"
+  ]
+}
