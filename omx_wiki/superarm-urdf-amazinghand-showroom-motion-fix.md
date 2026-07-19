@@ -2,7 +2,7 @@
 title: "SuperArm URDF AmazingHand showroom motion fix"
 tags: ["superarm", "amazinghand", "mujoco", "urdf", "showroom", "lerobot"]
 created: 2026-07-19T14:58:31.224Z
-updated: 2026-07-19T15:18:17.171Z
+updated: 2026-07-19T15:20:00.000Z
 sources: []
 links: []
 category: debugging
@@ -54,55 +54,3 @@ The cached generated URDF also put closed-loop CAD meshes on simplified moving p
 ## Boundary
 
 This is a stable joint-local showroom approximation for the `5 arm + 1 grasp` control contract, not a browser recreation of AmazingHand closed-loop passive kinematics. The MuJoCo panel remains the physical closed-loop reference.
-
----
-
-## Update (2026-07-19T15:18:17.171Z)
-
-Date: 2026-07-19
-Branch: `feature/mujoco-web-lerobot`
-Commits: `7750ee3`, `3dceb92`, `0a5e7a9`, `7e85c98`
-
-## Diagnosis
-
-MuJoCo hand motion was correct, but the normal LeLab URDF showroom looked stuck or wrong because the two-link showroom URDF uses positive distal finger joint limits while the official AmazingHand MuJoCo model flexes each `finger*_motor2` in the negative direction. Sending raw MuJoCo qpos into `urdf-loader` caused motor-2 joints to clamp at zero.
-
-The cached generated URDF also put closed-loop CAD meshes on simplified moving proximal/distal links. Live browser capture proved that those meshes orbit away from their motor pivots when driven as a two-link serial tree, so numeric joint success alone was not a valid visual pass.
-
-## Fix
-
-- Added a visualization-only MuJoCo-to-URDF hand projection: motor-1 remains positive and limited to the showroom range; motor-2 is negated and limited to `[0.0, 1.2]` only for viewer joint values.
-- Preserved raw MuJoCo telemetry and the canonical 6D LeRobot action contract (`5 arm joints + amazinghand_motion`).
-- Replaced incompatible moving closed-loop CAD with joint-local rounded showroom segments derived from existing contact dimensions: one cylinder per proximal link, one cylinder plus one tip sphere per distal link.
-- Removed moving linkage/rod/pin mesh visuals from simplified URDF motion links instead of presenting them as detached hardware. The MuJoCo panel remains the physical closed-loop reference.
-- Applied the visual policy to both `/robots/{name}/urdf` and `/api/superarm/urdf` paths.
-
-## Verification
-
-Fresh verification from HEAD on 2026-07-19:
-
-- Targeted unit tests for hand projection, visual topology, 6D policy, and no-Isaac branch boundary: `7 passed`.
-- Full Python pytest: `230 passed, 5 warnings`.
-- Targeted ruff on changed Python/tests: passed.
-- Frontend Vitest: `2 files / 6 tests passed`.
-- Frontend build: passed.
-- Full repo ruff still has an unrelated `UP017` in `lelab/datasets.py`.
-- Frontend ESLint still has unrelated existing UI/type/lint issues in metrics, combobox/dataset regexes, UI command, Tailwind require, and fast-refresh warnings.
-- Temporary clean Uvicorn server with `SUPERARM_URDF_PATH`/`SUPERARM_ASSET_ROOT` validated both `/robots/SuperArm%20%2B%20AmazingHand/urdf` and `/api/superarm/urdf`: every moving finger link has zero mesh visuals, one cylinder, and distal links have one tip sphere.
-- Real cached URDF check: stabilizer removes 136 incompatible moving mesh visuals; second pass removes 0, proving idempotence.
-- Live browser capture: normal LeLab Teleoperation showroom with `13/13 physical joints live` across open, half, close.
-- Live viewer joint report: open motor2 about `0.020`, half about `0.560`, close about `1.100` for all four fingers.
-- Structured visual verdict: `92/100`, `PASS`, above the Ralph threshold of 90.
-
-## Artifacts
-
-- Full GIF: `omx_wiki/assets/superarm-urdf-hand-open-half-close.gif`
-- Close-up GIF: `omx_wiki/assets/superarm-urdf-hand-open-half-close-closeup.gif`
-- Screenshots: `omx_wiki/assets/superarm-urdf-hand-open.png`, `omx_wiki/assets/superarm-urdf-hand-half.png`, `omx_wiki/assets/superarm-urdf-hand-close.png`
-- Live browser report: `artifacts/urdf_hand_live/browser-report.json`
-- Topology report: `omx_wiki/assets/superarm-urdf-hand-proxy-topology-report.json`
-- Visual verdict: `omx_wiki/assets/superarm-urdf-hand-visual-verdict.json`
-
-## Boundary
-
-This is a stable joint-local showroom approximation for the `5 arm + 1 grasp` control contract, not a browser recreation of AmazingHand closed-loop passive kinematics. The MuJoCo panel remains the physical closed-loop source of truth.
