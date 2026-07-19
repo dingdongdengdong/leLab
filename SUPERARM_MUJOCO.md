@@ -11,8 +11,9 @@ diagnostic dashboard.
    - the landing page selects `SuperArm + AmazingHand` when the built-in record
      is available;
    - Teleoperation uses LeLab's original Three.js URDF showroom;
-   - Manual Web Leader, SO101 leader input, recording, training, and inference
-     use LeRobot interfaces;
+   - Teleoperation keeps the manual/API control surface, while the normal
+     recording modal selects either **Manual Web Leader** or **SO101 Leader**;
+   - recording, training, and inference use LeRobot interfaces;
    - leaving Teleoperation stops the active runtime so re-entry can connect
      again.
 2. **MuJoCo diagnostics (additional)**
@@ -60,7 +61,13 @@ extensions for Three.js and corrects the known
 `wrist_adapter_to_amazinghand` display transform to the transform used by the
 attached MuJoCo assembly. The input asset itself is not modified.
 
-## Manual dataset check
+## Recording input check
+
+The normal LeLab recording modal exposes both supported control sources.
+**Manual Web Leader** needs no serial device. **SO101 Leader** requires the
+leader serial port and LeRobot calibration ID; its five joints and gripper are
+adapted to the same canonical 6D action before the dataset writer. Physical
+SO101 transport remains unverified until the device is connected.
 
 Select **Manual Web Leader**, start a local recording with the
 `superarm_mujoco` backend, and send six-value actions through
