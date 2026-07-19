@@ -146,50 +146,34 @@ def test_robot_record_merges_fields(tmp_lerobot_home: Path) -> None:
 
 
 
-def test_robot_record_preserves_custom_backend_fields(tmp_lerobot_home: Path) -> None:
+def test_robot_record_preserves_custom_backend_fields(tmp_lerobot_home: Path, tmp_path: Path) -> None:
     from lelab.utils import config as cfg
 
+    model = tmp_path / "superarm.xml"
+    config_path = tmp_path / "superarm.yaml"
+    model.write_text("<mujoco />", encoding="utf-8")
+    config_path.write_text("_type: superarm_mujoco\n", encoding="utf-8")
     assert cfg.save_robot_record(
         "source_arm",
         {
-            "robot_backend": "isaacsim_rpo_arm",
-            "superarm_ws_path": "/workspaces/superarm_ws",
-            "isaacsim_config": "/workspaces/superarm_ws/isaacsim_test/lerobot/source_arm_isaacsim_arm_only.yaml",
+            "robot_backend": "superarm_mujoco",
+            "superarm_asset_root": str(tmp_path),
+            "superarm_config": str(config_path),
+            "mujoco_model_path": str(model),
             "leader_port": "unused",
             "follower_port": "unused",
             "leader_config": "unused",
-            "follower_config": "/workspaces/superarm_ws/isaacsim_test/lerobot/source_arm_isaacsim_arm_only.yaml",
+            "follower_config": str(config_path),
         },
         allow_create=True,
     )
 
     loaded = cfg.get_robot_record("source_arm")
     assert loaded is not None
-    assert loaded["robot_backend"] == "isaacsim_rpo_arm"
-    assert loaded["superarm_ws_path"] == "/workspaces/superarm_ws"
-    assert loaded["isaacsim_config"].endswith("source_arm_isaacsim_arm_only.yaml")
+    assert loaded["robot_backend"] == "superarm_mujoco"
+    assert loaded["superarm_asset_root"] == str(tmp_path)
+    assert loaded["superarm_config"] == str(config_path)
     assert cfg.is_robot_record_clean(loaded) is True
-
-
-def test_list_robot_records_includes_builtin_superarm_source_arm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from lelab.utils import config as cfg
-
-    superarm_ws = tmp_path / "superarm_ws"
-    source_config = superarm_ws / "isaacsim_test" / "lerobot" / "source_arm_isaacsim_arm_only.yaml"
-    source_config.parent.mkdir(parents=True)
-    source_config.write_text("_type: isaacsim_rpo_arm\njoint_names: [joint_rev_1]\n", encoding="utf-8")
-    monkeypatch.setenv("SUPERARM_WS_PATH", str(superarm_ws))
-
-    records = cfg.list_robot_records()
-    builtin = next((r for r in records if r["name"] == "SuperArm Source Arm"), None)
-
-    assert builtin is not None
-    assert builtin["robot_backend"] == "isaacsim_rpo_arm"
-    assert builtin["leader_port"] == "unused"
-    assert builtin["follower_port"] == "unused"
-    assert builtin["follower_config"] == str(source_config)
-    assert builtin["isaacsim_config"] == str(source_config)
-    assert cfg.is_robot_record_clean(builtin) is True
 
 
 def test_list_robot_records_prioritizes_combined_superarm_when_assets_exist(
@@ -197,27 +181,24 @@ def test_list_robot_records_prioritizes_combined_superarm_when_assets_exist(
 ) -> None:
     from lelab.utils import config as cfg
 
-    superarm_ws = tmp_path / "superarm_ws"
-    config_path = superarm_ws / "isaacsim_test/lerobot/source_arm_amazinghand.yaml"
-    urdf_path = superarm_ws / "isaacsim_test/outputs/combined/superarm_amazinghand.urdf"
-    config_path.parent.mkdir(parents=True)
-    urdf_path.parent.mkdir(parents=True)
-    config_path.write_text(
-        "_type: isaacsim_rpo_arm\n"
-        "joint_names: [joint_rev_1, joint_rev_2, joint_rev_3, joint_rev_4, joint_rev_5, amazinghand_motion]\n"
-        "combined_urdf_path: isaacsim_test/outputs/combined/superarm_amazinghand.urdf\n",
-        encoding="utf-8",
-    )
+    asset_root = tmp_path / "assets"
+    asset_root.mkdir()
+    urdf_path = asset_root / "superarm_amazinghand.urdf"
+    model_path = asset_root / "superarm_amazinghand.xml"
     urdf_path.write_text("<robot name='superarm_amazinghand' />\n", encoding="utf-8")
-    monkeypatch.setenv("SUPERARM_WS_PATH", str(superarm_ws))
+    model_path.write_text("<mujoco model='superarm_amazinghand' />\n", encoding="utf-8")
+    monkeypatch.setenv("SUPERARM_ASSET_ROOT", str(asset_root))
+    monkeypatch.setenv("SUPERARM_URDF_PATH", str(urdf_path))
+    monkeypatch.setenv("SUPERARM_MUJOCO_MODEL_PATH", str(model_path))
 
     records = cfg.list_robot_records()
 
     assert records[0]["name"] == "SuperArm + AmazingHand"
-    assert records[0]["follower_config"] == str(config_path)
+    assert records[0]["robot_backend"] == "superarm_mujoco"
     assert records[0]["urdf_path"] == str(urdf_path)
+    assert records[0]["mujoco_model_path"] == str(model_path)
     assert records[0]["purpose"] == "primary"
-    assert len(records[0]["physical_joint_names"]) == 0
+    assert len(records[0]["physical_joint_names"]) == 13
     assert cfg.get_robot_record("SuperArm + AmazingHand") == records[0]
     assert cfg.is_robot_record_clean(records[0]) is True
 

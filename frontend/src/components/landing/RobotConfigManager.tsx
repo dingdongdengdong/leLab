@@ -49,8 +49,9 @@ const RobotConfigManager: React.FC<RobotConfigManagerProps> = ({
           leader_config: robot.leader_config,
           follower_config: robot.follower_config,
           robot_backend: robot.robot_backend || "so101",
-          isaacsim_config: robot.isaacsim_config || undefined,
-          superarm_ws_path: robot.superarm_ws_path || undefined,
+          superarm_config: robot.superarm_config || undefined,
+          superarm_asset_root: robot.superarm_asset_root || undefined,
+          mujoco_model_path: robot.mujoco_model_path || undefined,
         }),
       });
       const data = await res.json();

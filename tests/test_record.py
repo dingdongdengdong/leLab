@@ -126,16 +126,17 @@ def test_build_camera_configs_skips_non_opencv_type() -> None:
 def test_create_record_config_uses_six_control_superarm_robot_and_manual_teleoperator() -> None:
     import lelab.record as record
 
-    workspace = Path(__file__).resolve().parents[3]
-    config_path = workspace / "isaacsim_test/lerobot/source_arm_amazinghand.yaml"
+    workspace = Path(__file__).resolve().parents[1]
+    config_path = workspace / "lelab/superarm/data/superarm_mujoco.yaml"
     request = record.RecordingRequest(
         leader_port="unused",
         follower_port="unused",
         leader_config="manual",
         follower_config=str(config_path),
-        isaacsim_config=str(config_path),
-        superarm_ws_path=str(workspace),
-        robot_backend="isaacsim_rpo_arm",
+        superarm_config=str(config_path),
+        superarm_asset_root=str(workspace),
+        mujoco_model_path="/tmp/superarm_amazinghand.xml",
+        robot_backend="superarm_mujoco",
         input_mode="manual",
         dataset_repo_id="local/superarm_test",
         single_task="test the fixed grasp",
@@ -216,16 +217,17 @@ def test_act_policy_constructs_with_superarm_six_dimensional_head_and_camera() -
 def test_create_record_config_keeps_so101_mapping_before_dataset_boundary() -> None:
     import lelab.record as record
 
-    workspace = Path(__file__).resolve().parents[3]
-    config_path = workspace / "isaacsim_test/lerobot/source_arm_amazinghand.yaml"
+    workspace = Path(__file__).resolve().parents[1]
+    config_path = workspace / "lelab/superarm/data/superarm_mujoco.yaml"
     request = record.RecordingRequest(
         leader_port="/dev/ttyACM0",
         follower_port="unused",
         leader_config="leader_calibration",
         follower_config=str(config_path),
-        isaacsim_config=str(config_path),
-        superarm_ws_path=str(workspace),
-        robot_backend="isaacsim_rpo_arm",
+        superarm_config=str(config_path),
+        superarm_asset_root=str(workspace),
+        mujoco_model_path="/tmp/superarm_amazinghand.xml",
+        robot_backend="superarm_mujoco",
         input_mode="so101",
         dataset_repo_id="local/superarm_so101_test",
         single_task="test SO101 mapping",

@@ -45,7 +45,7 @@ const RobotTile: React.FC<RobotTileProps> = ({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const status = robot ? (robot.is_clean ? "Ready" : "Needs configuration") : null;
   const teleopDisabled = !robot || !robot.is_clean;
-  const manualLeaderAvailable = robot?.robot_backend === "isaacsim_rpo_arm";
+  const manualLeaderAvailable = robot?.robot_backend === "superarm_mujoco";
 
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-3 flex flex-col gap-2 relative">

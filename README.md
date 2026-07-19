@@ -65,9 +65,9 @@ A page will automatically open in your browser and you are ready to go.
   </table>
 </div>
 
-## SuperArm Isaac Sim backend
+## SuperArm MuJoCo + LeRobot backend
 
-This branch can control the local SuperArm/source-arm Isaac Sim follower from LeLab. See [SUPERARM_ISAAC_SIM.md](SUPERARM_ISAAC_SIM.md) for startup commands, the Manual Web Leader slider page, ROS topic checks, and screenshot capture workflow.
+This branch adds the custom SuperArm + AmazingHand as a direct MuJoCo-backed LeRobot robot. The policy action remains six-dimensional: five arm joints plus one fixed AmazingHand motion. See [SUPERARM_MUJOCO.md](SUPERARM_MUJOCO.md).
 
 ## Resources
 

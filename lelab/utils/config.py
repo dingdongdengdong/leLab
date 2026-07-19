@@ -335,84 +335,52 @@ _ROBOT_STRING_FIELDS = (
     "leader_config",
     "follower_config",
     "robot_backend",
-    "isaacsim_config",
-    "superarm_ws_path",
+    "superarm_config",
+    "superarm_asset_root",
+    "mujoco_model_path",
     "urdf_path",
     "purpose",
 )
 _ROBOT_LIST_FIELDS = ("cameras", "physical_joint_names")
-_BUILTIN_SUPERARM_SOURCE_NAME = "SuperArm Source Arm"
-_BUILTIN_SUPERARM_AMAZINGHAND_NAME = "SuperArm AmazingHand"
 _BUILTIN_SUPERARM_COMBINED_NAME = "SuperArm + AmazingHand"
 
 
-def _superarm_ws_path() -> str:
-    env_path = os.environ.get("SUPERARM_WS_PATH")
+def _superarm_asset_root() -> str:
+    env_path = os.environ.get("SUPERARM_ASSET_ROOT")
     if env_path:
         return env_path
-    container_path = Path("/workspaces/superarm_ws")
-    if container_path.exists():
-        return str(container_path)
-    repo_path = Path(__file__).resolve().parents[4]
-    if (repo_path / "isaacsim_test" / "lerobot").exists():
-        return str(repo_path)
-    return str(container_path)
+    return str(Path.cwd())
 
 
 def _resolve_superarm_config_path(config_path: str, workspace: str | None = None) -> str:
     path = Path(config_path)
     if not path.is_absolute():
-        return str(Path(workspace or _superarm_ws_path()) / path)
+        return str(Path(workspace or _superarm_asset_root()) / path)
     if path.exists():
         return str(path)
-    marker = Path("/workspaces/superarm_ws")
-    try:
-        relative = path.relative_to(marker)
-    except ValueError:
-        return str(path)
-    local_path = Path(_superarm_ws_path()) / relative
-    return str(local_path if local_path.exists() else path)
-
-
-def _builtin_superarm_source_arm_record() -> dict | None:
-    superarm_ws = _superarm_ws_path()
-    source_config = os.path.join(
-        superarm_ws,
-        "isaacsim_test",
-        "lerobot",
-        "source_arm_isaacsim_arm_only.yaml",
-    )
-    if not os.path.exists(source_config):
-        return None
-    return {
-        "name": _BUILTIN_SUPERARM_SOURCE_NAME,
-        "leader_port": "unused",
-        "follower_port": "unused",
-        "leader_config": "unused",
-        "follower_config": source_config,
-        "robot_backend": "isaacsim_rpo_arm",
-        "isaacsim_config": source_config,
-        "superarm_ws_path": superarm_ws,
-        "cameras": [],
-    }
+    return str(path)
 
 
 def _builtin_superarm_combined_record() -> dict | None:
-    superarm_ws = _superarm_ws_path()
-    config_path = Path(superarm_ws) / "isaacsim_test/lerobot/source_arm_amazinghand.yaml"
+    asset_root = _superarm_asset_root()
+    config_path = Path(__file__).resolve().parents[1] / "superarm/data/superarm_mujoco.yaml"
     if not config_path.exists():
         return None
     try:
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError):
         return None
-    relative_urdf = raw.get("combined_urdf_path")
-    if not isinstance(relative_urdf, str) or not relative_urdf.strip():
+    urdf_value = os.environ.get("SUPERARM_URDF_PATH")
+    model_value = os.environ.get("SUPERARM_MUJOCO_MODEL_PATH")
+    if not urdf_value or not model_value:
         return None
-    urdf_path = Path(relative_urdf)
+    urdf_path = Path(urdf_value).expanduser()
     if not urdf_path.is_absolute():
-        urdf_path = Path(superarm_ws) / urdf_path
-    if not urdf_path.exists():
+        urdf_path = Path(asset_root) / urdf_path
+    model_path = Path(model_value).expanduser()
+    if not model_path.is_absolute():
+        model_path = Path(asset_root) / model_path
+    if not urdf_path.is_file() or not model_path.is_file():
         return None
     return {
         "name": _BUILTIN_SUPERARM_COMBINED_NAME,
@@ -420,36 +388,14 @@ def _builtin_superarm_combined_record() -> dict | None:
         "follower_port": "unused",
         "leader_config": "manual_or_so101",
         "follower_config": str(config_path),
-        "robot_backend": "isaacsim_rpo_arm",
-        "isaacsim_config": str(config_path),
-        "superarm_ws_path": superarm_ws,
+        "robot_backend": "superarm_mujoco",
+        "superarm_config": str(config_path),
+        "superarm_asset_root": asset_root,
+        "mujoco_model_path": str(model_path),
         "urdf_path": str(urdf_path),
         "purpose": "primary",
         "cameras": [],
         "physical_joint_names": list(raw.get("physical_joint_names") or []),
-    }
-
-
-def _builtin_superarm_amazinghand_record() -> dict | None:
-    superarm_ws = _superarm_ws_path()
-    hand_config = os.path.join(
-        superarm_ws,
-        "isaacsim_test",
-        "lerobot",
-        "amazinghand_isaacsim_hand_only.yaml",
-    )
-    if not os.path.exists(hand_config):
-        return None
-    return {
-        "name": _BUILTIN_SUPERARM_AMAZINGHAND_NAME,
-        "leader_port": "unused",
-        "follower_port": "unused",
-        "leader_config": "unused",
-        "follower_config": hand_config,
-        "robot_backend": "isaacsim_rpo_arm",
-        "isaacsim_config": hand_config,
-        "superarm_ws_path": superarm_ws,
-        "cameras": [],
     }
 
 
@@ -481,12 +427,6 @@ def get_robot_record(name: str) -> dict | None:
     builtin = _builtin_superarm_combined_record()
     if name == _BUILTIN_SUPERARM_COMBINED_NAME and builtin is not None:
         return builtin
-    builtin = _builtin_superarm_source_arm_record()
-    if name == _BUILTIN_SUPERARM_SOURCE_NAME and builtin is not None:
-        return builtin
-    builtin = _builtin_superarm_amazinghand_record()
-    if name == _BUILTIN_SUPERARM_AMAZINGHAND_NAME and builtin is not None:
-        return builtin
     path = _robot_record_path(name)
     if not os.path.exists(path):
         return None
@@ -509,12 +449,6 @@ def list_robot_records() -> list[dict]:
     builtin = _builtin_superarm_combined_record()
     if builtin is not None:
         records.append(builtin)
-    builtin = _builtin_superarm_source_arm_record()
-    if builtin is not None:
-        records.append(builtin)
-    builtin = _builtin_superarm_amazinghand_record()
-    if builtin is not None:
-        records.append(builtin)
     if not os.path.exists(ROBOTS_PATH):
         return records
     for filename in sorted(os.listdir(ROBOTS_PATH)):
@@ -523,8 +457,6 @@ def list_robot_records() -> list[dict]:
         name = os.path.splitext(filename)[0]
         if name in (
             _BUILTIN_SUPERARM_COMBINED_NAME,
-            _BUILTIN_SUPERARM_SOURCE_NAME,
-            _BUILTIN_SUPERARM_AMAZINGHAND_NAME,
         ):
             continue
         record = get_robot_record(name)
@@ -584,21 +516,22 @@ def is_robot_record_clean(record: dict) -> bool:
     """
     A record is 'clean' when its selected backend has enough configuration to
     start. SO-101 still requires serial ports plus existing calibration files.
-    Custom Isaac Sim follower records do not use SO-101 calibration files; they
-    require a backend, workspace path, and a readable Isaac/LeRobot YAML config.
+    Custom MuJoCo follower records do not use SO-101 calibration files; they
+    require a readable LeRobot YAML config and MuJoCo model.
     Cameras are optional and don't affect cleanliness.
     """
     if not record:
         return False
 
     robot_backend = record.get("robot_backend") or "so101"
-    if robot_backend == "isaacsim_rpo_arm":
-        config_path = record.get("isaacsim_config") or record.get("follower_config")
+    if robot_backend == "superarm_mujoco":
+        config_path = record.get("superarm_config") or record.get("follower_config")
         if not isinstance(config_path, str) or not config_path.strip():
             return False
-        workspace = record.get("superarm_ws_path") or _superarm_ws_path()
+        workspace = record.get("superarm_asset_root") or _superarm_asset_root()
         config_path = _resolve_superarm_config_path(config_path, workspace)
-        return os.path.exists(config_path)
+        model_path = Path(record.get("mujoco_model_path") or "")
+        return os.path.exists(config_path) and model_path.is_file()
 
     for field in ("leader_port", "follower_port", "leader_config", "follower_config"):
         value = record.get(field, "")

@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -66,29 +67,44 @@ def test_health_endpoint_returns_dict(client: TestClient) -> None:
     assert isinstance(body, dict)
 
 
-def test_manual_leader_config_exposes_superarm_slider_contract(client: TestClient) -> None:
-    response = client.get("/manual-leader-config/SuperArm Source Arm")
+def test_manual_leader_config_exposes_superarm_slider_contract(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lelab import server
+
+    config_path = Path(__file__).resolve().parents[1] / "lelab/superarm/data/superarm_mujoco.yaml"
+    record = {
+        "name": "SuperArm + AmazingHand",
+        "robot_backend": "superarm_mujoco",
+        "superarm_config": str(config_path),
+        "follower_config": str(config_path),
+        "superarm_asset_root": str(config_path.parents[3]),
+        "mujoco_model_path": "/tmp/superarm.xml",
+    }
+    monkeypatch.setattr(server, "get_robot_record", lambda name: record if name == record["name"] else None)
+    response = client.get("/manual-leader-config/SuperArm%20%2B%20AmazingHand")
     assert response.status_code == 200
 
     body = response.json()
     assert body["status"] == "success"
-    assert body["robot_name"] == "SuperArm Source Arm"
-    assert body["robot_backend"] == "isaacsim_rpo_arm"
+    assert body["robot_name"] == "SuperArm + AmazingHand"
+    assert body["robot_backend"] == "superarm_mujoco"
     assert body["joint_names"] == [
         "joint_rev_1",
         "joint_rev_2",
         "joint_rev_3",
         "joint_rev_4",
         "joint_rev_5",
+        "amazinghand_motion",
     ]
     assert body["action_endpoint"] == "/send-joint-action"
     assert body["start_endpoint"] == "/move-arm"
     assert body["stop_endpoint"] == "/stop-teleoperation"
-    assert body["start_request"]["robot_backend"] == "isaacsim_rpo_arm"
-    assert body["start_request"]["isaacsim_config"].endswith("source_arm_isaacsim_arm_only.yaml")
+    assert body["start_request"]["robot_backend"] == "superarm_mujoco"
+    assert body["start_request"]["superarm_config"].endswith("superarm_mujoco.yaml")
     assert all(slider["min"] < 0 < slider["max"] for slider in body["sliders"])
-    assert body["presets"][0]["name"] == "Home zero"
-    assert body["presets"][0]["action"] == [0.0, 0.0, 0.0, 0.0, 0.0]
+    assert body["presets"][0]["name"] == "Home / open"
+    assert body["presets"][0]["action"] == [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 
 def test_manual_leader_config_rejects_so101_records(client: TestClient, tmp_lerobot_home) -> None:
@@ -118,7 +134,7 @@ def test_robot_showroom_serves_only_record_urdf_and_referenced_meshes(
     )
     record = {
         "name": "SuperArm + AmazingHand",
-        "superarm_ws_path": str(workspace),
+        "superarm_asset_root": str(workspace),
         "urdf_path": str(urdf_path),
     }
     monkeypatch.setattr(server, "get_robot_record", lambda name: record if name == record["name"] else None)
@@ -149,7 +165,7 @@ def test_robot_showroom_rejects_urdf_outside_workspace(
         "get_robot_record",
         lambda name: {
             "name": name,
-            "superarm_ws_path": str(workspace),
+            "superarm_asset_root": str(workspace),
             "urdf_path": str(outside),
         },
     )
@@ -176,7 +192,7 @@ def test_recording_action_quantizes_manual_superarm_motion(
         follower_config="unused",
         dataset_repo_id="local/test",
         single_task="test",
-        robot_backend="isaacsim_rpo_arm",
+        robot_backend="superarm_mujoco",
         input_mode="manual",
     )
     monkeypatch.setattr(record, "recording_active", True)

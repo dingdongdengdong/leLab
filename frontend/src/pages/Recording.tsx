@@ -54,8 +54,9 @@ interface RecordingConfig {
   resume: boolean;
   streaming_encoding: boolean;
   robot_backend?: string;
-  isaacsim_config?: string;
-  superarm_ws_path?: string;
+  superarm_config?: string;
+  superarm_asset_root?: string;
+  mujoco_model_path?: string;
   input_mode?: "manual" | "so101";
 }
 
@@ -121,7 +122,7 @@ const Recording = () => {
 
   useEffect(() => {
     if (
-      recordingConfig?.robot_backend !== "isaacsim_rpo_arm" ||
+      recordingConfig?.robot_backend !== "superarm_mujoco" ||
       recordingConfig.input_mode !== "manual" ||
       !recordingConfig.robot_name
     ) return;

@@ -141,8 +141,17 @@ def test_session_reconnect_emergency_stop_and_clean_shutdown(tmp_path: Path) -> 
         assert not any(thread.name == "superarm-mujoco" and thread.is_alive() for thread in __import__("threading").enumerate())
 
 
-def test_source_arm_urdf_is_browser_loadable(tmp_path: Path) -> None:
-    workspace = Path(__file__).resolve().parents[3]
+def test_source_arm_urdf_is_browser_loadable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    workspace = tmp_path / "assets"
+    workspace.mkdir()
+    mesh_path = workspace / "motor_1.stl"
+    mesh_path.write_bytes(b"solid motor\nendsolid motor\n")
+    urdf_path = workspace / "superarm_amazinghand.urdf"
+    urdf_path.write_text(
+        f"<robot name='superarm'><link name='base'><visual><geometry><mesh filename='{mesh_path}'/></geometry></visual></link></robot>",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SUPERARM_URDF_PATH", str(urdf_path))
     service = SuperArmService(ProgramStore(tmp_path / "programs.yaml"))
     urdf = service.source_arm_urdf_xml(workspace)
     assert b"/api/superarm/urdf/meshes/" in urdf
@@ -223,7 +232,7 @@ def test_api_namespace_is_registered() -> None:
     assert "/ws/superarm" in paths
     response = TestClient(app).get("/api/superarm/capabilities")
     assert response.status_code == 200
-    assert response.json()["runtimes"]["isaac_sim"]["enabled"] is False
+    assert set(response.json()["runtimes"]) == {"mujoco", "hybrid_serial"}
     session = TestClient(app).get("/api/superarm/session")
     assert session.status_code == 200
     assert session.json()["connected"] is False

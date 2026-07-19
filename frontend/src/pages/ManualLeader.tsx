@@ -160,7 +160,7 @@ const ManualLeaderPage: React.FC = () => {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.message || "Could not connect the Isaac Sim follower backend.");
+        throw new Error(data.message || "Could not connect the SuperArm MuJoCo follower.");
       }
       connectedRef.current = true;
       setConnected(true);
@@ -241,7 +241,7 @@ const ManualLeaderPage: React.FC = () => {
               <Gamepad2 className="h-6 w-6 text-yellow-400" /> Manual Web Leader
             </CardTitle>
             <CardDescription className="text-gray-400">
-              Browser sliders for testing the custom Isaac Sim follower without a physical SO101 leader arm.
+              Browser sliders for testing the MuJoCo-backed LeRobot follower without a physical SO101 leader arm.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -283,7 +283,7 @@ const ManualLeaderPage: React.FC = () => {
 
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={connect} disabled={connected || busy} className="bg-yellow-500 text-white hover:bg-yellow-600">
-                    Connect Isaac Follower
+                    Connect MuJoCo Follower
                   </Button>
                   <Button onClick={() => stopSession()} disabled={!connected || busy} variant="outline" className="border-gray-700 bg-gray-950 text-white">
                     <Square className="mr-2 h-4 w-4" /> Stop

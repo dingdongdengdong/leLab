@@ -14,14 +14,11 @@
 
 import logging
 import math
-import os
-import sys
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
-import yaml
 from pydantic import BaseModel
 
 try:
@@ -85,8 +82,9 @@ class TeleoperateRequest(BaseModel):
     leader_config: str
     follower_config: str
     robot_backend: str = "so101"
-    isaacsim_config: str | None = None
-    superarm_ws_path: str | None = None
+    superarm_config: str | None = None
+    superarm_asset_root: str | None = None
+    mujoco_model_path: str | None = None
 
 
 class JointActionRequest(BaseModel):
@@ -115,8 +113,8 @@ def get_joint_positions_from_robot(robot) -> dict[str, float]:
     except AttributeError:
         observation = robot.capture_observation().get("observation.state", [])
 
-    # Generic LeRobot custom robot path.  Our Isaac Sim bridge exposes feature
-    # keys such as right_arm_pitch_joint.pos and does not use the SO-101 URDF
+    # Generic LeRobot custom robot path. Custom robots expose feature keys and
+    # do not use the SO-101 URDF
     # joint names.
     if isinstance(observation, dict) and not any(
         f"{name}.pos" in observation
@@ -128,7 +126,7 @@ def get_joint_positions_from_robot(robot) -> dict[str, float]:
             if key.endswith(".pos")
         }
 
-    # Some custom backends (including SuperArm Isaac Sim) return the LeRobot
+    # Some custom backends return the LeRobot
     # state vector directly.  Convert it back to named joints using config
     # metadata instead of falling through to the SO-101 calibration path.
     if not isinstance(observation, dict):
@@ -186,63 +184,32 @@ def get_joint_positions_from_robot(robot) -> dict[str, float]:
         return dict.fromkeys(motor_to_urdf_mapping.values(), 0.0)
 
 
-def _superarm_workspace_from_request(request: TeleoperateRequest) -> Path:
-    requested = Path(
-        request.superarm_ws_path
-        or os.environ.get("SUPERARM_WS_PATH")
-        or "/workspaces/superarm_ws"
+def _create_superarm_mujoco_robot(request: TeleoperateRequest):
+    from .superarm.robot import SuperArmMujocoRobot, SuperArmMujocoRobotConfig
+
+    return SuperArmMujocoRobot(
+        SuperArmMujocoRobotConfig(
+            id="lelab_web",
+            model_path=request.mujoco_model_path,
+        )
     )
-    if requested.exists():
-        return requested
-    if requested == Path("/workspaces/superarm_ws"):
-        local = Path(__file__).resolve().parents[3]
-        if (local / "isaacsim_test" / "lerobot").exists():
-            return local
-    return requested
 
 
-def _create_isaacsim_rpo_arm_robot(request: TeleoperateRequest):
-    """Create this repo's custom LeRobot Isaac Sim arm backend.
-
-    LeLab upstream is SO-101 first.  This hook lets a local superarm checkout
-    provide `IsaacSimRpoArmRobot` without vendoring that robot into LeLab.
-    """
-    superarm_ws = _superarm_workspace_from_request(request)
-    lerobot_dir = superarm_ws / "isaacsim_test" / "lerobot"
-    if str(lerobot_dir) not in sys.path:
-        sys.path.insert(0, str(lerobot_dir))
-
-    from isaacsim_rpo_arm_robot import IsaacSimRpoArmConfig, IsaacSimRpoArmRobot
-
-    config_path = Path(
-        request.isaacsim_config
-        or request.follower_config
-        or (lerobot_dir / "rpo_arm_isaacsim.yaml")
-    )
-    if not config_path.is_absolute():
-        config_path = superarm_ws / config_path
-    raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    raw.pop("_type", None)
-    raw.pop("manual_leader", None)
-    config = IsaacSimRpoArmConfig(**raw)
-    return IsaacSimRpoArmRobot(config)
-
-
-def _handle_start_isaacsim_teleoperation(request: TeleoperateRequest, websocket_manager=None) -> dict[str, Any]:
+def _handle_start_superarm_teleoperation(request: TeleoperateRequest, websocket_manager=None) -> dict[str, Any]:
     global teleoperation_active, teleoperation_thread, current_robot, current_teleop
 
     robot = None
     try:
-        robot = _create_isaacsim_rpo_arm_robot(request)
-        logger.info("Connecting Isaac Sim RPO arm backend...")
+        robot = _create_superarm_mujoco_robot(request)
+        logger.info("Connecting SuperArm MuJoCo backend...")
         robot.connect()
         current_robot = robot
         current_teleop = None
 
-        def isaacsim_worker():
+        def superarm_worker():
             global teleoperation_active, current_robot, current_teleop
 
-            logger.info("Starting Isaac Sim arm telemetry loop...")
+            logger.info("Starting SuperArm MuJoCo telemetry loop...")
             try:
                 last_broadcast_time = 0.0
                 broadcast_interval = 0.05
@@ -254,29 +221,29 @@ def _handle_start_isaacsim_teleoperation(request: TeleoperateRequest, websocket_
                             "type": "joint_update",
                             "joints": joint_positions,
                             "timestamp": current_time,
-                            "robot_backend": "isaacsim_rpo_arm",
+                            "robot_backend": "superarm_mujoco",
                         }
                         if websocket_manager and websocket_manager.active_connections:
                             websocket_manager.broadcast_joint_data_sync(joint_data)
                         last_broadcast_time = current_time
                     time.sleep(0.01)
             except Exception as e:
-                logger.error(f"Error during Isaac Sim telemetry loop: {e}")
+                logger.error(f"Error during SuperArm MuJoCo telemetry loop: {e}")
             finally:
                 _safe_disconnect(robot)
-                logger.info("Isaac Sim arm teleoperation stopped")
+                logger.info("SuperArm MuJoCo teleoperation stopped")
                 teleoperation_active = False
                 current_robot = None
                 current_teleop = None
 
         teleoperation_thread = threading.Thread(
-            target=isaacsim_worker, name="isaacsim-teleoperation-worker", daemon=True
+            target=superarm_worker, name="superarm-mujoco-teleoperation", daemon=True
         )
         teleoperation_thread.start()
         return {
             "success": True,
-            "message": "Isaac Sim arm backend connected successfully",
-            "robot_backend": "isaacsim_rpo_arm",
+            "message": "SuperArm MuJoCo backend connected successfully",
+            "robot_backend": "superarm_mujoco",
             "joint_positions": get_joint_positions_from_robot(robot),
         }
     except Exception as e:
@@ -284,8 +251,8 @@ def _handle_start_isaacsim_teleoperation(request: TeleoperateRequest, websocket_
         teleoperation_active = False
         current_robot = None
         current_teleop = None
-        logger.error(f"Failed to start Isaac Sim arm backend: {e}")
-        return {"success": False, "message": str(e), "robot_backend": "isaacsim_rpo_arm"}
+        logger.error(f"Failed to start SuperArm MuJoCo backend: {e}")
+        return {"success": False, "message": str(e), "robot_backend": "superarm_mujoco"}
 
 
 def _safe_disconnect(device) -> None:
@@ -340,8 +307,8 @@ def handle_start_teleoperation(request: TeleoperateRequest, websocket_manager=No
             return {"success": False, "message": busy_messages[0]}
         teleoperation_active = True
 
-    if request.robot_backend == "isaacsim_rpo_arm":
-        return _handle_start_isaacsim_teleoperation(request, websocket_manager)
+    if request.robot_backend == "superarm_mujoco":
+        return _handle_start_superarm_teleoperation(request, websocket_manager)
     if request.robot_backend != "so101":
         teleoperation_active = False
         return {"success": False, "message": f"Unsupported robot_backend: {request.robot_backend}"}
@@ -532,9 +499,8 @@ def handle_get_joint_positions() -> dict[str, Any]:
 def handle_send_joint_action(request: JointActionRequest) -> dict[str, Any]:
     """Send one action to the active robot backend.
 
-    For `robot_backend=isaacsim_rpo_arm`, `action` should be either a list in
-    config joint order (`joint_rev_1..4`) or a mapping keyed by feature/joint
-    names.  The active backend owns normalization.
+    For `robot_backend=superarm_mujoco`, `action` is the canonical six-value
+    vector or a mapping keyed by the canonical LeRobot features.
     """
     global current_robot
 

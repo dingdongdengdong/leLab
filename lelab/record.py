@@ -15,7 +15,6 @@
 import logging
 import re
 import shutil
-import sys
 import threading
 import time
 from datetime import datetime
@@ -89,8 +88,9 @@ class RecordingRequest(BaseModel):
     cameras: dict = {}
     test_mode: bool = False  # Skip robot connection for testing
     robot_backend: str = "so101"
-    isaacsim_config: str | None = None
-    superarm_ws_path: str | None = None
+    superarm_config: str | None = None
+    superarm_asset_root: str | None = None
+    mujoco_model_path: str | None = None
     input_mode: str = "so101"
 
 
@@ -165,7 +165,7 @@ def _build_camera_configs(cameras: dict, default_backend) -> dict:
 
 def create_record_config(request: RecordingRequest) -> RecordConfig:
     """Create a RecordConfig from the recording request"""
-    if request.robot_backend == "isaacsim_rpo_arm":
+    if request.robot_backend == "superarm_mujoco":
         return _create_superarm_record_config(request)
 
     # Setup calibration files
@@ -223,30 +223,25 @@ def create_record_config(request: RecordingRequest) -> RecordConfig:
 def _create_superarm_record_config(request: RecordingRequest) -> RecordConfig:
     from .superarm_teleoperator import SuperArmTeleoperatorConfig
 
-    superarm_ws = Path(request.superarm_ws_path or "/workspaces/superarm_ws")
-    if not superarm_ws.exists() and superarm_ws == Path("/workspaces/superarm_ws"):
-        superarm_ws = Path(__file__).resolve().parents[2]
-    lerobot_dir = superarm_ws / "isaacsim_test/lerobot"
-    if str(lerobot_dir) not in sys.path:
-        sys.path.insert(0, str(lerobot_dir))
-    from isaacsim_rpo_arm_robot import IsaacSimRpoArmConfig
+    from .superarm.robot import SuperArmMujocoRobotConfig
 
-    config_path = Path(request.isaacsim_config or request.follower_config)
+    asset_root = Path(request.superarm_asset_root or Path.cwd())
+    config_path = Path(request.superarm_config or request.follower_config)
     if not config_path.is_absolute():
-        config_path = superarm_ws / config_path
+        config_path = asset_root / config_path
     import yaml
 
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    raw.pop("_type", None)
-    raw.pop("manual_leader", None)
-    raw["cameras"] = _build_camera_configs(request.cameras, _platform_backend())
-    robot_config = IsaacSimRpoArmConfig(**raw)
+    robot_config = SuperArmMujocoRobotConfig(
+        id="lelab_recording",
+        model_path=request.mujoco_model_path,
+        cameras=_build_camera_configs(request.cameras, _platform_backend()),
+    )
     teleop_config = SuperArmTeleoperatorConfig(
         id=f"superarm_{request.input_mode}",
         source=request.input_mode,
         port=request.leader_port,
         leader_id=request.leader_config or "superarm_so101",
-        superarm_ws_path=str(superarm_ws),
         arm_mapping=list(raw.get("so101_leader_mapping") or []),
         arm_limits=dict(raw.get("arm_limits") or {}),
         gripper_feature=str(raw.get("so101_gripper_feature") or "gripper.pos"),

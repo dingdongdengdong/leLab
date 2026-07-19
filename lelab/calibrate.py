@@ -39,7 +39,7 @@ try:
     )
     from lerobot.utils.utils import init_logging
 except ModuleNotFoundError:
-    # Keep the full LeLab web app importable when only the custom Isaac Sim
+    # Keep the full LeLab web app importable when only the custom simulation
     # follower backend is available. SO-101 calibration still fails with a clear
     # dependency error if the user tries to run it without LeRobot installed.
     class _MissingLeRobot:

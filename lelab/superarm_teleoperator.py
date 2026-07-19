@@ -3,24 +3,14 @@
 from __future__ import annotations
 
 import math
-import sys
 import threading
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from lerobot.teleoperators.config import TeleoperatorConfig
 from lerobot.teleoperators.teleoperator import Teleoperator
 
-CANONICAL_FEATURES = [
-    "joint_rev_1.pos",
-    "joint_rev_2.pos",
-    "joint_rev_3.pos",
-    "joint_rev_4.pos",
-    "joint_rev_5.pos",
-    "amazinghand_motion.pos",
-]
-MOTION_CODES = (0.0, 0.5, 1.0)
+from .superarm.actions import CANONICAL_FEATURES, SO101ToSuperArmActionAdapter, resolve_motion_code
 
 
 class _ManualActionSource:
@@ -40,7 +30,7 @@ class _ManualActionSource:
         if not all(math.isfinite(value) for value in values):
             raise ValueError("Manual recording action values must be finite")
         values[:5] = [max(-math.pi, min(math.pi, value)) for value in values[:5]]
-        values[-1] = min(MOTION_CODES, key=lambda code: abs(code - values[-1]))
+        values[-1] = resolve_motion_code(values[-1])
         resolved = dict(zip(CANONICAL_FEATURES, values, strict=True))
         with self._lock:
             self._action = resolved
@@ -64,7 +54,6 @@ class SuperArmTeleoperatorConfig(TeleoperatorConfig):
     source: str = "manual"
     port: str = "unused"
     leader_id: str = "superarm_leader"
-    superarm_ws_path: str = "/workspaces/superarm_ws"
     arm_mapping: list[dict[str, Any]] = field(default_factory=list)
     arm_limits: dict[str, dict[str, float]] = field(default_factory=dict)
     gripper_feature: str = "gripper.pos"
@@ -104,11 +93,6 @@ class SuperArmTeleoperator(Teleoperator):
         if self._is_connected:
             return
         if self.config.source == "so101":
-            lerobot_dir = Path(self.config.superarm_ws_path) / "isaacsim_test/lerobot"
-            if str(lerobot_dir) not in sys.path:
-                sys.path.insert(0, str(lerobot_dir))
-            from superarm_action_adapter import SO101ToSuperArmActionAdapter
-
             from lerobot.teleoperators.so_leader import SO101Leader, SO101LeaderConfig
 
             self._leader = SO101Leader(
@@ -122,7 +106,6 @@ class SuperArmTeleoperator(Teleoperator):
                 arm_mapping=self.config.arm_mapping,
                 arm_limits=self.config.arm_limits,
                 gripper_feature=self.config.gripper_feature,
-                motion_hysteresis=self.config.motion_hysteresis,
             )
             self._leader.connect(calibrate=calibrate)
         self._is_connected = True

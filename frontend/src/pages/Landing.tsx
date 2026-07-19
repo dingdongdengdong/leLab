@@ -215,9 +215,10 @@ const Landing = () => {
       streaming_encoding: streamingEncoding,
       cameras: cameraDict,
       robot_backend: robot.robot_backend || "so101",
-      isaacsim_config: robot.isaacsim_config || undefined,
-      superarm_ws_path: robot.superarm_ws_path || undefined,
-      input_mode: robot.robot_backend === "isaacsim_rpo_arm" ? "manual" : "so101",
+      superarm_config: robot.superarm_config || undefined,
+      superarm_asset_root: robot.superarm_asset_root || undefined,
+      mujoco_model_path: robot.mujoco_model_path || undefined,
+      input_mode: robot.robot_backend === "superarm_mujoco" ? "manual" : "so101",
     };
 
     setShowRecordingModal(false);

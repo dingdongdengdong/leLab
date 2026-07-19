@@ -38,7 +38,7 @@ import {
 
 type FingerName = "pointer" | "middle" | "ring" | "thumb";
 type Pair = [number, number];
-type Runtime = "mujoco" | "hybrid_serial" | "isaac_sim";
+type Runtime = "mujoco" | "hybrid_serial";
 
 const ARM_JOINTS = ["joint_rev_1", "joint_rev_2", "joint_rev_3", "joint_rev_4", "joint_rev_5"];
 const FINGERS: FingerName[] = ["pointer", "middle", "ring", "thumb"];
@@ -412,7 +412,6 @@ const SuperArm = () => {
                 <select value={runtime} onChange={(event) => setRuntime(event.target.value as Runtime)} disabled={connected} className="rounded border border-slate-700 bg-slate-950 p-2">
                   <option value="mujoco">MuJoCo (default)</option>
                   <option value="hybrid_serial">Hybrid serial</option>
-                  <option value="isaac_sim" disabled>Isaac Sim — later</option>
                 </select>
               </label>
               {runtime === "hybrid_serial" && (
@@ -423,7 +422,7 @@ const SuperArm = () => {
                 </label>
               )}
               {!connected ? (
-                <Button onClick={connect} disabled={connecting || runtime === "isaac_sim"} className="bg-emerald-600 hover:bg-emerald-500">
+                <Button onClick={connect} disabled={connecting} className="bg-emerald-600 hover:bg-emerald-500">
                   <Power className="mr-2 h-4 w-4" /> {connecting ? "Starting…" : "Connect"}
                 </Button>
               ) : (

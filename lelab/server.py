@@ -1171,7 +1171,7 @@ def set_recording_action(body: JointActionRequest):
     if (
         not recording_module.recording_active
         or active_config is None
-        or active_config.robot_backend != "isaacsim_rpo_arm"
+        or active_config.robot_backend != "superarm_mujoco"
         or active_config.input_mode != "manual"
     ):
         return JSONResponse(
@@ -1195,18 +1195,18 @@ def _record_with_clean(record: dict) -> dict:
 
 
 def _resolve_robot_config_path(record: dict) -> Path | None:
-    config_path = record.get("isaacsim_config") or record.get("follower_config")
+    config_path = record.get("superarm_config") or record.get("follower_config")
     if not isinstance(config_path, str) or not config_path.strip():
         return None
     path = Path(config_path)
     if not path.is_absolute():
-        workspace = record.get("superarm_ws_path") or os.environ.get("SUPERARM_WS_PATH") or "/workspaces/superarm_ws"
+        workspace = record.get("superarm_asset_root") or os.environ.get("SUPERARM_ASSET_ROOT") or Path.cwd()
         path = Path(workspace) / path
     return path
 
 
 def _allowlisted_robot_urdf(record: dict) -> tuple[Path, Path]:
-    workspace = Path(record.get("superarm_ws_path") or config._superarm_ws_path()).resolve()
+    workspace = Path(record.get("superarm_asset_root") or config._superarm_asset_root()).resolve()
     raw_path = record.get("urdf_path")
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise HTTPException(status_code=404, detail="Robot does not define a showroom URDF")
@@ -1267,17 +1267,17 @@ def _default_manual_leader_presets(joint_count: int) -> list[dict[str, Any]]:
 
 
 def _manual_leader_config_for_record(record: dict) -> tuple[int, dict[str, Any]]:
-    if (record.get("robot_backend") or "so101") != "isaacsim_rpo_arm":
+    if (record.get("robot_backend") or "so101") != "superarm_mujoco":
         return 400, {
             "status": "error",
-            "message": "Manual web leader is only available for Isaac Sim custom follower robots.",
+            "message": "Manual web leader is only available for the SuperArm MuJoCo robot.",
         }
     try:
         return 200, build_manual_leader_config(record)
     except FileNotFoundError:
-        return 400, {"status": "error", "message": "Isaac Sim config file is missing."}
+        return 400, {"status": "error", "message": "SuperArm MuJoCo config file is missing."}
     except ValueError:
-        return 400, {"status": "error", "message": "Isaac Sim config does not define joint_names."}
+        return 400, {"status": "error", "message": "SuperArm MuJoCo config is invalid."}
 
 
 @app.get("/robots")

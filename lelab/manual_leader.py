@@ -6,39 +6,29 @@ from typing import Any
 
 import yaml
 
+from .superarm.mapping import degrees_to_mujoco
 
-def _superarm_ws_path() -> str:
-    env_path = os.environ.get("SUPERARM_WS_PATH")
+
+def _superarm_asset_root() -> str:
+    env_path = os.environ.get("SUPERARM_ASSET_ROOT")
     if env_path:
         return env_path
-    container_path = Path("/workspaces/superarm_ws")
-    if container_path.exists():
-        return str(container_path)
-    repo_path = Path(__file__).resolve().parents[3]
-    if (repo_path / "isaacsim_test" / "lerobot").exists():
-        return str(repo_path)
-    return str(container_path)
+    return str(Path.cwd())
 
 
 def _remap_missing_container_path(path: Path) -> Path:
     if path.exists():
         return path
-    marker = Path("/workspaces/superarm_ws")
-    try:
-        relative = path.relative_to(marker)
-    except ValueError:
-        return path
-    local_path = Path(_superarm_ws_path()) / relative
-    return local_path if local_path.exists() else path
+    return path
 
 
 def _resolve_robot_config_path(record: dict) -> Path | None:
-    config_path = record.get("isaacsim_config") or record.get("follower_config")
+    config_path = record.get("superarm_config") or record.get("follower_config")
     if not isinstance(config_path, str) or not config_path.strip():
         return None
     path = Path(config_path)
     if not path.is_absolute():
-        workspace = record.get("superarm_ws_path") or _superarm_ws_path()
+        workspace = record.get("superarm_asset_root") or _superarm_asset_root()
         path = Path(workspace) / path
     return _remap_missing_container_path(path)
 
@@ -89,7 +79,7 @@ def _manual_leader_kind(raw_config: dict, record: dict) -> str:
     if isinstance(manual, dict) and isinstance(manual.get("kind"), str):
         return manual["kind"]
     name = str(record.get("name") or "").lower()
-    config_path = str(record.get("isaacsim_config") or record.get("follower_config") or "").lower()
+    config_path = str(record.get("superarm_config") or record.get("follower_config") or "").lower()
     if "amazinghand" in name or "amazinghand" in config_path:
         return "amazinghand"
     return "default"
@@ -98,12 +88,12 @@ def _manual_leader_kind(raw_config: dict, record: dict) -> str:
 def build_manual_leader_config(record: dict) -> dict[str, Any]:
     config_path = _resolve_robot_config_path(record)
     if config_path is None or not config_path.exists():
-        raise FileNotFoundError("Isaac Sim config file is missing.")
+        raise FileNotFoundError("SuperArm MuJoCo config file is missing.")
 
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     joint_names = raw.get("joint_names") or []
     if not isinstance(joint_names, list) or not all(isinstance(name, str) for name in joint_names):
-        raise ValueError("Isaac Sim config does not define joint_names.")
+        raise ValueError("SuperArm MuJoCo config does not define joint_names.")
 
     manual = raw.get("manual_leader") if isinstance(raw.get("manual_leader"), dict) else {}
     kind = _manual_leader_kind(raw, record)
@@ -135,9 +125,13 @@ def build_manual_leader_config(record: dict) -> dict[str, Any]:
         if not isinstance(configured_motions, list) or not configured_motions:
             raise ValueError("Combined SuperArm config does not define hand_motions.")
         for motion in configured_motions:
-            targets = motion.get("joint_targets") if isinstance(motion, dict) else None
-            if not isinstance(targets, list) or len(targets) != len(hand_joint_names):
-                raise ValueError("Each AmazingHand motion must target every physical hand joint.")
+            degrees = motion.get("degrees") if isinstance(motion, dict) else None
+            if not isinstance(degrees, int | float):
+                raise ValueError("Each AmazingHand motion must define one fixed servo angle.")
+            targets = [
+                degrees_to_mujoco(1 if name.endswith("motor1") else 2, float(degrees))
+                for name in hand_joint_names
+            ]
             hand_motions.append(
                 {
                     "name": str(motion["name"]),
@@ -178,14 +172,15 @@ def build_manual_leader_config(record: dict) -> dict[str, Any]:
         "follower_port": record.get("follower_port") or "unused",
         "leader_config": record.get("leader_config") or "unused",
         "follower_config": record.get("follower_config") or str(config_path),
-        "robot_backend": "isaacsim_rpo_arm",
-        "isaacsim_config": str(config_path),
-        "superarm_ws_path": record.get("superarm_ws_path") or _superarm_ws_path(),
+        "robot_backend": "superarm_mujoco",
+        "superarm_config": str(config_path),
+        "superarm_asset_root": record.get("superarm_asset_root") or _superarm_asset_root(),
+        "mujoco_model_path": record.get("mujoco_model_path"),
     }
     return {
         "status": "success",
         "robot_name": record["name"],
-        "robot_backend": "isaacsim_rpo_arm",
+        "robot_backend": "superarm_mujoco",
         "joint_names": joint_names,
         "physical_joint_names": physical_joint_names,
         "sliders": sliders,

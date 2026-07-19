@@ -8,8 +8,6 @@ and the official closed-loop AmazingHand MJCF model.
 - **MuJoCo** is the default complete v1 runtime.
 - **Hybrid serial** keeps the arm simulated and controls an eight-servo physical
   AmazingHand through `rustypot` while mirroring commands into MuJoCo.
-- **Isaac Sim — later** is deliberately disabled. Existing Isaac/ROS routes and
-  the preserved SimReady path are unchanged.
 - A real source-arm transport is not implemented in v1; the `ArmTransport`
   interface is the replacement point.
 

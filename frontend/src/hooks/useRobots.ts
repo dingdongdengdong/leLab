@@ -11,8 +11,9 @@ export interface RobotRecord {
   leader_config: string;
   follower_config: string;
   robot_backend?: string;
-  isaacsim_config?: string;
-  superarm_ws_path?: string;
+  superarm_config?: string;
+  superarm_asset_root?: string;
+  mujoco_model_path?: string;
   urdf_path?: string;
   purpose?: "primary" | "diagnostic";
   physical_joint_names?: string[];

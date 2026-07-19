@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import queue
-import sys
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -31,8 +31,6 @@ class SuperArmService:
         self._sequence_thread: threading.Thread | None = None
         self._sequence_stop = threading.Event()
         self._sequence_pause = threading.Event()
-        self._model_assets: dict[str, Any] | None = None
-        self._model_workspace: Path | None = None
 
     def capabilities(self, workspace_root: str | Path | None = None) -> dict[str, Any]:
         errors: list[str] = []
@@ -54,7 +52,6 @@ class SuperArmService:
                     "default_port": "/dev/ttyACM0",
                     "baudrate": 1_000_000,
                 },
-                "isaac_sim": {"enabled": False, "label": "Isaac Sim — later"},
             },
             "workspace_root": str(root) if root else None,
             "model_source": "official AmazingHand MJCF closed-loop model",
@@ -68,72 +65,55 @@ class SuperArmService:
         candidates = []
         if workspace_root:
             candidates.append(Path(workspace_root))
+        if os.environ.get("SUPERARM_ASSET_ROOT"):
+            candidates.append(Path(os.environ["SUPERARM_ASSET_ROOT"]))
         candidates.extend(
             [
                 Path.cwd(),
-                Path(__file__).resolve().parents[4],
-                Path.home() / "july" / "superarm_ws",
+                Path.home() / ".cache" / "huggingface" / "lerobot" / "amazinghand" / "model",
             ]
         )
         for candidate in candidates:
             resolved = candidate.expanduser().resolve()
-            if (resolved / "robot_arm_hand_package.zip").is_file():
+            if resolved.is_dir():
                 return resolved
         return None
 
-    def _prepare_model_assets(
+    def model_path(
         self,
-        workspace_root: str | Path | None,
-    ) -> dict[str, Any]:
-        workspace = self.resolve_workspace(workspace_root)
-        if workspace is None:
-            raise RuntimeError("Could not locate SuperArm workspace with robot_arm_hand_package.zip")
-        with self._lock:
-            cached_model = (
-                Path(self._model_assets["model_path"])
-                if self._model_assets is not None
-                else None
+        workspace_root: str | Path | None = None,
+        model_path: str | Path | None = None,
+    ) -> Path:
+        root = self.resolve_workspace(workspace_root)
+        configured = model_path or os.environ.get("SUPERARM_MUJOCO_MODEL_PATH")
+        candidate = Path(configured).expanduser() if configured else None
+        if candidate is not None and not candidate.is_absolute() and root is not None:
+            candidate = root / candidate
+        if candidate is None:
+            candidate = Path.home() / ".cache/huggingface/lerobot/amazinghand/model/superarm_amazinghand.xml"
+        candidate = candidate.resolve()
+        if not candidate.is_file():
+            raise FileNotFoundError(
+                "SuperArm MuJoCo model is missing; set SUPERARM_MUJOCO_MODEL_PATH"
             )
-            if (
-                self._model_workspace == workspace
-                and cached_model is not None
-                and cached_model.is_file()
-            ):
-                return self._model_assets
-            generator_path = workspace / "isaacsim_test/mujoco_models/generate_superarm_amazinghand.py"
-            spec = importlib.util.spec_from_file_location(
-                "superarm_mujoco_generator",
-                generator_path,
-            )
-            if spec is None or spec.loader is None:
-                raise RuntimeError(f"Could not load model generator: {generator_path}")
-            module = importlib.util.module_from_spec(spec)
-            inserted = str(workspace) not in sys.path
-            if inserted:
-                sys.path.insert(0, str(workspace))
-            try:
-                spec.loader.exec_module(module)
-            finally:
-                if inserted:
-                    sys.path.remove(str(workspace))
-            output = Path.home() / ".cache/huggingface/lerobot/amazinghand/model"
-            self._model_assets = module.generate_combined_model(
-                workspace_root=workspace,
-                output_dir=output,
-            )
-            self._model_workspace = workspace
-            return self._model_assets
+        return candidate
 
-    def model_path(self, workspace_root: str | Path | None = None) -> Path:
-        return Path(self._prepare_model_assets(workspace_root)["model_path"])
+    def _urdf_path(self, workspace_root: str | Path | None = None) -> Path:
+        root = self.resolve_workspace(workspace_root)
+        configured = os.environ.get("SUPERARM_URDF_PATH")
+        candidate = Path(configured).expanduser() if configured else None
+        if candidate is not None and not candidate.is_absolute() and root is not None:
+            candidate = root / candidate
+        if candidate is None or not candidate.resolve().is_file():
+            raise FileNotFoundError("SuperArm showroom URDF is missing; set SUPERARM_URDF_PATH")
+        return candidate.resolve()
 
     def source_arm_urdf_xml(
         self,
         workspace_root: str | Path | None = None,
     ) -> bytes:
-        assets = self._prepare_model_assets(workspace_root)
-        output = Path(assets["model_path"]).parent
-        root = ET.parse(output / assets["sanitized_arm_urdf"]).getroot()
+        urdf_path = self._urdf_path(workspace_root)
+        root = ET.parse(urdf_path).getroot()
         for mesh in root.findall(".//mesh"):
             filename = mesh.get("filename")
             if filename:
@@ -151,11 +131,16 @@ class SuperArmService:
     ) -> Path:
         if Path(filename).name != filename:
             raise ValueError("Invalid source-arm mesh filename")
-        assets = self._prepare_model_assets(workspace_root)
-        path = Path(assets["model_path"]).parent / "assets" / "arm" / filename
-        if not path.is_file():
-            raise FileNotFoundError(f"Source-arm mesh is missing: {filename}")
-        return path
+        urdf_path = self._urdf_path(workspace_root)
+        for mesh in ET.parse(urdf_path).getroot().findall(".//mesh"):
+            source = mesh.get("filename")
+            if source and Path(source).name == filename:
+                path = Path(source)
+                if not path.is_absolute():
+                    path = urdf_path.parent / path
+                if path.resolve().is_file():
+                    return path.resolve()
+        raise FileNotFoundError(f"Source-arm mesh is missing: {filename}")
 
     def start_session(
         self,
@@ -163,6 +148,7 @@ class SuperArmService:
         *,
         serial_port: str = "/dev/ttyACM0",
         workspace_root: str | Path | None = None,
+        model_path: str | Path | None = None,
     ) -> dict[str, Any]:
         if mode not in {"mujoco", "hybrid_serial"}:
             raise ValueError("Runtime must be mujoco or hybrid_serial")
@@ -174,9 +160,9 @@ class SuperArmService:
                     f"A SuperArm {self.mode} runtime session is already active; "
                     f"disconnect it before starting {mode}"
                 )
-            model_path = self.model_path(workspace_root)
+            resolved_model_path = self.model_path(workspace_root, model_path)
             runtime = MuJoCoRuntime(
-                model_path,
+                resolved_model_path,
                 state_callback=lambda state: self.publish(
                     {"type": "state", **self.status(), "state": state}
                 ),

@@ -24,6 +24,7 @@ class SessionRequest(BaseModel):
     runtime: Literal["mujoco", "hybrid_serial"] = "mujoco"
     serial_port: str = "/dev/ttyACM0"
     workspace_root: str | None = None
+    model_path: str | None = None
 
 
 class ActionRequest(BaseModel):
@@ -118,6 +119,7 @@ def start_session(request: SessionRequest):
             request.runtime,
             serial_port=request.serial_port,
             workspace_root=request.workspace_root,
+            model_path=request.model_path,
         )
     except Exception as exc:
         raise api_error(exc) from exc
