@@ -240,10 +240,17 @@ def test_superarm_mujoco_backend_skips_so101_calibration(monkeypatch: pytest.Mon
     monkeypatch.setattr(teleop, "teleoperation_active", False)
 
     class _Robot:
-        def connect(self) -> None: pass
-        def disconnect(self) -> None: pass
-        def get_visualization_joints(self) -> dict[str, float]: return {"joint_rev_1": 0.0}
-        def send_action(self, action): return action
+        def connect(self) -> None:
+            pass
+
+        def disconnect(self) -> None:
+            pass
+
+        def get_visualization_joints(self) -> dict[str, float]:
+            return {"joint_rev_1": 0.0}
+
+        def send_action(self, action):
+            return action
 
     captured = {}
 
@@ -259,8 +266,12 @@ def test_superarm_mujoco_backend_skips_so101_calibration(monkeypatch: pytest.Mon
     monkeypatch.setattr(teleop, "setup_calibration_files", fail_so101_setup)
 
     request = teleop.TeleoperateRequest(
-        leader_port="unused", follower_port="unused", leader_config="unused", follower_config="unused",
-        robot_backend="superarm_mujoco", mujoco_model_path="/tmp/superarm.xml",
+        leader_port="unused",
+        follower_port="unused",
+        leader_config="unused",
+        follower_config="unused",
+        robot_backend="superarm_mujoco",
+        mujoco_model_path="/tmp/superarm.xml",
     )
     result = teleop.handle_start_teleoperation(request)
 

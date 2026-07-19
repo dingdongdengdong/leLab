@@ -127,9 +127,7 @@ def amazinghand_visual_asset(
     model_path: str | None = None,
 ):
     try:
-        return FileResponse(
-            service.amazinghand_visual_asset_path(mesh_name, workspace_root, model_path)
-        )
+        return FileResponse(service.amazinghand_visual_asset_path(mesh_name, workspace_root, model_path))
     except Exception as exc:
         raise api_error(exc) from exc
 

@@ -42,6 +42,7 @@ except ModuleNotFoundError:
         def __init__(self, **kwargs) -> None:
             self.__dict__.update(kwargs)
 
+
 from .utils.config import setup_calibration_files
 from .utils.devices import safe_disconnect_device
 
@@ -102,10 +103,7 @@ def get_joint_positions_from_robot(robot) -> dict[str, float]:
     """
     get_visualization_joints = getattr(robot, "get_visualization_joints", None)
     if callable(get_visualization_joints):
-        return {
-            str(name): float(value)
-            for name, value in get_visualization_joints().items()
-        }
+        return {str(name): float(value) for name, value in get_visualization_joints().items()}
 
     try:
         observation = robot.get_observation()
@@ -132,7 +130,9 @@ def get_joint_positions_from_robot(robot) -> dict[str, float]:
         joint_names = list(getattr(getattr(robot, "config", None), "joint_names", []) or [])
         values = list(observation)
         if joint_names:
-            return {name: float(values[idx]) if idx < len(values) else 0.0 for idx, name in enumerate(joint_names)}
+            return {
+                name: float(values[idx]) if idx < len(values) else 0.0 for idx, name in enumerate(joint_names)
+            }
 
     motor_to_urdf_mapping = {
         "shoulder_pan": "Rotation",
@@ -202,7 +202,9 @@ def _create_superarm_mujoco_robot(request: TeleoperateRequest):
     )
 
 
-def _handle_start_superarm_teleoperation(request: TeleoperateRequest, websocket_manager=None) -> dict[str, Any]:
+def _handle_start_superarm_teleoperation(
+    request: TeleoperateRequest, websocket_manager=None
+) -> dict[str, Any]:
     global teleoperation_active, teleoperation_thread, current_robot, current_teleop
 
     robot = None

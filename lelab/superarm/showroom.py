@@ -119,7 +119,7 @@ def _normalize_quaternion(values: Any) -> list[float]:
     normalized = [value / norm for value in quaternion]
     if normalized[0] < 0:
         normalized = [-value for value in normalized]
-    return normalized
+    return [0.0 if abs(value) < 1e-12 else value for value in normalized]
 
 
 def _quaternion_multiply(left: list[float], right: list[float]) -> list[float]:

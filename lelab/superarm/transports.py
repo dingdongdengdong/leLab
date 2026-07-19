@@ -103,12 +103,7 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
         self._joint_qpos: dict[str, int] = {}
         self._hand_body_ids: list[int] = []
         self._targets = dict.fromkeys(ARM_JOINTS, 0.0)
-        self._targets.update(
-            {
-                name: (0.05 if name.endswith("motor1") else -0.02)
-                for name in HAND_ACTUATORS
-            }
-        )
+        self._targets.update({name: (0.05 if name.endswith("motor1") else -0.02) for name in HAND_ACTUATORS})
         self._latest_frame: bytes | None = None
         self._latest_state: dict[str, Any] = {}
         self._frame_sequence = 0
@@ -205,10 +200,7 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
 
     def _capture_state(self, timestamp: float) -> None:
         with self._lock:
-            positions = {
-                name: float(self._data.qpos[address])
-                for name, address in self._joint_qpos.items()
-            }
+            positions = {name: float(self._data.qpos[address]) for name, address in self._joint_qpos.items()}
             target = dict(self._targets)
             visual_bodies = amazinghand_visual_pose(
                 self._model,
