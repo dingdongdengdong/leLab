@@ -63,8 +63,10 @@ export const useRobots = () => {
         const next: Record<string, RobotRecord> = {};
         for (const r of data.robots ?? []) next[r.name] = r;
         setRecords(next);
-        // Drop the selection if the underlying record vanished (deleted from another tab)
-        setSelectedName((prev) => (prev && prev in next ? prev : null));
+        const primaryName = Object.values(next).find((record) => record.purpose === "primary")?.name ?? null;
+        // Preserve a valid explicit selection. Otherwise make the custom primary
+        // robot immediately visible instead of leaving the original LeLab page empty.
+        setSelectedName((prev) => (prev && prev in next ? prev : primaryName));
       } catch (e) {
         if (!cancelled) {
           console.error("Failed to fetch robots:", e);
