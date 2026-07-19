@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 from .mapping import ARM_JOINTS, UI_FINGERS
 from .programs import ProgramStore
-from .showroom import align_amazinghand_attachment
+from .showroom import align_amazinghand_attachment, align_joint5_urdf
 from .transports import MuJoCoRuntime, SerialAmazingHandTransport
 
 
@@ -115,6 +115,7 @@ class SuperArmService:
     ) -> bytes:
         urdf_path = self._urdf_path(workspace_root)
         root = ET.parse(urdf_path).getroot()
+        align_joint5_urdf(root)
         align_amazinghand_attachment(root)
         for mesh in root.findall(".//mesh"):
             filename = mesh.get("filename")

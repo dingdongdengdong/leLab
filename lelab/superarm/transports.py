@@ -27,6 +27,7 @@ from .mapping import (
     hardware_radians_to_degrees,
     named_hand_to_mujoco,
 )
+from .showroom import aligned_mujoco_model_path
 
 
 def configure_superarm_camera(model: Any, data: Any, camera: Any) -> None:
@@ -144,7 +145,8 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
             os.environ.setdefault("MUJOCO_GL", "egl")
             import mujoco
 
-            self._model = mujoco.MjModel.from_xml_path(str(self.model_path))
+            with aligned_mujoco_model_path(self.model_path) as runtime_model_path:
+                self._model = mujoco.MjModel.from_xml_path(str(runtime_model_path))
             self._data = mujoco.MjData(self._model)
             self._actuator_ids = {
                 name: mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_ACTUATOR, name)

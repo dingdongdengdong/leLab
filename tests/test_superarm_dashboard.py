@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import math
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import numpy as np
@@ -21,6 +22,7 @@ from lelab.superarm.mapping import (
 )
 from lelab.superarm.programs import ProgramStore
 from lelab.superarm.service import SuperArmService
+from lelab.superarm.showroom import align_joint5_mjcf, align_joint5_urdf
 from lelab.superarm.transports import configure_superarm_camera
 
 
@@ -86,6 +88,58 @@ def test_missing_pose_subsystem_is_preserved(tmp_path: Path) -> None:
     pose = store.save_pose("arm only", {"arm_rad": {"joint_rev_1": 0.2}})
     assert pose == {"arm_rad": {"joint_rev_1": 0.2}}
     assert "hand_deg" not in pose
+
+
+def test_joint5_urdf_rotates_motor_and_keeps_shell_fixed_to_it() -> None:
+    root = ET.fromstring(
+        "<robot name='superarm'>"
+        "<link name='arm_link2b'/><link name='motor_5'/><link name='arm_link3b'/>"
+        "<joint name='joint_fix_43' type='fixed'><origin xyz='0.02 0 0.05'/>"
+        "<parent link='arm_link2b'/><child link='motor_5'/></joint>"
+        "<joint name='joint_rev_5' type='continuous'><origin xyz='0 0.025 0.00175'/>"
+        "<parent link='motor_5'/><child link='arm_link3b'/><axis xyz='0 0 1'/></joint>"
+        "</robot>"
+    )
+
+    assert align_joint5_urdf(root) is True
+
+    joints = {joint.get("name"): joint for joint in root.findall("joint")}
+    moving = joints["joint_rev_5"]
+    assert moving.get("type") == "continuous"
+    assert moving.find("parent").get("link") == "arm_link2b"
+    assert moving.find("child").get("link") == "motor_5"
+    assert moving.find("origin").get("xyz") == "0.02 0 0.05"
+    assert moving.find("axis").get("xyz") == "0 0 -1"
+    shell_mount = joints["joint_fix_28"]
+    assert shell_mount.get("type") == "fixed"
+    assert shell_mount.find("parent").get("link") == "motor_5"
+    assert shell_mount.find("child").get("link") == "arm_link3b"
+    assert shell_mount.find("origin").get("xyz") == "0 0.025 0.00175"
+    assert shell_mount.find("axis") is None
+
+
+def test_joint5_mjcf_moves_pivot_to_motor_without_moving_zero_pose() -> None:
+    root = ET.fromstring(
+        "<mujoco><worldbody><body name='arm_link2b'>"
+        "<geom mesh='motor_5' pos='0.055112 -0.282649 -0.371019'/>"
+        "<body name='arm_link3b' pos='0.02 0.025 0.05175'>"
+        "<inertial pos='0.0331973 -0.118164 0.001401'/>"
+        "<joint name='joint_rev_5' axis='0 0 1'/>"
+        "<geom mesh='arm_link3b' pos='0.035112 -0.307649 -0.422769'/>"
+        "<body name='wrist' pos='0 -0.025 0.186753'/>"
+        "</body></body></worldbody></mujoco>"
+    )
+
+    assert align_joint5_mjcf(root) is True
+
+    moving = root.find(".//body[@name='arm_link3b']")
+    assert moving.get("pos") == "0.02 0 0.05"
+    assert moving.find("joint").get("axis") == "0 0 -1"
+    geoms = {geom.get("mesh"): geom for geom in moving.findall("geom")}
+    assert geoms["motor_5"].get("pos") == "0.035112 -0.282649 -0.421019"
+    assert geoms["arm_link3b"].get("pos") == "0.035112 -0.282649 -0.421019"
+    assert moving.find("inertial").get("pos") == "0.0331973 -0.093164 0.003151"
+    assert moving.find("body[@name='wrist']").get("pos") == "0 0 0.188503"
 
 
 def test_sequence_parsing_and_validation(tmp_path: Path) -> None:
