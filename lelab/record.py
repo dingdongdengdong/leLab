@@ -239,6 +239,7 @@ def _create_superarm_record_config(request: RecordingRequest) -> RecordConfig:
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     raw.pop("_type", None)
     raw.pop("manual_leader", None)
+    raw["cameras"] = _build_camera_configs(request.cameras, _platform_backend())
     robot_config = IsaacSimRpoArmConfig(**raw)
     teleop_config = SuperArmTeleoperatorConfig(
         id=f"superarm_{request.input_mode}",

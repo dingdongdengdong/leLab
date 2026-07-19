@@ -140,6 +140,15 @@ def test_create_record_config_uses_six_control_superarm_robot_and_manual_teleope
         dataset_repo_id="local/superarm_test",
         single_task="test the fixed grasp",
         video=False,
+        cameras={
+            "wrist": {
+                "type": "opencv",
+                "camera_index": 0,
+                "width": 64,
+                "height": 64,
+                "fps": 30,
+            }
+        },
     )
 
     config = record.create_record_config(request)
@@ -165,6 +174,43 @@ def test_create_record_config_uses_six_control_superarm_robot_and_manual_teleope
     assert action_feature["shape"] == (6,)
     assert observation_feature["shape"] == (6,)
     assert action_feature["names"] == list(robot.action_features)
+    dataset_observation_features = hw_to_dataset_features(
+        robot.observation_features, "observation", False
+    )
+    assert dataset_observation_features["observation.images.wrist"]["shape"] == (64, 64, 3)
+
+
+def test_act_policy_constructs_with_superarm_six_dimensional_head_and_camera() -> None:
+    from lerobot.configs.types import FeatureType, PolicyFeature
+    from lerobot.policies.act.configuration_act import ACTConfig
+    from lerobot.policies.act.modeling_act import ACTPolicy
+
+    config = ACTConfig(
+        input_features={
+            "observation.state": PolicyFeature(type=FeatureType.STATE, shape=(6,)),
+            "observation.images.wrist": PolicyFeature(type=FeatureType.VISUAL, shape=(3, 64, 64)),
+        },
+        output_features={
+            "action": PolicyFeature(type=FeatureType.ACTION, shape=(6,)),
+        },
+        device="cpu",
+        push_to_hub=False,
+        pretrained_backbone_weights=None,
+        chunk_size=5,
+        n_action_steps=1,
+        dim_model=64,
+        n_heads=4,
+        dim_feedforward=128,
+        n_encoder_layers=1,
+        n_decoder_layers=1,
+        use_vae=False,
+    )
+
+    config.validate_features()
+    policy = ACTPolicy(config)
+
+    assert config.output_features["action"].shape == (6,)
+    assert policy.config.output_features["action"].shape == (6,)
 
 
 def test_create_record_config_keeps_so101_mapping_before_dataset_boundary() -> None:
