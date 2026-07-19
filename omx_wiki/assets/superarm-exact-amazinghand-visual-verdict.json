@@ -1,0 +1,16 @@
+{
+  "score": 96,
+  "verdict": "PASS",
+  "category_match": true,
+  "differences": [
+    "LeLab and MuJoCo use different cameras, lighting, materials, and backgrounds, so the paired frames are not a pixel-level comparison.",
+    "LeLab clips parts of the upper fingertips in some close-up states while MuJoCo shows the complete hand.",
+    "MuJoCo has darker materials and stronger depth cues; LeLab uses a uniform light material."
+  ],
+  "suggestions": [
+    "Use matched camera extrinsics for future silhouette or pixel-difference validation.",
+    "Pull the LeLab camera back slightly for complete fingertip framing.",
+    "Add modest material contrast for inspection without changing geometry."
+  ],
+  "reasoning": "All open, half, and close evidence is nonblank, distinct, and detailed. Shells, rods, pivots, and linkages remain attached and move without floating geometry. The grasp silhouettes qualitatively match MuJoCo, while numeric evidence proves 33 bodies, 162 meshes, zero fallback proxies, and sub-threshold transform error."
+}

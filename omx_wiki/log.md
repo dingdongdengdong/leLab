@@ -76,3 +76,11 @@
 - **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md
 - **Summary:** Lint: 1 issues (1 orphan, 0 stale, 0 broken, 0 contradictions)
 
+## [2026-07-19T16:18:30.404Z] add
+- **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, superarm-urdf-amazinghand-showroom-motion-fix.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-07-19T16:18:30.683Z] lint
+- **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md
+- **Summary:** Lint: 1 issues (1 orphan, 0 stale, 0 broken, 0 contradictions)
+

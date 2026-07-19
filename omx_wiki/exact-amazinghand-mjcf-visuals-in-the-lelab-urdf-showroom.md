@@ -68,6 +68,7 @@ The production LeLab server was rebuilt and started with the configured combined
 - Maximum quaternion angular error: `0.01965 degrees`.
 - All numeric live acceptance gates passed (`<=1 mm`, `<=1 degree`).
 - The reviewed screenshots are non-blank and show the detailed official linkage/shell geometry bending through all three fixed grasp poses while remaining attached to the arm wrist.
+- Delegated visual review: `96/100`, `PASS`. The reviewer confirmed connected detailed geometry and matching grasp silhouettes; the recorded limitation is unmatched camera/lighting/materials, so this evidence is qualitative rather than a pixel diff.
 
 ## Evidence
 
