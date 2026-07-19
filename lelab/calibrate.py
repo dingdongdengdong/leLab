@@ -63,6 +63,8 @@ except ModuleNotFoundError:
     def init_logging() -> None:
         return None
 
+from .utils.devices import safe_disconnect_device
+
 logger = logging.getLogger(__name__)
 
 
@@ -548,14 +550,16 @@ class CalibrationManager:
         self._update_status(calibration_active=False, status=status, message=message)
 
     def _cleanup_device(self):
-        """Clean up device connection"""
-        try:
-            if self.device:
-                logger.info("Disconnecting device...")
-                self.device.disconnect()
-                self.device = None
-        except Exception as e:
-            logger.error(f"Error disconnecting device: {e}")
+        """Clean up device connection.
+
+        Uses safe_disconnect_device so a failed disconnect (flaky USB/serial)
+        force-releases the port/cameras instead of leaving the device busy and
+        blocking the next calibration/teleop/record run.
+        """
+        if self.device:
+            logger.info("Disconnecting device...")
+            safe_disconnect_device(self.device, logger, context="calibration cleanup")
+            self.device = None
 
 
 # Global calibration manager instance
