@@ -1,0 +1,75 @@
+{
+  "source": "/home/dong/.cache/huggingface/lerobot/superarm/showroom/superarm_amazinghand.urdf",
+  "removed_incompatible_moving_meshes": 136,
+  "links": {
+    "finger1_proximal": {
+      "mesh_visuals": 0,
+      "cylinders": 1,
+      "spheres": 0,
+      "motion_visuals": [
+        "showroom_motion_finger1_proximal_0"
+      ]
+    },
+    "finger1_distal": {
+      "mesh_visuals": 0,
+      "cylinders": 1,
+      "spheres": 1,
+      "motion_visuals": [
+        "showroom_motion_finger1_distal_0",
+        "showroom_motion_finger1_distal_1"
+      ]
+    },
+    "finger2_proximal": {
+      "mesh_visuals": 0,
+      "cylinders": 1,
+      "spheres": 0,
+      "motion_visuals": [
+        "showroom_motion_finger2_proximal_0"
+      ]
+    },
+    "finger2_distal": {
+      "mesh_visuals": 0,
+      "cylinders": 1,
+      "spheres": 1,
+      "motion_visuals": [
+        "showroom_motion_finger2_distal_0",
+        "showroom_motion_finger2_distal_1"
+      ]
+    },
+    "finger3_proximal": {
+      "mesh_visuals": 0,
+      "cylinders": 1,
+      "spheres": 0,
+      "motion_visuals": [
+        "showroom_motion_finger3_proximal_0"
+      ]
+    },
+    "finger3_distal": {
+      "mesh_visuals": 0,
+      "cylinders": 1,
+      "spheres": 1,
+      "motion_visuals": [
+        "showroom_motion_finger3_distal_0",
+        "showroom_motion_finger3_distal_1"
+      ]
+    },
+    "finger4_proximal": {
+      "mesh_visuals": 0,
+      "cylinders": 1,
+      "spheres": 0,
+      "motion_visuals": [
+        "showroom_motion_finger4_proximal_0"
+      ]
+    },
+    "finger4_distal": {
+      "mesh_visuals": 0,
+      "cylinders": 1,
+      "spheres": 1,
+      "motion_visuals": [
+        "showroom_motion_finger4_distal_0",
+        "showroom_motion_finger4_distal_1"
+      ]
+    }
+  },
+  "idempotent_second_pass": 0
+}

@@ -1,0 +1,18 @@
+{
+  "score": 92,
+  "verdict": "PASS",
+  "category_match": true,
+  "differences": [
+    "Open, half, and close screenshots show a clear progressive AmazingHand curl.",
+    "No detached, floating, or orbiting CAD shell fragments are visible.",
+    "Finger motion geometry stays visually anchored to the palm/finger bases across the sequence.",
+    "Custom SuperArm, wrist, hand mount, and palm remain visible in all frames with improved wider framing.",
+    "The green Live Robot Data badge and 13/13 physical joints live text are readable in all frames.",
+    "Moving finger representation is neutral simplified geometry, not full detailed moving CAD shells."
+  ],
+  "suggestions": [
+    "Keep this stabilized neutral-material proxy for URDF showroom verification because it satisfies attached motion without closed-loop CAD tearing.",
+    "Document the visual compromise clearly: URDF showroom uses stable CAD base plus joint-local motion proxies; MuJoCo remains the physical hand-motion source of truth."
+  ],
+  "reasoning": "The regenerated frames meet the Ralph visual threshold: they show a stable custom arm and AmazingHand base, readable live joint coverage, and an unmistakable open-to-half-to-close curl. The prior floating shell failure is gone; the remaining limitation is only fidelity, since the moving fingers are proxy cylinders/spheres instead of exact CAD shells."
+}

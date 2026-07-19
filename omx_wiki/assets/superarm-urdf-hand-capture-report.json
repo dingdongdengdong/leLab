@@ -1,27 +1,220 @@
 {
-  "full_gif": "artifacts/urdf_hand_showroom_gif/superarm-urdf-hand-open-half-close.gif",
-  "closeup_gif": "artifacts/urdf_hand_showroom_gif/superarm-urdf-hand-open-half-close-closeup.gif",
-  "source_frames": [
-    "artifacts/urdf_hand_showroom_gif/open_live.png",
-    "artifacts/urdf_hand_showroom_gif/half_live.png",
-    "artifacts/urdf_hand_showroom_gif/close_live.png",
-    "artifacts/urdf_hand_showroom_gif/open_live.png"
-  ],
-  "crop_box_xyxy": [
-    250,
-    300,
-    460,
-    610
-  ],
-  "open_close_diff_bbox": [
-    311,
-    332,
-    403,
-    587
-  ],
-  "open_close_mean_abs_diff_rgb": [
-    0.48043576388888887,
-    0.4825277777777778,
-    0.4541467013888889
+  "status": "PASS",
+  "url": "http://127.0.0.1:8000/teleoperation?robot=SuperArm%20%2B%20AmazingHand",
+  "readiness": {
+    "viewer": true,
+    "robot": true,
+    "hand": true,
+    "coverage": true,
+    "text": "Teleoperation\nLive Robot Data\nSuperArm + AmazingHand\n13/13 physical joints live\nCameras\nOff\n\nTurn on to watch your cameras while you teleoperate."
+  },
+  "camera": {
+    "target": [
+      -0.035114080086143244,
+      0.3640295788258023,
+      -0.27233816597640204
+    ],
+    "camera": [
+      0.20488591991385677,
+      0.8493991079146495,
+      -0.08233816597640203
+    ]
+  },
+  "captured_frame_count": 21,
+  "gif_frame_count": 40,
+  "gif": "artifacts/urdf_hand_live/superarm-urdf-hand-open-half-close.gif",
+  "states": [
+    {
+      "label": "open",
+      "action": 0.0,
+      "api": {
+        "success": true,
+        "sent_action": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "resolved_logical_action": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "physical_targets": {
+          "joint_rev_1": 5.180998419834295e-12,
+          "joint_rev_2": -0.014669466468748216,
+          "joint_rev_3": 0.000628286123079473,
+          "joint_rev_4": -0.01388174797379892,
+          "joint_rev_5": 0.00018109937082611384,
+          "finger1_motor1": 0.05003354890494016,
+          "finger1_motor2": 0.02003222208670875,
+          "finger2_motor1": 0.05002994331203242,
+          "finger2_motor2": 0.020035840721058587,
+          "finger3_motor1": 0.05002452143963678,
+          "finger3_motor2": 0.02003937622804198,
+          "finger4_motor1": 0.04995389654511376,
+          "finger4_motor2": 0.019955785143780533
+        },
+        "joint_positions": {
+          "joint_rev_1": 5.180998419834295e-12,
+          "joint_rev_2": -0.014669466468748216,
+          "joint_rev_3": 0.000628286123079473,
+          "joint_rev_4": -0.01388174797379892,
+          "joint_rev_5": 0.00018109937082611384,
+          "finger1_motor1": 0.05003354890494016,
+          "finger1_motor2": 0.02003222208670875,
+          "finger2_motor1": 0.05002994331203242,
+          "finger2_motor2": 0.020035840721058587,
+          "finger3_motor1": 0.05002452143963678,
+          "finger3_motor2": 0.02003937622804198,
+          "finger4_motor1": 0.04995389654511376,
+          "finger4_motor2": 0.019955785143780533
+        },
+        "timestamp": 1784474031.2982023
+      },
+      "viewer_joints": {
+        "finger1_motor1": 0.05003412034540364,
+        "finger1_motor2": 0.020032760185429495,
+        "finger2_motor1": 0.05003028296655282,
+        "finger2_motor2": 0.02003616015014286,
+        "finger3_motor1": 0.050024998247636045,
+        "finger3_motor2": 0.02003982442188414,
+        "finger4_motor1": 0.04995404643983432,
+        "finger4_motor2": 0.019955924986335263
+      }
+    },
+    {
+      "label": "half",
+      "action": 0.5,
+      "api": {
+        "success": true,
+        "sent_action": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.5
+        ],
+        "resolved_logical_action": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.5
+        ],
+        "physical_targets": {
+          "joint_rev_1": 2.2853140546506123e-13,
+          "joint_rev_2": -0.014669466468688129,
+          "joint_rev_3": 0.00062828612988221,
+          "joint_rev_4": -0.01388174797409081,
+          "joint_rev_5": 0.00018109938006986414,
+          "finger1_motor1": 0.05003412708192783,
+          "finger1_motor2": 0.02003276652875547,
+          "finger2_motor1": 0.05003028684880741,
+          "finger2_motor2": 0.02003616380101234,
+          "finger3_motor1": 0.05002500363377732,
+          "finger3_motor2": 0.020039829484545437,
+          "finger4_motor1": 0.049954047830023524,
+          "finger4_motor2": 0.019955926283233498
+        },
+        "joint_positions": {
+          "joint_rev_1": 2.2853140546506123e-13,
+          "joint_rev_2": -0.014669466468688129,
+          "joint_rev_3": 0.00062828612988221,
+          "joint_rev_4": -0.01388174797409081,
+          "joint_rev_5": 0.00018109938006986414,
+          "finger1_motor1": 0.05003412708192783,
+          "finger1_motor2": 0.02003276652875547,
+          "finger2_motor1": 0.05003028684880741,
+          "finger2_motor2": 0.02003616380101234,
+          "finger3_motor1": 0.05002500363377732,
+          "finger3_motor2": 0.020039829484545437,
+          "finger4_motor1": 0.049954047830023524,
+          "finger4_motor2": 0.019955926283233498
+        },
+        "timestamp": 1784474032.6922565
+      },
+      "viewer_joints": {
+        "finger1_motor1": 0.4998938634436475,
+        "finger1_motor2": 0.5599010698798664,
+        "finger2_motor1": 0.49991595526062604,
+        "finger2_motor2": 0.55992369855997,
+        "finger3_motor1": 0.49987559013491084,
+        "finger3_motor2": 0.5598917882901696,
+        "finger4_motor1": 0.499838875259544,
+        "finger4_motor2": 0.5598491639353106
+      }
+    },
+    {
+      "label": "close",
+      "action": 1.0,
+      "api": {
+        "success": true,
+        "sent_action": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "resolved_logical_action": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "physical_targets": {
+          "joint_rev_1": -3.744297833928898e-08,
+          "joint_rev_2": -0.01467312679549924,
+          "joint_rev_3": 0.0006293829104017059,
+          "joint_rev_4": -0.01388485529280581,
+          "joint_rev_5": 0.00018297917202470806,
+          "finger1_motor1": 0.4998938634436475,
+          "finger1_motor2": 0.5599010698798664,
+          "finger2_motor1": 0.49991595526062604,
+          "finger2_motor2": 0.55992369855997,
+          "finger3_motor1": 0.49987559013491084,
+          "finger3_motor2": 0.5598917882901696,
+          "finger4_motor1": 0.499838875259544,
+          "finger4_motor2": 0.5598491639353106
+        },
+        "joint_positions": {
+          "joint_rev_1": -3.744297833928898e-08,
+          "joint_rev_2": -0.01467312679549924,
+          "joint_rev_3": 0.0006293829104017059,
+          "joint_rev_4": -0.01388485529280581,
+          "joint_rev_5": 0.00018297917202470806,
+          "finger1_motor1": 0.4998938634436475,
+          "finger1_motor2": 0.5599010698798664,
+          "finger2_motor1": 0.49991595526062604,
+          "finger2_motor2": 0.55992369855997,
+          "finger3_motor1": 0.49987559013491084,
+          "finger3_motor2": 0.5598917882901696,
+          "finger4_motor1": 0.499838875259544,
+          "finger4_motor2": 0.5598491639353106
+        },
+        "timestamp": 1784474034.15035
+      },
+      "viewer_joints": {
+        "finger1_motor1": 0.9500378934062226,
+        "finger1_motor2": 1.1000301920031648,
+        "finger2_motor1": 0.9500429631166792,
+        "finger2_motor2": 1.1000336733167717,
+        "finger3_motor1": 0.9500181321141828,
+        "finger3_motor2": 1.1000172116955667,
+        "finger4_motor1": 0.9499627625647521,
+        "finger4_motor2": 1.0999701629235483
+      }
+    }
   ]
 }
