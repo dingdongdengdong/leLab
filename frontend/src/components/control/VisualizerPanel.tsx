@@ -10,12 +10,18 @@ interface VisualizerPanelProps {
   className?: string;
   /** Optional content rendered as a column beside the 3D viewer (e.g. a camera panel). */
   rightSlot?: React.ReactNode;
+  robotName?: string;
+  showroomUrdf?: boolean;
+  physicalJointNames?: string[];
 }
 
 const VisualizerPanel: React.FC<VisualizerPanelProps> = ({
   onGoBack,
   className,
   rightSlot,
+  robotName,
+  showroomUrdf = false,
+  physicalJointNames = [],
 }) => {
   return (
     <div
@@ -39,7 +45,11 @@ const VisualizerPanel: React.FC<VisualizerPanelProps> = ({
           <h2 className="text-xl font-medium text-gray-200">Teleoperation</h2>
         </div>
         <div className="flex-1 bg-black rounded border border-gray-800 min-h-[50vh] lg:min-h-0">
-          <UrdfViewer />
+          <UrdfViewer
+            robotName={robotName}
+            showroomUrdf={showroomUrdf}
+            physicalJointNames={physicalJointNames}
+          />
         </div>
       </div>
       {rightSlot && (

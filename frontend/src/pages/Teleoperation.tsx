@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import VisualizerPanel from "@/components/control/VisualizerPanel";
 import TeleopCameraPanel from "@/components/control/TeleopCameraPanel";
 import { useToast } from "@/hooks/use-toast";
@@ -7,8 +7,40 @@ import { useApi } from "@/contexts/ApiContext";
 
 const TeleoperationPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { baseUrl, fetchWithHeaders } = useApi();
+  const routeState = location.state as {
+    robot_name?: string;
+    showroom_urdf?: boolean;
+    physical_joint_names?: string[];
+  } | null;
+  const robotName = useMemo(
+    () => routeState?.robot_name || new URLSearchParams(location.search).get("robot") || undefined,
+    [location.search, routeState?.robot_name]
+  );
+  const [showroomUrdf, setShowroomUrdf] = useState(Boolean(routeState?.showroom_urdf));
+  const [physicalJointNames, setPhysicalJointNames] = useState<string[]>(
+    routeState?.physical_joint_names || []
+  );
+
+  useEffect(() => {
+    if (!robotName || routeState?.showroom_urdf !== undefined) return;
+    let cancelled = false;
+    fetchWithHeaders(`${baseUrl}/robots/${encodeURIComponent(robotName)}`)
+      .then((response) => response.json())
+      .then((data) => {
+        if (cancelled || !data?.robot) return;
+        setShowroomUrdf(Boolean(data.robot.urdf_path));
+        setPhysicalJointNames(data.robot.physical_joint_names || []);
+      })
+      .catch(() => {
+        if (!cancelled) setShowroomUrdf(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUrl, fetchWithHeaders, robotName, routeState?.showroom_urdf]);
 
   // Stop teleoperation exactly once, however the user leaves, so the back
   // button, an in-app link, and the unmount safety net can't double-stop or
@@ -73,6 +105,9 @@ const TeleoperationPage = () => {
         <VisualizerPanel
           onGoBack={handleGoBack}
           className="lg:w-full"
+          robotName={robotName}
+          showroomUrdf={showroomUrdf}
+          physicalJointNames={physicalJointNames}
           rightSlot={<TeleopCameraPanel />}
         />
       </div>

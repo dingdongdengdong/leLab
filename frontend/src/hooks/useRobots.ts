@@ -13,6 +13,9 @@ export interface RobotRecord {
   robot_backend?: string;
   isaacsim_config?: string;
   superarm_ws_path?: string;
+  urdf_path?: string;
+  purpose?: "primary" | "diagnostic";
+  physical_joint_names?: string[];
   cameras: CameraConfig[];
   is_clean: boolean;
 }

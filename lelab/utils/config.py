@@ -340,7 +340,7 @@ _ROBOT_STRING_FIELDS = (
     "urdf_path",
     "purpose",
 )
-_ROBOT_LIST_FIELDS = ("cameras",)
+_ROBOT_LIST_FIELDS = ("cameras", "physical_joint_names")
 _BUILTIN_SUPERARM_SOURCE_NAME = "SuperArm Source Arm"
 _BUILTIN_SUPERARM_AMAZINGHAND_NAME = "SuperArm AmazingHand"
 _BUILTIN_SUPERARM_COMBINED_NAME = "SuperArm + AmazingHand"
@@ -426,6 +426,7 @@ def _builtin_superarm_combined_record() -> dict | None:
         "urdf_path": str(urdf_path),
         "purpose": "primary",
         "cameras": [],
+        "physical_joint_names": list(raw.get("physical_joint_names") or []),
     }
 
 

@@ -62,7 +62,13 @@ const RobotConfigManager: React.FC<RobotConfigManagerProps> = ({
           title: "Teleoperation Started",
           description: data.message || `Started teleoperation for ${robot.name}.`,
         });
-        navigate("/teleoperation");
+        navigate(`/teleoperation?robot=${encodeURIComponent(robot.name)}`, {
+          state: {
+            robot_name: robot.name,
+            showroom_urdf: Boolean(robot.urdf_path),
+            physical_joint_names: robot.physical_joint_names || [],
+          },
+        });
       } else {
         toast({
           title: "Error Starting Teleoperation",
@@ -84,15 +90,15 @@ const RobotConfigManager: React.FC<RobotConfigManagerProps> = ({
       <div className="rounded-lg border border-cyan-700/60 bg-gradient-to-r from-slate-900 to-cyan-950 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">New controller</p>
-            <h3 className="text-lg font-semibold text-white">SuperArm + Hand</h3>
-            <p className="text-sm text-slate-300">Full closed-loop MJCF hand on the five-joint source arm. MuJoCo is ready; Isaac Sim stays unchanged.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">MuJoCo diagnostic</p>
+            <h3 className="text-lg font-semibold text-white">Secondary physics dashboard</h3>
+            <p className="text-sm text-slate-300">Inspect the MuJoCo joint contract separately. Use the normal robot selector above for LeRobot, recording, and the URDF showroom.</p>
           </div>
           <Button
             onClick={() => navigate("/superarm")}
             className="bg-cyan-500 text-slate-950 hover:bg-cyan-400"
           >
-            Open dashboard
+            Open diagnostic
           </Button>
         </div>
       </div>

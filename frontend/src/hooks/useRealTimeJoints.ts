@@ -30,9 +30,11 @@ export const useRealTimeJoints = ({
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY_MS);
   const intentionallyClosedRef = useRef(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [jointNames, setJointNames] = useState<string[]>([]);
 
   const updateJointValues = useCallback(
     (joints: Record<string, number>) => {
+      setJointNames(Object.keys(joints));
       const viewer = viewerRef.current;
       if (!viewer || typeof viewer.setJointValue !== "function") return;
       Object.entries(joints).forEach(([jointName, value]) => {
@@ -126,5 +128,5 @@ export const useRealTimeJoints = ({
     };
   }, [enabled, finalWebSocketUrl, updateJointValues]);
 
-  return { isConnected };
+  return { isConnected, jointNames };
 };

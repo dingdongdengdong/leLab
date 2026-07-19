@@ -31,7 +31,17 @@ interface UrdfViewerElement extends HTMLElement {
   setJointValue?: (jointName: string, value: number) => void;
 }
 
-const UrdfViewer: React.FC = () => {
+interface UrdfViewerProps {
+  robotName?: string;
+  showroomUrdf?: boolean;
+  physicalJointNames?: string[];
+}
+
+const UrdfViewer: React.FC<UrdfViewerProps> = ({
+  robotName,
+  showroomUrdf = false,
+  physicalJointNames = [],
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [highlightedJoint, setHighlightedJoint] = useState<string | null>(null);
   const { registerUrdfProcessor, alternativeUrdfModels, isDefaultModel } =
@@ -42,10 +52,13 @@ const UrdfViewer: React.FC = () => {
   const hasInitializedRef = useRef<boolean>(false);
 
   // Real-time joint updates via WebSocket
-  const { isConnected: isWebSocketConnected } = useRealTimeJoints({
+  const { isConnected: isWebSocketConnected, jointNames: liveJointNames } = useRealTimeJoints({
     viewerRef,
-    enabled: isDefaultModel, // Only enable WebSocket for default model
+    enabled: true,
   });
+  const useRecordModel = showroomUrdf && Boolean(robotName);
+  const useSo101Model = isDefaultModel && !useRecordModel;
+  const liveJointCoverage = physicalJointNames.filter((name) => liveJointNames.includes(name)).length;
 
   // Add state for custom URDF path
   const [customUrdfPath, setCustomUrdfPath] = useState<string | null>(null);
@@ -134,18 +147,20 @@ const UrdfViewer: React.FC = () => {
     viewerRef.current = viewer; // Store reference to the viewer
 
     // Setup mesh loading function with appropriate URL modifier
-    const activeUrlModifier = isDefaultModel
+    const activeUrlModifier = useSo101Model
       ? defaultUrlModifier
       : urlModifierFunc;
     setupMeshLoader(viewer, activeUrlModifier);
 
     // Determine which URDF to load - fixed path to match the actual available file
-    const urdfPath = isDefaultModel
+    const urdfPath = useRecordModel
+      ? `/robots/${encodeURIComponent(robotName || "")}/urdf`
+      : useSo101Model
       ? "/so-101-urdf/urdf/so101_new_calib.urdf"
       : customUrdfPath || "";
 
     // Set the package path for the default model
-    if (isDefaultModel) {
+    if (useSo101Model) {
       packageRef.current = "/"; // Set to root so we can handle full path resolution in URL modifier
     }
 
@@ -255,7 +270,9 @@ const UrdfViewer: React.FC = () => {
       viewer.removeEventListener("urdf-processed", onModelProcessed);
     };
   }, [
-    isDefaultModel,
+    useRecordModel,
+    useSo101Model,
+    robotName,
     customUrdfPath,
     urlModifierFunc,
     defaultUrlModifier,
@@ -279,7 +296,7 @@ const UrdfViewer: React.FC = () => {
       )}
 
       {/* WebSocket connection status */}
-      {isDefaultModel && (
+      {(useSo101Model || useRecordModel) && (
         <div className="absolute top-4 right-4 z-10">
           <div
             className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-mono ${
@@ -295,6 +312,19 @@ const UrdfViewer: React.FC = () => {
             />
             {isWebSocketConnected ? "Live Robot Data" : "Disconnected"}
           </div>
+          {useRecordModel && (
+            <div className={`mt-2 rounded-md px-3 py-2 text-xs font-mono ${
+              liveJointCoverage === physicalJointNames.length && physicalJointNames.length > 0
+                ? "bg-green-900/70 text-green-300"
+                : "bg-amber-900/70 text-amber-200"
+            }`}>
+              <div>{robotName}</div>
+              <div>{liveJointCoverage}/{physicalJointNames.length} physical joints live</div>
+              {physicalJointNames.length > 0 && liveJointCoverage !== physicalJointNames.length && (
+                <div className="mt-1">Runtime/URDF joint mismatch</div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

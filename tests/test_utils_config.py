@@ -217,6 +217,7 @@ def test_list_robot_records_prioritizes_combined_superarm_when_assets_exist(
     assert records[0]["follower_config"] == str(config_path)
     assert records[0]["urdf_path"] == str(urdf_path)
     assert records[0]["purpose"] == "primary"
+    assert len(records[0]["physical_joint_names"]) == 0
     assert cfg.get_robot_record("SuperArm + AmazingHand") == records[0]
     assert cfg.is_robot_record_clean(records[0]) is True
 
