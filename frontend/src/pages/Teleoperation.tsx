@@ -19,7 +19,13 @@ const TeleoperationPage = () => {
     () => routeState?.robot_name || new URLSearchParams(location.search).get("robot") || undefined,
     [location.search, routeState?.robot_name]
   );
-  const [showroomUrdf, setShowroomUrdf] = useState(Boolean(routeState?.showroom_urdf));
+  const [showroomUrdf, setShowroomUrdf] = useState<boolean | null>(
+    routeState?.showroom_urdf !== undefined
+      ? Boolean(routeState.showroom_urdf)
+      : robotName
+        ? null
+        : false,
+  );
   const [physicalJointNames, setPhysicalJointNames] = useState<string[]>(
     routeState?.physical_joint_names || []
   );
@@ -102,14 +108,20 @@ const TeleoperationPage = () => {
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-2 sm:p-4">
       <div className="w-full h-[95vh] flex">
-        <VisualizerPanel
-          onGoBack={handleGoBack}
-          className="lg:w-full"
-          robotName={robotName}
-          showroomUrdf={showroomUrdf}
-          physicalJointNames={physicalJointNames}
-          rightSlot={<TeleopCameraPanel />}
-        />
+        {showroomUrdf === null ? (
+          <div className="flex h-full w-full items-center justify-center rounded-xl border border-slate-800 bg-slate-950 text-slate-300">
+            Loading {robotName} showroom…
+          </div>
+        ) : (
+          <VisualizerPanel
+            onGoBack={handleGoBack}
+            className="lg:w-full"
+            robotName={robotName}
+            showroomUrdf={showroomUrdf}
+            physicalJointNames={physicalJointNames}
+            rightSlot={<TeleopCameraPanel />}
+          />
+        )}
       </div>
     </div>
   );
