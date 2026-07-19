@@ -35,4 +35,3 @@ describe("SuperArm dashboard controls", () => {
     expect(reorderSequenceStep(steps, 0, -1)).toBe(steps);
   });
 });
-

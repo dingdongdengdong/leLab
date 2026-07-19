@@ -21,4 +21,3 @@ export const reorderSequenceStep = <T,>(steps: T[], index: number, direction: -1
   [result[index], result[target]] = [result[target], result[index]];
   return result;
 };
-
