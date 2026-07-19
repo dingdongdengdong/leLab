@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import math
-import struct
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -168,46 +167,23 @@ def test_joint5_urdf_rotates_motor_and_keeps_shell_fixed_to_it() -> None:
     assert shell_mount.find("axis") is None
 
 
-def test_amazinghand_showroom_moves_only_segment_shells_with_finger_links(tmp_path: Path) -> None:
-    def write_triangle_stl(name: str) -> Path:
-        path = tmp_path / name
-        header = bytes(80) + struct.pack("<I", 1)
-        triangle = struct.pack(
-            "<12fH",
-            0,
-            0,
-            1,
-            1,
-            2,
-            3,
-            5,
-            7,
-            11,
-            -1,
-            4,
-            -3,
-            0,
-        )
-        path.write_bytes(header + triangle)
-        return path
-
-    proximal = write_triangle_stl("proximal.stl")
-    proximal_shell = write_triangle_stl("proximal_shell.stl")
-    distal = write_triangle_stl("distal.stl")
-    distal_shell = write_triangle_stl("distal_shell.stl")
+def test_amazinghand_showroom_uses_joint_local_motion_visuals() -> None:
     root = ET.fromstring(
         "<robot name='superarm'>"
         "<link name='r_wrist_interface'><visual name='wrist'><geometry><mesh filename='wrist.stl'/></geometry></visual></link>"
         "<link name='palm'/>"
         "<link name='finger1_proximal'>"
-        f"<visual name='proximal'><origin xyz='0 0.01 0'/><geometry><mesh filename='{proximal}'/></geometry></visual>"
-        f"<visual name='proximal-shell'><origin xyz='0 0.01 0'/><geometry><mesh filename='{proximal_shell}'/></geometry></visual>"
+        "<visual name='proximal'><origin xyz='0 0.01 0'/><geometry><mesh filename='proximal.stl'/></geometry></visual>"
+        "<visual name='proximal-shell'><origin xyz='0 0.01 0'/><geometry><mesh filename='proximal_shell.stl'/></geometry></visual>"
         "<visual name='passive-rod'><origin xyz='0.01 0.02 0.03'/><geometry><mesh filename='m2_rod_l18.stl'/></geometry></visual>"
+        "<collision name='proximal-contact'><origin xyz='0 0.029 0'/><geometry><box size='0.018 0.058 0.018'/></geometry></collision>"
         "</link>"
         "<link name='finger1_distal'>"
-        f"<visual name='distal'><geometry><mesh filename='{distal}'/></geometry></visual>"
-        f"<visual name='distal-shell'><geometry><mesh filename='{distal_shell}'/></geometry></visual>"
+        "<visual name='distal'><geometry><mesh filename='distal.stl'/></geometry></visual>"
+        "<visual name='distal-shell'><geometry><mesh filename='distal_shell.stl'/></geometry></visual>"
         "<visual name='passive-pin'><origin xyz='0 0.01 0.02'/><geometry><mesh filename='parallel_pin.stl'/></geometry></visual>"
+        "<collision name='distal-contact'><origin xyz='0 0.025 0'/><geometry><box size='0.016 0.05 0.016'/></geometry></collision>"
+        "<collision name='tip-contact'><origin xyz='0 0.055 0'/><geometry><box size='0.026 0.014 0.022'/></geometry></collision>"
         "</link>"
         "<joint name='wrist_to_palm' type='fixed'><parent link='r_wrist_interface'/><child link='palm'/>"
         "<origin xyz='0.1 0.2 0.3' rpy='0 0 0'/></joint>"
@@ -218,32 +194,25 @@ def test_amazinghand_showroom_moves_only_segment_shells_with_finger_links(tmp_pa
         "</robot>"
     )
 
-    assert stabilize_amazinghand_visuals(root) == 2
+    assert stabilize_amazinghand_visuals(root) == 6
 
-    proximal_meshes = {
-        Path(mesh.get("filename")).name
-        for mesh in root.findall(".//link[@name='finger1_proximal']/visual/geometry/mesh")
-    }
-    distal_meshes = {
-        Path(mesh.get("filename")).name
-        for mesh in root.findall(".//link[@name='finger1_distal']/visual/geometry/mesh")
-    }
-    assert proximal_meshes == {"proximal.stl", "proximal_shell.stl"}
-    assert distal_meshes == {"distal.stl", "distal_shell.stl"}
-    for visual in root.findall(".//link[@name='finger1_proximal']/visual") + root.findall(
-        ".//link[@name='finger1_distal']/visual"
-    ):
-        assert visual.find("origin").get("xyz") == "-2 -2 -4"
-        assert visual.find("origin").get("rpy") == "0 0 0"
+    proximal_visuals = root.findall(".//link[@name='finger1_proximal']/visual")
+    distal_visuals = root.findall(".//link[@name='finger1_distal']/visual")
+    assert len(proximal_visuals) == 1
+    assert len(distal_visuals) == 2
+    assert not root.findall(".//link[@name='finger1_proximal']/visual/geometry/mesh")
+    assert not root.findall(".//link[@name='finger1_distal']/visual/geometry/mesh")
+    assert proximal_visuals[0].find("origin").attrib == {"xyz": "0 0.029 0", "rpy": "1.57079633 0 0"}
+    assert proximal_visuals[0].find("geometry/cylinder").attrib == {"radius": "0.009", "length": "0.058"}
+    assert distal_visuals[0].find("geometry/cylinder").attrib == {"radius": "0.008", "length": "0.05"}
+    assert distal_visuals[1].find("geometry/sphere").attrib == {"radius": "0.013"}
+    assert all(visual.find("material/color").get("rgba") for visual in proximal_visuals + distal_visuals)
 
-    wrist_visuals = {
-        visual.get("name"): visual
-        for visual in root.findall(".//link[@name='r_wrist_interface']/visual")
+    wrist_meshes = {
+        Path(mesh.get("filename")).name
+        for mesh in root.findall(".//link[@name='r_wrist_interface']/visual/geometry/mesh")
     }
-    assert Path(wrist_visuals["passive-rod"].find("geometry/mesh").get("filename")).name == "m2_rod_l18.stl"
-    assert wrist_visuals["passive-rod"].find("origin").get("xyz") == "0.12 0.24 0.36"
-    assert Path(wrist_visuals["passive-pin"].find("geometry/mesh").get("filename")).name == "parallel_pin.stl"
-    assert wrist_visuals["passive-pin"].find("origin").get("xyz") == "0.11 0.288 0.35"
+    assert wrist_meshes == {"wrist.stl"}
     assert stabilize_amazinghand_visuals(root) == 0
 
 
