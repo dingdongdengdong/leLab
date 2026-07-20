@@ -26,6 +26,7 @@ dependencies = [
 superarm = [
     "mujoco==3.10.0",
     "rustypot==1.5.0",
+    "python-can>=4.2,<5",
 ]
 dev = [
     "pytest>=7.0",

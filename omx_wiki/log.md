@@ -148,3 +148,15 @@
 - **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, superarm-real-hardware-motor-protocol-boundary.md, superarm-runtime-joint-status-semantics.md
 - **Summary:** Lint: 5 issues (5 orphan, 0 stale, 0 broken, 0 contradictions)
 
+## [2026-07-20T02:34:35.834Z] ingest
+- **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md
+- **Summary:** Created new page "AmazingHandControl and DM4340P hardware boundary"
+
+## [2026-07-20T02:34:35.836Z] add
+- **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md
+- **Summary:** Created wiki page amazinghandcontrol-and-dm4340p-hardware-boundary.md
+
+## [2026-07-20T02:34:36.120Z] lint
+- **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, superarm-real-hardware-motor-protocol-boundary.md, superarm-runtime-joint-status-semantics.md
+- **Summary:** Lint: 6 issues (6 orphan, 0 stale, 0 broken, 0 contradictions)
+

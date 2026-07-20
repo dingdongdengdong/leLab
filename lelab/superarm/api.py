@@ -13,7 +13,16 @@ from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisc
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from .mapping import ARM_JOINTS, ARM_MAX_RAD, ARM_MIN_RAD, UI_FINGERS
+from .mapping import (
+    ARM_JOINTS,
+    ARM_MAX_RAD,
+    ARM_MIN_RAD,
+    SERVO_MAX_DEG,
+    SERVO_MIN_DEG,
+    SERVO_SPEED_MAX,
+    SERVO_SPEED_MIN,
+    UI_FINGERS,
+)
 from .service import service
 
 router = APIRouter()
@@ -52,15 +61,21 @@ class ActionRequest(BaseModel):
             for finger, values in self.hand_deg.items():
                 if len(values) != 2 or any(not math.isfinite(value) for value in values):
                     raise ValueError(f"{finger} requires two finite servo degree values")
-                if any(value < -40 or value > 110 for value in values):
-                    raise ValueError(f"{finger} servo values must be within [-40, 110]")
+                if any(value < SERVO_MIN_DEG or value > SERVO_MAX_DEG for value in values):
+                    raise ValueError(
+                        f"{finger} servo values must be within [{SERVO_MIN_DEG}, {SERVO_MAX_DEG}]"
+                    )
         if self.hand_speed:
             unknown = set(self.hand_speed) - set(UI_FINGERS)
             if unknown:
                 raise ValueError(f"Unknown speed fingers: {sorted(unknown)}")
             for finger, values in self.hand_speed.items():
-                if len(values) != 2 or any(value < 1 or value > 6 for value in values):
-                    raise ValueError(f"{finger} speed requires two values from 1 to 6")
+                if len(values) != 2 or any(
+                    value < SERVO_SPEED_MIN or value > SERVO_SPEED_MAX for value in values
+                ):
+                    raise ValueError(
+                        f"{finger} speed requires two values from {SERVO_SPEED_MIN} to {SERVO_SPEED_MAX}"
+                    )
         return self
 
 

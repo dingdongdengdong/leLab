@@ -15,6 +15,7 @@ SERVO_IDS = {
     "ring": (5, 6),
     "thumb": (7, 8),
 }
+AMAZINGHAND_CONTROL_SERVO_PAIRS = [(5, 6), (3, 4), (1, 2), (7, 8)]
 MUJOCO_FINGERS = {
     "pointer": "finger1",
     "middle": "finger2",
@@ -25,6 +26,8 @@ HAND_ACTUATORS = [f"finger{finger}_motor{motor}" for finger in range(1, 5) for m
 
 SERVO_MIN_DEG = -40.0
 SERVO_MAX_DEG = 110.0
+SERVO_SPEED_MIN = 1
+SERVO_SPEED_MAX = 6
 BASE_MIN_DEG = 0.0
 SIDE_MIN_DEG = -40.0
 SIDE_MAX_DEG = 40.0
@@ -59,12 +62,25 @@ def degrees_to_mujoco(motor: int, degrees: float) -> float:
 
 
 def degrees_to_hardware_radians(servo_id: int, degrees: float) -> float:
-    """Retain AmazingHandControl's even-servo direction inversion."""
+    """Convert an AmazingHandControl servo target to its SCS0009 direction.
+
+    AmazingHandControl orders pairs Ring, Middle, Pointer, Thumb and defines
+    odd IDs as positive position axes and even IDs as inverted side axes.  The
+    serial controller accepts radians, while its user-facing poses are degrees.
+    """
+    if servo_id not in range(1, 9):
+        raise ValueError(f"AmazingHand servo ID must be in [1, 8], got {servo_id}")
+    if not SERVO_MIN_DEG <= float(degrees) <= SERVO_MAX_DEG:
+        raise ValueError(
+            f"AmazingHand servo degrees must be within [{SERVO_MIN_DEG}, {SERVO_MAX_DEG}]"
+        )
     value = math.radians(float(degrees))
     return -value if servo_id % 2 == 0 else value
 
 
 def hardware_radians_to_degrees(servo_id: int, radians: Any) -> float:
+    if servo_id not in range(1, 9):
+        raise ValueError(f"AmazingHand servo ID must be in [1, 8], got {servo_id}")
     value = float(radians)
     degrees = math.degrees(value)
     return -degrees if servo_id % 2 == 0 else degrees

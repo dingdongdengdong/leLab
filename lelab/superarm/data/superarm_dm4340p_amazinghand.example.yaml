@@ -1,0 +1,39 @@
+# Copy this file outside the repository and replace every CAN ID and limit
+# after non-torque discovery of this specific five-joint arm.  Zero IDs are
+# intentionally invalid: they prevent an accidental connection with OpenArm
+# sample IDs.
+_type: superarm_dm4340p_amazinghand
+
+# LeRobot OpenArm/Damiao CAN path (not the SCS serial hand bus).
+arm_port: can0
+arm_can_interface: socketcan
+arm_use_can_fd: true
+arm_can_bitrate: 1000000
+arm_can_data_bitrate: 5000000
+arm_motor_config:
+  joint_rev_1: [0, 0, dm4340]
+  joint_rev_2: [0, 0, dm4340]
+  joint_rev_3: [0, 0, dm4340]
+  joint_rev_4: [0, 0, dm4340]
+  joint_rev_5: [0, 0, dm4340]
+# direction is 1 or -1; zero_offset_rad is the measured conversion from the
+# SuperArm joint frame to the CAN motor frame. Verify every value physically.
+arm_joint_calibration:
+  joint_rev_1: [1, 0.0]
+  joint_rev_2: [1, 0.0]
+  joint_rev_3: [1, 0.0]
+  joint_rev_4: [1, 0.0]
+  joint_rev_5: [1, 0.0]
+arm_joint_limits_deg:
+  joint_rev_1: [-5.0, 5.0]
+  joint_rev_2: [-5.0, 5.0]
+  joint_rev_3: [-5.0, 5.0]
+  joint_rev_4: [-5.0, 5.0]
+  joint_rev_5: [-5.0, 5.0]
+arm_position_kp: [80.0, 80.0, 80.0, 80.0, 80.0]
+arm_position_kd: [1.0, 1.0, 1.0, 1.0, 1.0]
+
+# AmazingHandControl SCS0009 serial path: IDs (1,2), (3,4), (5,6), (7,8).
+hand_port: /dev/ttyACM0
+hand_baudrate: 1000000
+hand_speed: 3  # integer in [1, 6]
