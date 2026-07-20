@@ -136,3 +136,15 @@
 - **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, superarm-runtime-joint-status-semantics.md
 - **Summary:** Lint: 4 issues (4 orphan, 0 stale, 0 broken, 0 contradictions)
 
+## [2026-07-20T02:25:26.374Z] ingest
+- **Pages:** superarm-real-hardware-motor-protocol-boundary.md
+- **Summary:** Created new page "SuperArm real-hardware motor protocol boundary"
+
+## [2026-07-20T02:25:26.376Z] add
+- **Pages:** superarm-real-hardware-motor-protocol-boundary.md
+- **Summary:** Created wiki page superarm-real-hardware-motor-protocol-boundary.md
+
+## [2026-07-20T02:25:26.647Z] lint
+- **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, superarm-real-hardware-motor-protocol-boundary.md, superarm-runtime-joint-status-semantics.md
+- **Summary:** Lint: 5 issues (5 orphan, 0 stale, 0 broken, 0 contradictions)
+
