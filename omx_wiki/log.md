@@ -124,3 +124,15 @@
 - **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, superarm-runtime-joint-status-semantics.md
 - **Summary:** Lint: 3 issues (3 orphan, 0 stale, 0 broken, 0 contradictions)
 
+## [2026-07-20T02:11:54.885Z] ingest
+- **Pages:** lelab-tailscale-client-proxy.md
+- **Summary:** Created new page "LeLab Tailscale Client Proxy"
+
+## [2026-07-20T02:11:54.887Z] add
+- **Pages:** lelab-tailscale-client-proxy.md
+- **Summary:** Created wiki page lelab-tailscale-client-proxy.md
+
+## [2026-07-20T02:11:55.142Z] lint
+- **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, superarm-runtime-joint-status-semantics.md
+- **Summary:** Lint: 4 issues (4 orphan, 0 stale, 0 broken, 0 contradictions)
+
