@@ -14,6 +14,7 @@ import EditDataset from "@/pages/EditDataset";
 import Upload from "@/pages/Upload";
 import ManualLeader from "@/pages/ManualLeader";
 import SuperArm from "@/pages/SuperArm";
+import HardwareSetup from "@/pages/HardwareSetup";
 
 import NotFound from "@/pages/NotFound";
 import SingleTabGuard from "@/components/SingleTabGuard";
@@ -43,6 +44,7 @@ function App() {
                         <Route path="/teleoperation" element={<Teleoperation />} />
                         <Route path="/manual-leader" element={<ManualLeader />} />
                         <Route path="/superarm" element={<SuperArm />} />
+                        <Route path="/hardware-setup" element={<HardwareSetup />} />
                         <Route path="/recording" element={<Recording />} />
                         <Route path="/upload" element={<Upload />} />
                         <Route path="/training" element={<Training />} />

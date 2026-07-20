@@ -108,6 +108,11 @@ def capabilities(workspace_root: str | None = None):
     return service.capabilities(workspace_root)
 
 
+@router.get("/api/superarm/hardware-readiness")
+def hardware_readiness():
+    return service.hardware_readiness()
+
+
 @router.get("/api/superarm/urdf")
 def source_arm_urdf(workspace_root: str | None = None):
     try:

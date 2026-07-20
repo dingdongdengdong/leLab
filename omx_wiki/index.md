@@ -1,6 +1,6 @@
 # Wiki Index
 
-> 7 pages | Last updated: 2026-07-20T02:34:35.836Z
+> 8 pages | Last updated: 2026-07-20T03:35:49.494Z
 
 ## architecture
 
@@ -16,6 +16,7 @@
 
 - [AmazingHandControl and DM4340P hardware boundary](amazinghandcontrol-and-dm4340p-hardware-boundary.md) — # AmazingHandControl and DM4340P hardware boundary
 - [SuperArm real-hardware motor protocol boundary](superarm-real-hardware-motor-protocol-boundary.md) — # SuperArm real-hardware motor protocol boundary
+- [SuperArm website real-hardware readiness page](superarm-website-real-hardware-readiness-page.md) — # SuperArm website real-hardware readiness page
 
 ## environment
 

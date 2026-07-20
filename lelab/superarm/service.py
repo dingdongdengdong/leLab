@@ -67,6 +67,39 @@ class SuperArmService:
             "errors": errors,
         }
 
+    def hardware_readiness(self) -> dict[str, Any]:
+        """Return a read-only checklist for the real CAN-plus-serial robot.
+
+        This endpoint intentionally reports prerequisites only.  Browser users
+        cannot connect, calibrate, or torque-enable the DM4340P arm from it.
+        """
+        can_available = importlib.util.find_spec("can") is not None
+        rustypot_available = importlib.util.find_spec("rustypot") is not None
+        template = Path(__file__).with_name("data") / "superarm_dm4340p_amazinghand.example.yaml"
+        return {
+            "website_controls_physical_arm": False,
+            "config_template": str(template),
+            "arm": {
+                "protocol": "LeRobot OpenArm/Damiao CAN or CAN-FD",
+                "motor_type": "dm4340",
+                "python_can_available": can_available,
+                "requires": ["five custom CAN ID pairs", "measured direction/zero offsets", "measured limits and MIT gains"],
+            },
+            "hand": {
+                "protocol": "AmazingHandControl Feetech SCS0009 serial",
+                "rustypot_available": rustypot_available,
+                "serial_ports": SerialAmazingHandTransport.available_ports(),
+                "requires": ["IDs 1 through 8", "1,000,000 baud", "open/half/close feedback check"],
+            },
+            "steps": [
+                "Install the superarm extra with python-can and rustypot.",
+                "Discover the DM4340P CAN bus with torque disabled and replace every invalid template value.",
+                "Validate AmazingHand SCS0009 IDs 1 through 8 separately before combined control.",
+                "Run one torque-limited five-arm plus one-grasp pulse and verify readback.",
+                "Record a LeRobot episode only after the isolated checks pass.",
+            ],
+        }
+
     @staticmethod
     def resolve_workspace(workspace_root: str | Path | None = None) -> Path | None:
         candidates = []

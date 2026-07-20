@@ -24,7 +24,7 @@ from .actions import (
     normalize_superarm_action,
     resolve_motion_code,
 )
-from .mapping import ARM_JOINTS, ARM_MAX_RAD, ARM_MIN_RAD
+from .mapping import ARM_JOINTS, ARM_MAX_RAD, ARM_MIN_RAD, SERVO_SPEED_MAX, SERVO_SPEED_MIN
 from .transports import SerialAmazingHandTransport
 
 DM4340P_LEROBOT_TYPE = "dm4340"
@@ -192,8 +192,8 @@ class SuperArmDm4340PAmazingHandRobot(Robot):
             self.config.arm_position_kp,
             self.config.arm_position_kd,
         )
-        if not 1 <= self.config.hand_speed <= 6:
-            raise ValueError("AmazingHand speed must be in [1, 6]")
+        if not SERVO_SPEED_MIN <= self.config.hand_speed <= SERVO_SPEED_MAX:
+            raise ValueError(f"AmazingHand speed must be in [{SERVO_SPEED_MIN}, {SERVO_SPEED_MAX}]")
         try:
             from lerobot.robots.openarm_follower import OpenArmFollower, OpenArmFollowerConfig
         except ImportError as exc:
@@ -268,9 +268,15 @@ class SuperArmDm4340PAmazingHandRobot(Robot):
         values = normalize_superarm_action(action)
         arm_rad, hand_deg = action_to_runtime_commands(values)
         self._arm.send_action(arm_radians_to_openarm_degrees(arm_rad, self.config.arm_joint_calibration))
-        self._hand.command(
-            hand_deg, {finger: [self.config.hand_speed, self.config.hand_speed] for finger in hand_deg}
-        )
+        try:
+            self._hand.command(
+                hand_deg, {finger: [self.config.hand_speed, self.config.hand_speed] for finger in hand_deg}
+            )
+        except Exception:
+            # One logical action must not leave a torque-enabled CAN arm active
+            # after its paired AmazingHand command failed.
+            self.disconnect()
+            raise
         self._logical = values
         if named:
             return dict(zip(CANONICAL_FEATURES, values, strict=True))

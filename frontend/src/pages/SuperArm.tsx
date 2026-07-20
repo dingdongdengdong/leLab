@@ -398,6 +398,7 @@ const SuperArm = () => {
               <p className="text-xs text-cyan-400">Source arm · official closed-loop MJCF · 13 actuators</p>
             </div>
           </div>
+          <Button variant="outline" onClick={() => navigate("/hardware-setup")} className="border-cyan-700 text-cyan-200 hover:bg-cyan-950">Hardware setup</Button>
           <Button
             onClick={emergencyStop}
             className={`min-w-52 text-base font-bold ${emergencyStopped ? "bg-red-700 animate-pulse" : "bg-red-600 hover:bg-red-500"}`}

@@ -112,6 +112,15 @@ def test_action_validation_rejects_ambiguous_or_unsafe_payloads(payload) -> None
         ActionRequest.model_validate(payload)
 
 
+def test_hardware_readiness_is_read_only_and_keeps_protocols_separate() -> None:
+    readiness = SuperArmService().hardware_readiness()
+
+    assert readiness["website_controls_physical_arm"] is False
+    assert readiness["arm"]["motor_type"] == "dm4340"
+    assert readiness["hand"]["protocol"].endswith("SCS0009 serial")
+    assert len(readiness["steps"]) == 5
+
+
 def test_program_store_import_round_trip_and_atomic_write(tmp_path: Path) -> None:
     upstream = tmp_path / "upstream.yaml"
     upstream.write_text(
@@ -406,6 +415,7 @@ def test_api_namespace_is_registered() -> None:
 
     paths = {getattr(route, "path", "") for route in app.routes}
     assert "/api/superarm/capabilities" in paths
+    assert "/api/superarm/hardware-readiness" in paths
     assert "/api/superarm/session" in paths
     assert "/api/superarm/action" in paths
     assert "/api/superarm/video" in paths
@@ -418,6 +428,9 @@ def test_api_namespace_is_registered() -> None:
     response = TestClient(app).get("/api/superarm/capabilities")
     assert response.status_code == 200
     assert set(response.json()["runtimes"]) == {"mujoco", "hybrid_serial"}
+    readiness = TestClient(app).get("/api/superarm/hardware-readiness")
+    assert readiness.status_code == 200
+    assert readiness.json()["website_controls_physical_arm"] is False
     session = TestClient(app).get("/api/superarm/session")
     assert session.status_code == 200
     assert session.json()["connected"] is False

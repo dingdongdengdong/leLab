@@ -148,6 +148,12 @@ class _FailingConnectHand(_FakeHand):
         raise RuntimeError("hand bus unavailable")
 
 
+class _FailingCommandHand(_FakeHand):
+    def command(self, hand_deg: dict[str, list[float]], hand_speed: dict[str, list[int]]) -> None:
+        del hand_deg, hand_speed
+        raise RuntimeError("hand command failed")
+
+
 def test_combined_hardware_robot_routes_six_controls_to_two_protocols(tmp_path) -> None:
     config = SuperArmDm4340PAmazingHandConfig(
         arm_port="can0",
@@ -204,6 +210,29 @@ def test_hand_connect_failure_disconnects_the_can_arm(tmp_path, monkeypatch) -> 
 
     with pytest.raises(RuntimeError, match="hand bus"):
         robot.connect()
+
+    assert arm.disconnected is True
+    assert hand.closed is True
+
+
+def test_hand_command_failure_torque_disables_the_can_arm(tmp_path) -> None:
+    config = SuperArmDm4340PAmazingHandConfig(
+        arm_port="can0",
+        arm_motor_config=_dm4340p_mapping(),
+        arm_joint_calibration=_joint_calibration(),
+        arm_joint_limits_deg=_joint_limits(),
+        arm_position_kp=[10.0] * 5,
+        arm_position_kd=[1.0] * 5,
+        calibration_dir=tmp_path,
+    )
+    robot = SuperArmDm4340PAmazingHandRobot(config)
+    arm = _FakeArm()
+    hand = _FailingCommandHand()
+    robot._arm = arm
+    robot._hand = hand
+
+    with pytest.raises(RuntimeError, match="hand command"):
+        robot.send_action([0.0, 0.0, 0.0, 0.0, 0.0, 1.0])
 
     assert arm.disconnected is True
     assert hand.closed is True

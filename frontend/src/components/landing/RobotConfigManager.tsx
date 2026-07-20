@@ -102,6 +102,13 @@ const RobotConfigManager: React.FC<RobotConfigManagerProps> = ({
           >
             Open diagnostic
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => navigate("/hardware-setup")}
+            className="border-cyan-700 text-cyan-200 hover:bg-cyan-950"
+          >
+            Hardware setup
+          </Button>
         </div>
       </div>
       <RobotTile

@@ -160,3 +160,15 @@
 - **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, superarm-real-hardware-motor-protocol-boundary.md, superarm-runtime-joint-status-semantics.md
 - **Summary:** Lint: 6 issues (6 orphan, 0 stale, 0 broken, 0 contradictions)
 
+## [2026-07-20T03:35:49.492Z] ingest
+- **Pages:** superarm-website-real-hardware-readiness-page.md
+- **Summary:** Created new page "SuperArm website real-hardware readiness page"
+
+## [2026-07-20T03:35:49.495Z] add
+- **Pages:** superarm-website-real-hardware-readiness-page.md
+- **Summary:** Created wiki page superarm-website-real-hardware-readiness-page.md
+
+## [2026-07-20T03:35:49.783Z] lint
+- **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, superarm-real-hardware-motor-protocol-boundary.md, superarm-runtime-joint-status-semantics.md, superarm-website-real-hardware-readiness-page.md
+- **Summary:** Lint: 7 issues (7 orphan, 0 stale, 0 broken, 0 contradictions)
+
