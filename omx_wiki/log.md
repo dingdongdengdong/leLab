@@ -84,3 +84,23 @@
 - **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md
 - **Summary:** Lint: 1 issues (1 orphan, 0 stale, 0 broken, 0 contradictions)
 
+## [2026-07-20T00:49:32.242Z] ingest
+- **Pages:** lelab-tailnet-blank-page-robot-visibility-fix.md
+- **Summary:** Created new page "LeLab Tailnet Blank Page Robot Visibility Fix"
+
+## [2026-07-20T00:49:32.244Z] add
+- **Pages:** lelab-tailnet-blank-page-robot-visibility-fix.md
+- **Summary:** Created wiki page lelab-tailnet-blank-page-robot-visibility-fix.md
+
+## [2026-07-20T00:49:32.514Z] lint
+- **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-tailnet-blank-page-robot-visibility-fix.md
+- **Summary:** Lint: 2 issues (2 orphan, 0 stale, 0 broken, 0 contradictions)
+
+## [2026-07-20T00:51:18.084Z] add
+- **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, superarm-urdf-amazinghand-showroom-motion-fix.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-07-20T00:51:18.325Z] lint
+- **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md
+- **Summary:** Lint: 2 issues (2 orphan, 0 stale, 0 broken, 0 contradictions)
+

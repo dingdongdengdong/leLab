@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { createTabId } from "@/lib/tabId";
 
 type Peer = { id: string; openedAt: number; lastSeen: number };
 
@@ -39,7 +40,7 @@ const SingleTabGuard = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    myIdRef.current = crypto.randomUUID();
+    myIdRef.current = createTabId();
     myOpenedAtRef.current = Date.now();
 
     const channel = new BroadcastChannel(CHANNEL);
