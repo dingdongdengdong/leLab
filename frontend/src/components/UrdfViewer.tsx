@@ -13,6 +13,7 @@ import { useUrdf } from "@/hooks/useUrdf";
 import { useRealTimeJoints } from "@/hooks/useRealTimeJoints";
 import { useMjcfVisualLayer } from "@/hooks/useMjcfVisualLayer";
 import { isAmazingHandJoint } from "@/lib/mjcfVisualLayer";
+import { deriveJointCoverageStatus } from "@/lib/jointCoverage";
 import {
   createUrdfViewer,
   setupMeshLoader,
@@ -57,6 +58,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({
   );
   const {
     isConnected: isWebSocketConnected,
+    hasReceivedJointData,
     jointNames: liveJointNames,
     visualPose,
   } = useRealTimeJoints({
@@ -66,7 +68,19 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({
   });
   const useRecordModel = showroomUrdf && Boolean(robotName);
   const useSo101Model = isDefaultModel && !useRecordModel;
-  const liveJointCoverage = physicalJointNames.filter((name) => liveJointNames.includes(name)).length;
+  const jointCoverage = deriveJointCoverageStatus({
+    isConnected: isWebSocketConnected,
+    hasReceivedJointData,
+    physicalJointNames,
+    liveJointNames,
+  });
+  const hasLiveJointData = jointCoverage.state === "complete" || jointCoverage.state === "mismatch";
+  const isAwaitingJointData = jointCoverage.state === "awaiting";
+  const connectionLabel = hasLiveJointData
+    ? "Live Robot Data"
+    : isAwaitingJointData
+    ? "Waiting for Robot Data"
+    : "Disconnected";
   const { isActive: exactHandActive, handJointNames } = useMjcfVisualLayer({
     viewerRef,
     manifestUrl: useRecordModel
@@ -329,27 +343,36 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({
         <div className="absolute top-4 right-4 z-10">
           <div
             className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-mono ${
-              isWebSocketConnected
+              hasLiveJointData
                 ? "bg-green-900/70 text-green-300"
+                : isAwaitingJointData
+                ? "bg-amber-900/70 text-amber-200"
                 : "bg-red-900/70 text-red-300"
             }`}
           >
             <div
               className={`w-2 h-2 rounded-full ${
-                isWebSocketConnected ? "bg-green-400" : "bg-red-400"
+                hasLiveJointData
+                  ? "bg-green-400"
+                  : isAwaitingJointData
+                  ? "bg-amber-400"
+                  : "bg-red-400"
               }`}
             />
-            {isWebSocketConnected ? "Live Robot Data" : "Disconnected"}
+            {connectionLabel}
           </div>
           {useRecordModel && (
             <div className={`mt-2 rounded-md px-3 py-2 text-xs font-mono ${
-              liveJointCoverage === physicalJointNames.length && physicalJointNames.length > 0
+              jointCoverage.state === "complete" && jointCoverage.totalCount > 0
                 ? "bg-green-900/70 text-green-300"
                 : "bg-amber-900/70 text-amber-200"
             }`}>
               <div>{robotName}</div>
-              <div>{liveJointCoverage}/{physicalJointNames.length} physical joints live</div>
-              {physicalJointNames.length > 0 && liveJointCoverage !== physicalJointNames.length && (
+              <div>{jointCoverage.liveCount}/{jointCoverage.totalCount} physical joints live</div>
+              {isAwaitingJointData && (
+                <div className="mt-1">Waiting for runtime joint sample</div>
+              )}
+              {jointCoverage.showMismatch && (
                 <div className="mt-1">Runtime/URDF joint mismatch</div>
               )}
               <div className="mt-1">{exactHandActive ? "Exact MuJoCo hand visuals" : "URDF hand fallback"}</div>

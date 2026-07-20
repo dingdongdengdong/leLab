@@ -104,3 +104,23 @@
 - **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md
 - **Summary:** Lint: 2 issues (2 orphan, 0 stale, 0 broken, 0 contradictions)
 
+## [2026-07-20T01:44:41.995Z] ingest
+- **Pages:** superarm-runtime-joint-status-semantics.md
+- **Summary:** Created new page "SuperArm Runtime Joint Status Semantics"
+
+## [2026-07-20T01:44:41.997Z] add
+- **Pages:** superarm-runtime-joint-status-semantics.md
+- **Summary:** Created wiki page superarm-runtime-joint-status-semantics.md
+
+## [2026-07-20T01:44:42.290Z] lint
+- **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, superarm-runtime-joint-status-semantics.md
+- **Summary:** Lint: 3 issues (3 orphan, 0 stale, 0 broken, 0 contradictions)
+
+## [2026-07-20T01:50:46.537Z] add
+- **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, superarm-runtime-joint-status-semantics.md, superarm-urdf-amazinghand-showroom-motion-fix.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-07-20T01:50:46.802Z] lint
+- **Pages:** exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, superarm-runtime-joint-status-semantics.md
+- **Summary:** Lint: 3 issues (3 orphan, 0 stale, 0 broken, 0 contradictions)
+

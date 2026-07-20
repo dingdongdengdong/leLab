@@ -34,6 +34,7 @@ export const useRealTimeJoints = ({
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY_MS);
   const intentionallyClosedRef = useRef(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [hasReceivedJointData, setHasReceivedJointData] = useState(false);
   const [jointNames, setJointNames] = useState<string[]>([]);
   const [visualPose, setVisualPose] = useState<MjcfVisualPose | null>(null);
 
@@ -74,6 +75,7 @@ export const useRealTimeJoints = ({
 
       ws.onopen = () => {
         setIsConnected(true);
+        setHasReceivedJointData(false);
         reconnectDelayRef.current = INITIAL_RECONNECT_DELAY_MS;
         if (reconnectTimeoutRef.current) {
           clearTimeout(reconnectTimeoutRef.current);
@@ -85,6 +87,7 @@ export const useRealTimeJoints = ({
         try {
           const data = JSON.parse(event.data) as JointData;
           if (data.type === "joint_update" && data.joints) {
+            setHasReceivedJointData(true);
             updateJointValues(data.joints);
             const pose = extractVisualPose(data);
             if (pose) setVisualPose(pose);
@@ -96,6 +99,7 @@ export const useRealTimeJoints = ({
 
       ws.onclose = (event) => {
         setIsConnected(false);
+        setHasReceivedJointData(false);
         wsRef.current = null;
         if (intentionallyClosedRef.current) return;
         if (event.code === 1000) return; // clean close
@@ -133,8 +137,9 @@ export const useRealTimeJoints = ({
         wsRef.current = null;
       }
       setIsConnected(false);
+      setHasReceivedJointData(false);
     };
   }, [enabled, finalWebSocketUrl, updateJointValues]);
 
-  return { isConnected, jointNames, visualPose };
+  return { isConnected, hasReceivedJointData, jointNames, visualPose };
 };
