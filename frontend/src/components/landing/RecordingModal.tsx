@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
@@ -184,6 +185,7 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
 
                       {superarmInputMode === "so101" && (
                         <div className="grid gap-3 sm:grid-cols-2">
+                          <p className="sm:col-span-2 text-xs text-cyan-300">This is the physical SO-101 leader path. <Link to="/so101-leader-setup" className="underline">Read the step-by-step guide</Link> before recording.</p>
                           <div className="space-y-2">
                             <Label
                               htmlFor="superarmLeaderPort"

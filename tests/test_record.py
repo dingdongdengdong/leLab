@@ -169,16 +169,45 @@ def test_create_record_config_uses_six_control_superarm_robot_and_manual_teleope
     assert config.teleop.type == "superarm_input"
     assert config.teleop.source == "manual"
     action_feature = hw_to_dataset_features(robot.action_features, "action", False)["action"]
-    observation_feature = hw_to_dataset_features(
-        robot.observation_features, "observation", False
-    )["observation.state"]
+    observation_feature = hw_to_dataset_features(robot.observation_features, "observation", False)[
+        "observation.state"
+    ]
     assert action_feature["shape"] == (6,)
     assert observation_feature["shape"] == (6,)
     assert action_feature["names"] == list(robot.action_features)
-    dataset_observation_features = hw_to_dataset_features(
-        robot.observation_features, "observation", False
-    )
+    dataset_observation_features = hw_to_dataset_features(robot.observation_features, "observation", False)
     assert dataset_observation_features["observation.images.wrist"]["shape"] == (64, 64, 3)
+
+
+def test_create_record_config_wires_so101_leader_to_superarm_mapping() -> None:
+    import lelab.record as record
+
+    workspace = Path(__file__).resolve().parents[1]
+    config_path = workspace / "lelab/superarm/data/superarm_mujoco.yaml"
+    request = record.RecordingRequest(
+        leader_port="/dev/ttyACM0",
+        follower_port="unused",
+        leader_config="my_calibrated_so101",
+        follower_config=str(config_path),
+        superarm_config=str(config_path),
+        superarm_asset_root=str(workspace),
+        robot_backend="superarm_mujoco",
+        input_mode="so101",
+        dataset_repo_id="local/superarm_so101",
+        single_task="test SO101 leader mapping",
+        video=False,
+    )
+
+    config = record.create_record_config(request)
+
+    assert config.teleop.type == "superarm_input"
+    assert config.teleop.source == "so101"
+    assert config.teleop.port == "/dev/ttyACM0"
+    assert config.teleop.leader_id == "my_calibrated_so101"
+    assert [item["target"] for item in config.teleop.arm_mapping] == [
+        f"joint_rev_{index}.pos" for index in range(1, 6)
+    ]
+    assert config.teleop.gripper_feature == "gripper.pos"
 
 
 def test_act_policy_constructs_with_superarm_six_dimensional_head_and_camera() -> None:

@@ -109,6 +109,13 @@ const RobotConfigManager: React.FC<RobotConfigManagerProps> = ({
           >
             Hardware setup
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => navigate("/so101-leader-setup")}
+            className="border-cyan-700 text-cyan-200 hover:bg-cyan-950"
+          >
+            SO-101 leader guide
+          </Button>
         </div>
       </div>
       <RobotTile

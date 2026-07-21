@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+import yaml
+
 from .mapping import ARM_JOINTS, UI_FINGERS
 from .programs import ProgramStore
 from .showroom import (
@@ -83,7 +85,11 @@ class SuperArmService:
                 "protocol": "LeRobot OpenArm/Damiao CAN or CAN-FD",
                 "motor_type": "dm4340",
                 "python_can_available": can_available,
-                "requires": ["five custom CAN ID pairs", "measured direction/zero offsets", "measured limits and MIT gains"],
+                "requires": [
+                    "five custom CAN ID pairs",
+                    "measured direction/zero offsets",
+                    "measured limits and MIT gains",
+                ],
             },
             "hand": {
                 "protocol": "AmazingHandControl Feetech SCS0009 serial",
@@ -97,6 +103,35 @@ class SuperArmService:
                 "Validate AmazingHand SCS0009 IDs 1 through 8 separately before combined control.",
                 "Run one torque-limited five-arm plus one-grasp pulse and verify readback.",
                 "Record a LeRobot episode only after the isolated checks pass.",
+            ],
+        }
+
+    def so101_leader_readiness(self) -> dict[str, Any]:
+        """Expose the existing SO-101-to-SuperArm recording contract safely."""
+        config_path = Path(__file__).with_name("data") / "superarm_mujoco.yaml"
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        mapping = list(raw.get("so101_leader_mapping") or [])
+        return {
+            "supported": len(mapping) == 5,
+            "manual_page_is_physical_leader": False,
+            "recording_input_mode": "so101",
+            "leader": {
+                "protocol": "LeRobot SO101Leader / Feetech serial",
+                "serial_ports": SerialAmazingHandTransport.available_ports(),
+                "requires": ["calibrated SO-101 leader", "leader serial port", "leader calibration ID"],
+            },
+            "mapping": mapping,
+            "gripper": {
+                "source": raw.get("so101_gripper_feature"),
+                "target": "amazinghand_motion.pos",
+                "motions": raw.get("hand_motions"),
+            },
+            "steps": [
+                "Connect and calibrate the SO-101 leader with LeLab's existing calibration page.",
+                "Keep the follower in MuJoCo for the first dry run; do not enable real follower torque yet.",
+                "On the dashboard, choose SuperArm + AmazingHand, then Record and select SO101 Leader.",
+                "Enter the SO-101 serial port and calibration ID; LeLab maps five arm joints and quantizes the gripper to open, half-close, or close.",
+                "Record one short dry-run episode and inspect all six logical actions before progressing to the real follower checklist.",
             ],
         }
 

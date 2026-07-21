@@ -121,6 +121,17 @@ def test_hardware_readiness_is_read_only_and_keeps_protocols_separate() -> None:
     assert len(readiness["steps"]) == 5
 
 
+def test_so101_leader_readiness_uses_the_six_control_superarm_contract() -> None:
+    readiness = SuperArmService().so101_leader_readiness()
+
+    assert readiness["supported"] is True
+    assert readiness["manual_page_is_physical_leader"] is False
+    assert [item["target"] for item in readiness["mapping"]] == [
+        f"joint_rev_{index}.pos" for index in range(1, 6)
+    ]
+    assert readiness["gripper"]["target"] == "amazinghand_motion.pos"
+
+
 def test_program_store_import_round_trip_and_atomic_write(tmp_path: Path) -> None:
     upstream = tmp_path / "upstream.yaml"
     upstream.write_text(

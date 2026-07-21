@@ -1,6 +1,6 @@
 # Wiki Index
 
-> 8 pages | Last updated: 2026-07-20T03:35:49.494Z
+> 9 pages | Last updated: 2026-07-21T14:48:57.878Z
 
 ## architecture
 
@@ -21,3 +21,7 @@
 ## environment
 
 - [LeLab Tailscale Client Proxy](lelab-tailscale-client-proxy.md) — # LeLab Tailscale Client Proxy
+
+## pattern
+
+- [SO-101 leader to SuperArm recording guide](so-101-leader-to-superarm-recording-guide.md) — # SO-101 leader to SuperArm recording guide

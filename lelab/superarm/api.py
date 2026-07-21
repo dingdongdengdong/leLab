@@ -113,6 +113,11 @@ def hardware_readiness():
     return service.hardware_readiness()
 
 
+@router.get("/api/superarm/so101-leader-readiness")
+def so101_leader_readiness():
+    return service.so101_leader_readiness()
+
+
 @router.get("/api/superarm/urdf")
 def source_arm_urdf(workspace_root: str | None = None):
     try:
