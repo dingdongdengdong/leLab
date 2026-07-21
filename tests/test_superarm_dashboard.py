@@ -126,6 +126,12 @@ def test_so101_leader_readiness_uses_the_six_control_superarm_contract() -> None
 
     assert readiness["supported"] is True
     assert readiness["manual_page_is_physical_leader"] is False
+    assert readiness["follower"]["device_type"] == "SuperArm DM4340P + AmazingHand"
+    assert readiness["follower"]["first_target"] == "MuJoCo SuperArm + AmazingHand"
+    assert readiness["follower"]["arm_calibration"]["required_before_hardware"] is True
+    assert readiness["follower"]["arm_calibration"]["joints"] == [
+        f"joint_rev_{index}" for index in range(1, 6)
+    ]
     assert [item["target"] for item in readiness["mapping"]] == [
         f"joint_rev_{index}.pos" for index in range(1, 6)
     ]

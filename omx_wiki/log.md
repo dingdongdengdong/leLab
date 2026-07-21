@@ -184,3 +184,11 @@
 - **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, so-101-leader-to-superarm-recording-guide.md, superarm-real-hardware-motor-protocol-boundary.md, superarm-runtime-joint-status-semantics.md, superarm-website-real-hardware-readiness-page.md
 - **Summary:** Lint: 8 issues (8 orphan, 0 stale, 0 broken, 0 contradictions)
 
+## [2026-07-21T15:08:02.887Z] ingest
+- **Pages:** so-101-leader-to-superarm-recording-guide.md
+- **Summary:** Updated "SO-101 leader to SuperArm recording guide" with new content
+
+## [2026-07-21T15:08:03.135Z] lint
+- **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, so-101-leader-to-superarm-recording-guide.md, superarm-real-hardware-motor-protocol-boundary.md, superarm-runtime-joint-status-semantics.md, superarm-website-real-hardware-readiness-page.md
+- **Summary:** Lint: 8 issues (8 orphan, 0 stale, 0 broken, 0 contradictions)
+

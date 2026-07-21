@@ -120,6 +120,22 @@ class SuperArmService:
                 "serial_ports": SerialAmazingHandTransport.available_ports(),
                 "requires": ["calibrated SO-101 leader", "leader serial port", "leader calibration ID"],
             },
+            "follower": {
+                "device_type": "SuperArm DM4340P + AmazingHand",
+                "first_target": "MuJoCo SuperArm + AmazingHand",
+                "hardware_config_template": "lelab/superarm/data/superarm_dm4340p_amazinghand.example.yaml",
+                "arm_calibration": {
+                    "required_before_hardware": True,
+                    "joints": list(ARM_JOINTS),
+                    "format": "[direction, zero_offset_rad]",
+                    "requires": [
+                        "measured direction (+1 or -1) for every joint",
+                        "measured zero offset in SuperArm joint radians for every joint",
+                        "measured lower and upper degree limits for every joint",
+                        "five measured position_kp and five position_kd values",
+                    ],
+                },
+            },
             "mapping": mapping,
             "gripper": {
                 "source": raw.get("so101_gripper_feature"),

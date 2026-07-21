@@ -1,6 +1,6 @@
 # Wiki Index
 
-> 9 pages | Last updated: 2026-07-21T14:48:57.878Z
+> 9 pages | Last updated: 2026-07-21T15:08:02.889Z
 
 ## architecture
 
