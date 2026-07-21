@@ -79,6 +79,12 @@ interface RobotRecord {
 
 const SUPERARM_JOINTS = ["joint_rev_1", "joint_rev_2", "joint_rev_3", "joint_rev_4", "joint_rev_5"];
 
+const CALIBRATION_DEVICE_OPTIONS = [
+  { value: "teleop", label: "Teleoperator (Leader)" },
+  { value: "robot", label: "Robot (Follower)" },
+  { value: "superarm", label: "SuperArm (DM4340P Follower)" },
+] as const;
+
 type SuperArmMotorIds = Record<string, { send: string; receive: string }>;
 
 type SuperArmBackendStatus = {
@@ -92,6 +98,34 @@ type SuperArmBackendStatus = {
 
 const newSuperArmMotorIds = (): SuperArmMotorIds =>
   Object.fromEntries(SUPERARM_JOINTS.map((joint) => [joint, { send: "", receive: "" }]));
+
+type CalibrationChecklistItem = {
+  configured: boolean;
+  label: string;
+};
+
+const getCalibrationChecklist = (
+  deviceType: string,
+  robot: RobotRecord | null,
+): CalibrationChecklistItem[] => {
+  if (deviceType === "superarm") {
+    return [
+      {
+        configured: Boolean(robot?.leader_config),
+        label: "Leader: SO-101 teleoperator (optional)",
+      },
+      {
+        configured: Boolean(robot?.follower_config),
+        label: "Follower: SuperArm 5-DOF DM4340P + AmazingHand grasp",
+      },
+    ];
+  }
+
+  return [
+    { configured: Boolean(robot?.leader_config), label: "Leader (Teleoperator)" },
+    { configured: Boolean(robot?.follower_config), label: "Follower (Robot)" },
+  ];
+};
 
 const Calibration = () => {
   const navigate = useNavigate();
@@ -610,6 +644,7 @@ const Calibration = () => {
   };
 
   const statusDisplay = getStatusDisplay();
+  const calibrationChecklist = getCalibrationChecklist(deviceType, robot);
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-4">
@@ -666,15 +701,15 @@ const Calibration = () => {
                     <SelectValue placeholder="Select device type" />
                   </SelectTrigger>
                   <SelectContent className="bg-slate-800 border-slate-700 text-white">
-                    <SelectItem value="teleop" className="hover:bg-slate-700">
-                      Teleoperator (Leader)
-                    </SelectItem>
-                    <SelectItem value="robot" className="hover:bg-slate-700">
-                      Robot (Follower)
-                    </SelectItem>
-                    <SelectItem value="superarm" className="hover:bg-slate-700">
-                      SuperArm (DM4340P Follower)
-                    </SelectItem>
+                    {CALIBRATION_DEVICE_OPTIONS.map((option) => (
+                      <SelectItem
+                        key={option.value}
+                        value={option.value}
+                        className="hover:bg-slate-700"
+                      >
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -734,33 +769,23 @@ const Calibration = () => {
                 )}
               </div>
 
-              {robot && (
+              {(robot || deviceType === "superarm") && (
                 <div className="space-y-2 pt-2">
                   <div className="text-sm font-medium text-slate-300">
-                    Robot calibration
+                    {deviceType === "superarm" ? "SuperArm calibration" : "Robot calibration"}
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    {robot.leader_config ? (
-                      <CheckCircle className="w-4 h-4 text-green-400" />
-                    ) : (
-                      <Circle className="w-4 h-4 text-slate-500" />
-                    )}
-                    <span
-                      className={
-                        robot.leader_config ? "text-slate-200" : "text-slate-400"
-                      }
-                    >
-                      Leader (Teleoperator)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    {robot.follower_config ? (
-                      <CheckCircle className="w-4 h-4 text-green-400" />
-                    ) : (
-                      <Circle className="w-4 h-4 text-slate-500" />
-                    )}
-                    <span className={robot.follower_config ? "text-slate-200" : "text-slate-400"}>{robot.robot_backend === "superarm_mujoco" ? "Follower (SuperArm DM4340P)" : "Follower (Robot)"}</span>
-                  </div>
+                  {calibrationChecklist.map((item) => (
+                    <div key={item.label} className="flex items-center gap-2 text-sm">
+                      {item.configured ? (
+                        <CheckCircle className="w-4 h-4 text-green-400" />
+                      ) : (
+                        <Circle className="w-4 h-4 text-slate-500" />
+                      )}
+                      <span className={item.configured ? "text-slate-200" : "text-slate-400"}>
+                        {item.label}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>
