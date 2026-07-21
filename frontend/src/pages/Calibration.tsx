@@ -410,6 +410,10 @@ const Calibration = () => {
   }, [deviceType, robotName, baseUrl, fetchWithHeaders]);
 
   const handleDeviceTypeChange = (next: string) => {
+    if (next === "superarm") {
+      navigate("/calibration?device=superarm");
+      return;
+    }
     setDeviceType(next);
     if (!robot) return;
     setPort(
@@ -586,6 +590,9 @@ const Calibration = () => {
                     </SelectItem>
                     <SelectItem value="robot" className="hover:bg-slate-700">
                       Robot (Follower)
+                    </SelectItem>
+                    <SelectItem value="superarm" className="hover:bg-slate-700">
+                      SuperArm (DM4340P Follower)
                     </SelectItem>
                   </SelectContent>
                 </Select>

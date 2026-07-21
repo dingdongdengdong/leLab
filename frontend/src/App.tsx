@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useSearchParams } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { UrdfProvider } from "@/contexts/UrdfContext";
@@ -28,6 +28,11 @@ import { HfAuthProvider } from "./contexts/HfAuthContext";
 
 const queryClient = new QueryClient();
 
+function CalibrationRoute() {
+  const [params] = useSearchParams();
+  return params.get("device") === "superarm" ? <SuperArmFollowerCalibration /> : <Calibration />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -54,7 +59,7 @@ function App() {
                         <Route path="/training" element={<Training />} />
                         <Route path="/training/:jobId" element={<Training />} />
                         <Route path="/inference" element={<Inference />} />
-                        <Route path="/calibration" element={<Calibration />} />
+                        <Route path="/calibration" element={<CalibrationRoute />} />
                         <Route path="/edit-dataset" element={<EditDataset />} />
 
                         <Route path="*" element={<NotFound />} />
