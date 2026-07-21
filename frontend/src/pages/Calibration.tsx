@@ -54,6 +54,8 @@ interface CalibrationStatus {
     string,
     { min: number; max: number; current: number }
   > | null;
+  zero_captured?: boolean;
+  torque_enabled?: boolean;
 }
 
 interface CalibrationRequest {
@@ -73,6 +75,22 @@ interface RobotRecord {
   is_clean: boolean;
 }
 
+const SUPERARM_JOINTS = ["joint_rev_1", "joint_rev_2", "joint_rev_3", "joint_rev_4", "joint_rev_5"];
+
+type SuperArmMotorIds = Record<string, { send: string; receive: string }>;
+
+type SuperArmBackendStatus = {
+  calibration_active: boolean;
+  torque_enabled: boolean;
+  zero_captured: boolean;
+  message: string;
+  error: string | null;
+  recorded_ranges: Record<string, { min: number; max: number; current: number }>;
+};
+
+const newSuperArmMotorIds = (): SuperArmMotorIds =>
+  Object.fromEntries(SUPERARM_JOINTS.map((joint) => [joint, { send: "", receive: "" }]));
+
 const Calibration = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -86,6 +104,7 @@ const Calibration = () => {
 
   const [deviceType, setDeviceType] = useState<string>("teleop");
   const [port, setPort] = useState<string>("");
+  const [superArmMotorIds, setSuperArmMotorIds] = useState<SuperArmMotorIds>(newSuperArmMotorIds);
   const [robot, setRobot] = useState<RobotRecord | null>(null);
   const [cameras, setCameras] = useState<CameraConfig[]>([]);
   // Off by default so merely opening the calibration page never grabs a camera.
@@ -191,9 +210,11 @@ const Calibration = () => {
   // Mirror calibration_active into a ref so the unmount cleanup below can read
   // the latest value without re-firing on every status change.
   const calibrationActiveRef = useRef(false);
+  const calibrationDeviceRef = useRef("teleop");
   useEffect(() => {
     calibrationActiveRef.current = calibrationStatus.calibration_active;
-  }, [calibrationStatus.calibration_active]);
+    calibrationDeviceRef.current = deviceType;
+  }, [calibrationStatus.calibration_active, deviceType]);
 
   // If the user leaves this page (back arrow, browser back, programmatic nav)
   // while calibration is running, the backend singleton stays active and the
@@ -202,7 +223,10 @@ const Calibration = () => {
   useEffect(() => {
     return () => {
       if (calibrationActiveRef.current) {
-        fetchWithHeaders(`${baseUrl}/stop-calibration`, { method: "POST" }).catch(
+        const path = calibrationDeviceRef.current === "superarm"
+          ? "/api/superarm/calibration/stop"
+          : "/stop-calibration";
+        fetchWithHeaders(`${baseUrl}${path}`, { method: "POST" }).catch(
           (e) => console.error("Failed to stop calibration on unmount:", e)
         );
       }
@@ -211,9 +235,25 @@ const Calibration = () => {
 
   const pollStatus = async () => {
     try {
-      const response = await fetchWithHeaders(`${baseUrl}/calibration-status`);
+      const isSuperArm = deviceType === "superarm";
+      const response = await fetchWithHeaders(
+        `${baseUrl}${isSuperArm ? "/api/superarm/calibration" : "/calibration-status"}`
+      );
       if (response.ok) {
-        const status = await response.json();
+        const rawStatus = await response.json();
+        const status = isSuperArm ? {
+          calibration_active: rawStatus.calibration_active,
+          status: rawStatus.calibration_active ? "recording" : "idle",
+          device_type: "superarm",
+          error: rawStatus.error,
+          message: rawStatus.message,
+          step: rawStatus.zero_captured ? 2 : 1,
+          total_steps: 2,
+          current_positions: Object.fromEntries(Object.entries((rawStatus as SuperArmBackendStatus).recorded_ranges ?? {}).map(([name, range]) => [name, range.current])),
+          recorded_ranges: rawStatus.recorded_ranges,
+          zero_captured: rawStatus.zero_captured,
+          torque_enabled: rawStatus.torque_enabled,
+        } : rawStatus;
         setCalibrationStatus(status);
 
         if (
@@ -231,6 +271,32 @@ const Calibration = () => {
   };
 
   const handleStartCalibration = async () => {
+    if (deviceType === "superarm") {
+      if (!port) {
+        toast({ title: "Missing CAN interface", description: "Set the SuperArm CAN interface (for example can0).", variant: "destructive" });
+        return;
+      }
+      calibrationActiveRef.current = true;
+      calibrationDeviceRef.current = "superarm";
+      try {
+        const response = await fetchWithHeaders(`${baseUrl}/api/superarm/calibration/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            arm_port: port,
+            arm_motor_config: Object.fromEntries(SUPERARM_JOINTS.map((joint) => [joint, [Number(superArmMotorIds[joint].send), Number(superArmMotorIds[joint].receive)]])),
+            confirmed_torque_disabled_area: true,
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || "Failed to start SuperArm calibration");
+        setIsPolling(true);
+      } catch (error) {
+        calibrationActiveRef.current = false;
+        toast({ title: "Calibration Failed", description: error instanceof Error ? error.message : "Failed to start SuperArm calibration", variant: "destructive" });
+      }
+      return;
+    }
     if (!robotName) {
       toast({
         title: "No robot selected",
@@ -295,13 +361,13 @@ const Calibration = () => {
 
   const handleStopCalibration = async () => {
     try {
-      const response = await fetchWithHeaders(`${baseUrl}/stop-calibration`, {
+      const response = await fetchWithHeaders(`${baseUrl}${deviceType === "superarm" ? "/api/superarm/calibration/stop" : "/stop-calibration"}`, {
         method: "POST",
       });
 
       const result = await response.json();
 
-      if (result.success) {
+      if (deviceType === "superarm" || result.success) {
         // The 200ms polling interval will pick up the stopped state.
         toast({
           title: "Calibration Stopped",
@@ -328,6 +394,15 @@ const Calibration = () => {
     if (!calibrationStatus.calibration_active) return;
 
     try {
+      if (deviceType === "superarm") {
+        const path = calibrationStatus.zero_captured
+          ? "/api/superarm/calibration/stop"
+          : "/api/superarm/calibration/capture-zero";
+        const response = await fetchWithHeaders(`${baseUrl}${path}`, { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Could not complete SuperArm calibration step");
+        return;
+      }
       const response = await fetchWithHeaders(
         `${baseUrl}/complete-calibration-step`,
         { method: "POST" }
@@ -386,7 +461,7 @@ const Calibration = () => {
   // the robot-record prefill above wins)
   useEffect(() => {
     const loadDefaultPort = async () => {
-      if (!deviceType) return;
+      if (!deviceType || deviceType === "superarm") return;
       if (robotName) return;
 
       try {
@@ -410,11 +485,11 @@ const Calibration = () => {
   }, [deviceType, robotName, baseUrl, fetchWithHeaders]);
 
   const handleDeviceTypeChange = (next: string) => {
+    setDeviceType(next);
     if (next === "superarm") {
-      navigate("/calibration?device=superarm");
+      setPort("can0");
       return;
     }
-    setDeviceType(next);
     if (!robot) return;
     setPort(
       next === "teleop" ? robot.leader_port || "" : robot.follower_port || ""
@@ -454,7 +529,7 @@ const Calibration = () => {
   // needing a full re-calibration. Mirrors the camera write-back above.
   const persistPort = useCallback(
     async (nextPort: string) => {
-      if (!robotName || !nextPort) return;
+      if (!robotName || !nextPort || deviceType === "superarm") return;
       const field = deviceType === "robot" ? "follower_port" : "leader_port";
       // Skip redundant writes when the value already matches the record.
       if (robot && robot[field] === nextPort) return;
@@ -550,7 +625,7 @@ const Calibration = () => {
           </div>
         </div>
 
-        {!robotName && (
+        {!robotName && deviceType !== "superarm" && (
           <Alert className="mb-6 bg-amber-900/40 border-amber-700 text-amber-100">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
@@ -603,7 +678,7 @@ const Calibration = () => {
                   htmlFor="port"
                   className="text-sm font-medium text-slate-300"
                 >
-                  Port *
+                  {deviceType === "superarm" ? "CAN interface *" : "Port *"}
                 </Label>
                 <div className="flex gap-2">
                   <Input
@@ -611,16 +686,23 @@ const Calibration = () => {
                     value={port}
                     onChange={(e) => setPort(e.target.value)}
                     onBlur={(e) => persistPort(e.target.value)}
-                    placeholder="/dev/tty.usbmodem..."
+                    placeholder={deviceType === "superarm" ? "can0" : "/dev/tty.usbmodem..."}
                     className="bg-slate-700 border-slate-600 text-white rounded-md flex-1"
                   />
-                  <PortDetectionButton
+                  {deviceType !== "superarm" && <PortDetectionButton
                     onClick={handlePortDetection}
                     robotType={deviceType === "robot" ? "follower" : "leader"}
                     className="border-slate-600 hover:border-blue-500 text-slate-400 hover:text-blue-400 bg-slate-700 hover:bg-slate-600"
-                  />
+                  />}
                 </div>
               </div>
+
+              {deviceType === "superarm" && (
+                <div className="space-y-3 rounded-md border border-cyan-800 bg-cyan-950/20 p-3">
+                  <div><div className="text-sm font-medium text-cyan-200">SuperArm follower CAN IDs</div><p className="mt-1 text-xs text-slate-400">Enter the measured DM4340P send/receive pair for each of the five joints. Start Calibration opens this CAN bus and immediately disables torque.</p></div>
+                  <div className="grid gap-2 sm:grid-cols-2">{SUPERARM_JOINTS.map((joint) => <div key={joint} className="grid grid-cols-[1fr_1fr_1fr] items-center gap-2"><span className="font-mono text-xs text-slate-300">{joint}</span><Input type="number" min="1" value={superArmMotorIds[joint].send} onChange={(event) => setSuperArmMotorIds((current) => ({ ...current, [joint]: { ...current[joint], send: event.target.value } }))} placeholder="send" className="bg-slate-700 border-slate-600 text-white" /><Input type="number" min="1" value={superArmMotorIds[joint].receive} onChange={(event) => setSuperArmMotorIds((current) => ({ ...current, [joint]: { ...current[joint], receive: event.target.value } }))} placeholder="receive" className="bg-slate-700 border-slate-600 text-white" /></div>)}</div>
+                </div>
+              )}
 
               <Separator className="bg-slate-700" />
 
@@ -629,7 +711,7 @@ const Calibration = () => {
                   <Button
                     onClick={handleStartCalibration}
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-full py-6 text-lg"
-                    disabled={!robotName || !deviceType || !port}
+                    disabled={deviceType === "superarm" ? !port : !robotName || !deviceType || !port}
                   >
                     <Play className="w-5 h-5 mr-2" />
                     Start Calibration
@@ -821,7 +903,11 @@ const Calibration = () => {
                         ) : (
                           <AlertCircle className="w-4 h-4 mr-2" />
                         )}
-                        Save Calibration
+                        {deviceType === "superarm"
+                          ? calibrationStatus.zero_captured
+                            ? "Finish and disconnect"
+                            : "Capture reference zero"
+                          : "Save Calibration"}
                       </Button>
                     </div>
                     <Alert className="bg-purple-900/50 border-purple-700 text-purple-200">

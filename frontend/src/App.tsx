@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useSearchParams } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { UrdfProvider } from "@/contexts/UrdfContext";
@@ -16,7 +16,6 @@ import ManualLeader from "@/pages/ManualLeader";
 import SuperArm from "@/pages/SuperArm";
 import HardwareSetup from "@/pages/HardwareSetup";
 import SO101LeaderSetup from "@/pages/SO101LeaderSetup";
-import SuperArmFollowerCalibration from "@/pages/SuperArmFollowerCalibration";
 
 import NotFound from "@/pages/NotFound";
 import SingleTabGuard from "@/components/SingleTabGuard";
@@ -27,11 +26,6 @@ import { ApiProvider } from "./contexts/ApiContext";
 import { HfAuthProvider } from "./contexts/HfAuthContext";
 
 const queryClient = new QueryClient();
-
-function CalibrationRoute() {
-  const [params] = useSearchParams();
-  return params.get("device") === "superarm" ? <SuperArmFollowerCalibration /> : <Calibration />;
-}
 
 function App() {
   return (
@@ -52,14 +46,13 @@ function App() {
                         <Route path="/manual-leader" element={<ManualLeader />} />
                         <Route path="/superarm" element={<SuperArm />} />
                         <Route path="/hardware-setup" element={<HardwareSetup />} />
-                        <Route path="/superarm-follower-calibration" element={<SuperArmFollowerCalibration />} />
                         <Route path="/so101-leader-setup" element={<SO101LeaderSetup />} />
                         <Route path="/recording" element={<Recording />} />
                         <Route path="/upload" element={<Upload />} />
                         <Route path="/training" element={<Training />} />
                         <Route path="/training/:jobId" element={<Training />} />
                         <Route path="/inference" element={<Inference />} />
-                        <Route path="/calibration" element={<CalibrationRoute />} />
+                        <Route path="/calibration" element={<Calibration />} />
                         <Route path="/edit-dataset" element={<EditDataset />} />
 
                         <Route path="*" element={<NotFound />} />
