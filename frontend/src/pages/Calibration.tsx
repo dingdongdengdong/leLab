@@ -71,6 +71,8 @@ interface RobotRecord {
   follower_port: string;
   leader_config: string;
   follower_config: string;
+  robot_backend?: string;
+  superarm_config?: string;
   cameras: CameraConfig[];
   is_clean: boolean;
 }
@@ -138,14 +140,18 @@ const Calibration = () => {
       const r = await fetchRobot();
       if (!r || cancelled) return;
       // Default to the first incomplete side in the checklist (leader, then follower).
-      const defaultDevice = !r.leader_config
+      const defaultDevice = r.robot_backend === "superarm_mujoco"
+        ? "superarm"
+        : !r.leader_config
         ? "teleop"
         : !r.follower_config
         ? "robot"
         : "teleop";
       setDeviceType(defaultDevice);
       setPort(
-        defaultDevice === "teleop"
+        defaultDevice === "superarm"
+          ? "can0"
+          : defaultDevice === "teleop"
           ? r.leader_port || ""
           : r.follower_port || ""
       );
@@ -699,7 +705,7 @@ const Calibration = () => {
 
               {deviceType === "superarm" && (
                 <div className="space-y-3 rounded-md border border-cyan-800 bg-cyan-950/20 p-3">
-                  <div><div className="text-sm font-medium text-cyan-200">SuperArm follower CAN IDs</div><p className="mt-1 text-xs text-slate-400">Enter the measured DM4340P send/receive pair for each of the five joints. Start Calibration opens this CAN bus and immediately disables torque.</p></div>
+                  <div><div className="text-sm font-medium text-cyan-200">SuperArm follower CAN IDs</div><p className="mt-1 text-xs text-slate-400">{robot?.superarm_config ? `Selected SuperArm record: ${robot.name}. MuJoCo mapping: ${robot.superarm_config}` : "Select the SuperArm + AmazingHand robot from the Landing page to load its existing record."} Enter the measured DM4340P send/receive pair for each of the five joints. Start Calibration opens this CAN bus and immediately disables torque.</p></div>
                   <div className="space-y-2"><div className="grid grid-cols-[minmax(0,1fr)_7rem_7rem] gap-2 text-xs text-slate-400"><span>Joint</span><span>Send ID</span><span>Receive ID</span></div>{SUPERARM_JOINTS.map((joint) => <div key={joint} className="grid grid-cols-[minmax(0,1fr)_7rem_7rem] items-center gap-2"><span className="font-mono text-xs text-slate-300">{joint}</span><Input type="number" min="1" value={superArmMotorIds[joint].send} onChange={(event) => setSuperArmMotorIds((current) => ({ ...current, [joint]: { ...current[joint], send: event.target.value } }))} placeholder="send" className="bg-slate-700 border-slate-600 text-white" /><Input type="number" min="1" value={superArmMotorIds[joint].receive} onChange={(event) => setSuperArmMotorIds((current) => ({ ...current, [joint]: { ...current[joint], receive: event.target.value } }))} placeholder="receive" className="bg-slate-700 border-slate-600 text-white" /></div>)}</div>
                 </div>
               )}
@@ -753,15 +759,7 @@ const Calibration = () => {
                     ) : (
                       <Circle className="w-4 h-4 text-slate-500" />
                     )}
-                    <span
-                      className={
-                        robot.follower_config
-                          ? "text-slate-200"
-                          : "text-slate-400"
-                      }
-                    >
-                      Follower (Robot)
-                    </span>
+                    <span className={robot.follower_config ? "text-slate-200" : "text-slate-400"}>{robot.robot_backend === "superarm_mujoco" ? "Follower (SuperArm DM4340P)" : "Follower (Robot)"}</span>
                   </div>
                 </div>
               )}
