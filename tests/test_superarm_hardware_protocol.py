@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from lelab.superarm.calibration import SuperArmCalibrationSession
 from lelab.superarm.hardware import (
     DM4340P_LEROBOT_TYPE,
     SuperArmDm4340PAmazingHandConfig,
@@ -152,6 +153,64 @@ class _FailingCommandHand(_FakeHand):
     def command(self, hand_deg: dict[str, list[float]], hand_speed: dict[str, list[int]]) -> None:
         del hand_deg, hand_speed
         raise RuntimeError("hand command failed")
+
+
+class _CalibrationBus:
+    def __init__(self) -> None:
+        self.is_connected = False
+        self.torque_disable_calls = 0
+        self.torque_enable_calls = 0
+        self.zero_calls = 0
+        self.disconnected = False
+
+    def connect(self) -> None:
+        self.is_connected = True
+
+    def disable_torque(self) -> None:
+        self.torque_disable_calls += 1
+
+    def enable_torque(self) -> None:
+        self.torque_enable_calls += 1
+
+    def sync_read(self, _data_name: str) -> dict[str, float]:
+        return {f"joint_{index}": float(index) for index in range(1, 6)}
+
+    def set_zero_position(self) -> None:
+        self.zero_calls += 1
+
+    def disconnect(self, disable_torque: bool = True) -> None:
+        if disable_torque:
+            self.disable_torque()
+        self.disconnected = True
+        self.is_connected = False
+
+
+class _CalibrationArm:
+    def __init__(self) -> None:
+        self.bus = _CalibrationBus()
+
+
+def test_superarm_live_calibration_uses_openarm_bus_with_torque_disabled(monkeypatch) -> None:
+    session = SuperArmCalibrationSession()
+    arm = _CalibrationArm()
+    monkeypatch.setattr(session, "_make_arm", lambda *_args: arm)
+
+    started = session.start("can0", {name: pair[:2] for name, pair in _dm4340p_mapping().items()})
+
+    assert started["calibration_active"] is True
+    assert started["torque_enabled"] is False
+    assert arm.bus.torque_disable_calls == 1
+    assert arm.bus.torque_enable_calls == 0
+    assert set(started["recorded_ranges"]) == {f"joint_{index}" for index in range(1, 6)}
+
+    captured = session.capture_zero()
+    assert captured["zero_captured"] is True
+    assert arm.bus.zero_calls == 1
+    assert arm.bus.torque_enable_calls == 0
+
+    stopped = session.stop()
+    assert stopped["calibration_active"] is False
+    assert arm.bus.disconnected is True
 
 
 def test_combined_hardware_robot_routes_six_controls_to_two_protocols(tmp_path) -> None:

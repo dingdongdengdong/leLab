@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisc
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from .calibration import superarm_calibration
 from .hardware import (
     DM4340P_LEROBOT_TYPE,
     validate_arm_joint_calibration,
@@ -127,6 +128,29 @@ class HardwareCalibrationRequest(BaseModel):
         return self
 
 
+class SuperArmCalibrationStartRequest(BaseModel):
+    """CAN identity data needed before the torque-disabled live calibration flow."""
+
+    model_config = ConfigDict(extra="forbid")
+    arm_port: str
+    arm_motor_config: dict[str, tuple[int, int]]
+    confirmed_torque_disabled_area: bool = False
+
+    @model_validator(mode="after")
+    def validate_start(self) -> SuperArmCalibrationStartRequest:
+        if not self.confirmed_torque_disabled_area:
+            raise ValueError("Confirm that the SuperArm is supported and safe to move manually")
+        if not self.arm_port.strip():
+            raise ValueError("Arm CAN port is required")
+        validate_dm4340p_arm_motors(
+            {
+                name: (send_id, receive_id, DM4340P_LEROBOT_TYPE)
+                for name, (send_id, receive_id) in self.arm_motor_config.items()
+            }
+        )
+        return self
+
+
 class PoseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     arm_rad: dict[str, float] | None = None
@@ -196,6 +220,29 @@ def preview_hardware_config(request: HardwareCalibrationRequest):
         "filename": "superarm_dm4340p_amazinghand.yaml",
         "yaml": yaml.safe_dump(config, sort_keys=False),
     }
+
+
+@router.post("/api/superarm/calibration/start")
+def start_superarm_calibration(request: SuperArmCalibrationStartRequest):
+    return superarm_calibration.start(request.arm_port.strip(), request.arm_motor_config)
+
+
+@router.get("/api/superarm/calibration")
+def superarm_calibration_status():
+    return superarm_calibration.status()
+
+
+@router.post("/api/superarm/calibration/capture-zero")
+def capture_superarm_zero():
+    try:
+        return superarm_calibration.capture_zero()
+    except Exception as exc:
+        raise api_error(exc) from exc
+
+
+@router.post("/api/superarm/calibration/stop")
+def stop_superarm_calibration():
+    return superarm_calibration.stop()
 
 
 @router.get("/api/superarm/urdf")
