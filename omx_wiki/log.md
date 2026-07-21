@@ -192,3 +192,15 @@
 - **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, so-101-leader-to-superarm-recording-guide.md, superarm-real-hardware-motor-protocol-boundary.md, superarm-runtime-joint-status-semantics.md, superarm-website-real-hardware-readiness-page.md
 - **Summary:** Lint: 8 issues (8 orphan, 0 stale, 0 broken, 0 contradictions)
 
+## [2026-07-21T15:21:46.832Z] ingest
+- **Pages:** superarm-follower-calibration-wizard.md
+- **Summary:** Created new page "SuperArm follower calibration wizard"
+
+## [2026-07-21T15:21:46.834Z] add
+- **Pages:** superarm-follower-calibration-wizard.md
+- **Summary:** Created wiki page superarm-follower-calibration-wizard.md
+
+## [2026-07-21T15:21:47.103Z] lint
+- **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, so-101-leader-to-superarm-recording-guide.md, superarm-follower-calibration-wizard.md, superarm-real-hardware-motor-protocol-boundary.md, superarm-runtime-joint-status-semantics.md, superarm-website-real-hardware-readiness-page.md
+- **Summary:** Lint: 9 issues (9 orphan, 0 stale, 0 broken, 0 contradictions)
+

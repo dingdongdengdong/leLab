@@ -1,0 +1,25 @@
+---
+title: "SuperArm follower calibration wizard"
+tags: ["superarm", "dm4340p", "calibration", "lerobot", "safety", "amazinghand"]
+created: 2026-07-21T15:21:46.832Z
+updated: 2026-07-21T15:21:46.832Z
+sources: []
+links: []
+category: pattern
+confidence: medium
+schemaVersion: 1
+---
+
+# SuperArm follower calibration wizard
+
+## Purpose
+The website now has `/superarm-follower-calibration`, a non-torque configuration wizard for the real `SuperArm DM4340P + AmazingHand` follower. It is not LeRobot SO-101 follower calibration.
+
+## Safety contract
+The browser sends measured values to `POST /api/superarm/hardware-config/preview`. The endpoint validates only: it never opens CAN or serial, never enables torque, and explicitly reports `connects_hardware=false` and `motion_authorized=false`.
+
+## Required measurements
+The wizard requires exactly five records: `joint_rev_1` through `joint_rev_5`. Every record must contain unique DM4340P CAN send/receive IDs, direction (+1 or -1), zero offset in radians, lower/upper degree limits, `position_kp`, and `position_kd`. The operator must explicitly confirm values were measured. It also captures arm CAN port, AmazingHand serial port, and safe hand speed.
+
+## Result
+After validation, the browser downloads `superarm_dm4340p_amazinghand.yaml`; it does not write configs to the repository or hardware. The downloaded config is used later with the separate LeRobot hardware adapter and isolated safety tests.

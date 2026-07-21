@@ -1,6 +1,6 @@
 # Wiki Index
 
-> 9 pages | Last updated: 2026-07-21T15:08:02.889Z
+> 10 pages | Last updated: 2026-07-21T15:21:46.833Z
 
 ## architecture
 
@@ -25,3 +25,4 @@
 ## pattern
 
 - [SO-101 leader to SuperArm recording guide](so-101-leader-to-superarm-recording-guide.md) — # SO-101 leader to SuperArm recording guide
+- [SuperArm follower calibration wizard](superarm-follower-calibration-wizard.md) — # SuperArm follower calibration wizard

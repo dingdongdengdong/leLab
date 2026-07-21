@@ -13,6 +13,12 @@ from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisc
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from .hardware import (
+    DM4340P_LEROBOT_TYPE,
+    validate_arm_joint_calibration,
+    validate_arm_limits_and_gains,
+    validate_dm4340p_arm_motors,
+)
 from .mapping import (
     ARM_JOINTS,
     ARM_MAX_RAD,
@@ -83,6 +89,44 @@ class EmergencyStopRequest(BaseModel):
     active: bool = True
 
 
+class HardwareCalibrationRequest(BaseModel):
+    """Measured SuperArm follower values, validated without touching hardware."""
+
+    model_config = ConfigDict(extra="forbid")
+    arm_port: str
+    hand_port: str
+    arm_motor_config: dict[str, tuple[int, int]]
+    arm_joint_calibration: dict[str, tuple[float, float]]
+    arm_joint_limits_deg: dict[str, tuple[float, float]]
+    arm_position_kp: list[float]
+    arm_position_kd: list[float]
+    hand_speed: int = 3
+    confirmed_measured: bool = False
+
+    @model_validator(mode="after")
+    def validate_measured_hardware_config(self) -> HardwareCalibrationRequest:
+        if not self.confirmed_measured:
+            raise ValueError(
+                "Confirm that every SuperArm value was measured before generating a hardware config"
+            )
+        if not self.arm_port.strip() or not self.hand_port.strip():
+            raise ValueError("Arm CAN port and AmazingHand serial port are required")
+        motor_config = {
+            name: (send_id, receive_id, DM4340P_LEROBOT_TYPE)
+            for name, (send_id, receive_id) in self.arm_motor_config.items()
+        }
+        validate_dm4340p_arm_motors(motor_config)
+        validate_arm_joint_calibration(self.arm_joint_calibration)
+        validate_arm_limits_and_gains(
+            self.arm_joint_limits_deg,
+            self.arm_position_kp,
+            self.arm_position_kd,
+        )
+        if not SERVO_SPEED_MIN <= self.hand_speed <= SERVO_SPEED_MAX:
+            raise ValueError(f"AmazingHand speed must be in [{SERVO_SPEED_MIN}, {SERVO_SPEED_MAX}]")
+        return self
+
+
 class PoseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     arm_rad: dict[str, float] | None = None
@@ -116,6 +160,42 @@ def hardware_readiness():
 @router.get("/api/superarm/so101-leader-readiness")
 def so101_leader_readiness():
     return service.so101_leader_readiness()
+
+
+@router.post("/api/superarm/hardware-config/preview")
+def preview_hardware_config(request: HardwareCalibrationRequest):
+    """Validate and render a local config; this endpoint never connects or torques motors."""
+    config = {
+        "_type": "superarm_dm4340p_amazinghand",
+        "arm_port": request.arm_port.strip(),
+        "arm_can_interface": "socketcan",
+        "arm_use_can_fd": True,
+        "arm_can_bitrate": 1_000_000,
+        "arm_can_data_bitrate": 5_000_000,
+        "arm_motor_config": {
+            name: [send_id, receive_id, DM4340P_LEROBOT_TYPE]
+            for name, (send_id, receive_id) in request.arm_motor_config.items()
+        },
+        "arm_joint_calibration": {
+            name: [direction, offset_rad]
+            for name, (direction, offset_rad) in request.arm_joint_calibration.items()
+        },
+        "arm_joint_limits_deg": {
+            name: [lower, upper] for name, (lower, upper) in request.arm_joint_limits_deg.items()
+        },
+        "arm_position_kp": request.arm_position_kp,
+        "arm_position_kd": request.arm_position_kd,
+        "hand_port": request.hand_port.strip(),
+        "hand_baudrate": 1_000_000,
+        "hand_speed": request.hand_speed,
+    }
+    return {
+        "configuration_valid": True,
+        "connects_hardware": False,
+        "motion_authorized": False,
+        "filename": "superarm_dm4340p_amazinghand.yaml",
+        "yaml": yaml.safe_dump(config, sort_keys=False),
+    }
 
 
 @router.get("/api/superarm/urdf")

@@ -138,6 +138,39 @@ def test_so101_leader_readiness_uses_the_six_control_superarm_contract() -> None
     assert readiness["gripper"]["target"] == "amazinghand_motion.pos"
 
 
+def test_superarm_follower_calibration_preview_requires_five_measured_joints() -> None:
+    from lelab.server import app
+
+    payload = {
+        "arm_port": "can0",
+        "hand_port": "/dev/ttyACM0",
+        "arm_motor_config": {f"joint_rev_{index}": [index, index + 0x10] for index in range(1, 6)},
+        "arm_joint_calibration": {
+            f"joint_rev_{index}": [1.0 if index % 2 else -1.0, index * 0.01] for index in range(1, 6)
+        },
+        "arm_joint_limits_deg": {f"joint_rev_{index}": [-20.0, 20.0] for index in range(1, 6)},
+        "arm_position_kp": [10.0] * 5,
+        "arm_position_kd": [1.0] * 5,
+        "hand_speed": 3,
+        "confirmed_measured": True,
+    }
+
+    response = TestClient(app).post("/api/superarm/hardware-config/preview", json=payload)
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["configuration_valid"] is True
+    assert result["connects_hardware"] is False
+    assert result["motion_authorized"] is False
+    rendered = yaml.safe_load(result["yaml"])
+    assert rendered["_type"] == "superarm_dm4340p_amazinghand"
+    assert set(rendered["arm_joint_calibration"]) == {f"joint_rev_{index}" for index in range(1, 6)}
+
+    payload["confirmed_measured"] = False
+    rejected = TestClient(app).post("/api/superarm/hardware-config/preview", json=payload)
+    assert rejected.status_code == 422
+
+
 def test_program_store_import_round_trip_and_atomic_write(tmp_path: Path) -> None:
     upstream = tmp_path / "upstream.yaml"
     upstream.write_text(
@@ -433,6 +466,7 @@ def test_api_namespace_is_registered() -> None:
     paths = {getattr(route, "path", "") for route in app.routes}
     assert "/api/superarm/capabilities" in paths
     assert "/api/superarm/hardware-readiness" in paths
+    assert "/api/superarm/hardware-config/preview" in paths
     assert "/api/superarm/session" in paths
     assert "/api/superarm/action" in paths
     assert "/api/superarm/video" in paths
