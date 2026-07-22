@@ -27,7 +27,7 @@ app = SimulationApp(
 import omni.replicator.core as rep  # noqa: E402
 import omni.usd  # noqa: E402
 from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
-from pxr import Usd, UsdGeom, UsdLux  # noqa: E402
+from pxr import Sdf, Usd, UsdGeom, UsdLux  # noqa: E402
 from visuals import (  # noqa: E402
     image_has_detail,
     validate_direct_grasp_frames,
@@ -368,7 +368,7 @@ def main() -> int:
             }
         if last_stage is None:
             raise RuntimeError("no snapshot stage was opened")
-        root_prim = last_stage.GetPrimAtPath(report["import"]["prim_path"])
+        root_prim = last_stage.GetPrimAtPath(Sdf.Path(report["import"]["prim_path"]))
         if not root_prim.IsValid():
             raise RuntimeError("final snapshot has no robot root prim")
         report["screenshots"] = [_capture(run_dir / "whole_robot.png", last_stage, root_prim, closeup=False)]

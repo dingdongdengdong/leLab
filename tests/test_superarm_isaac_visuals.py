@@ -387,3 +387,10 @@ def test_runtime_wrapper_stops_before_renderer_when_numeric_report_is_not_passed
     assert "NUMERIC_PASS|PASS" in wrapper
     assert "Numeric Isaac validation report is not NUMERIC_PASS" in wrapper
     assert 'cp "$run_dir/numeric.log" "$run_dir/isaac.log"' in wrapper[numeric_report_check:render_launch]
+
+
+def test_static_snapshot_renderer_uses_sdf_path_for_final_root_lookup():
+    renderer = (Path(__file__).parents[1] / "isaacsim_validation" / "render_physics_snapshots.py").read_text()
+
+    assert "from pxr import Sdf" in renderer
+    assert 'last_stage.GetPrimAtPath(Sdf.Path(report["import"]["prim_path"]))' in renderer
