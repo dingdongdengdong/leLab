@@ -42,6 +42,13 @@ def test_mujoco_id_validation_rejects_missing_ids_before_indexing() -> None:
         _require_mujoco_id(-1, "body", "r_wrist_interface")
 
 
+def test_source_mjcf_motor2_direction_matches_verified_amazinghand_close() -> None:
+    from isaacsim_validation.generate_passive_linkage_keyframes import _source_mjcf_target
+
+    assert _source_mjcf_target(1, 0.95) == pytest.approx(0.95)
+    assert _source_mjcf_target(2, 1.10) == pytest.approx(-1.10)
+
+
 def test_committed_manifest_serialization_is_byte_stable_without_generation(tmp_path: Path) -> None:
     from isaacsim_validation.generate_passive_linkage_keyframes import write_manifest
 
@@ -102,6 +109,30 @@ def test_manifest_has_three_normalized_keyframes_for_each_part() -> None:
         for part in manifest["parts"]
         for transform in part["transforms"].values()
     )
+
+
+def test_manifest_close_uses_source_motor2_flexion_and_reaches_distal_endpoint() -> None:
+    import math
+
+    manifest = load_manifest(MANIFEST)
+    reports = {item["name"]: item for item in manifest["solver"]["keyframe_reports"]}
+    assert reports["open"]["source_mjcf_targets_rad"]["motor2"] == pytest.approx(-0.02)
+    assert reports["half_close"]["source_mjcf_targets_rad"]["motor2"] == pytest.approx(-0.56)
+    assert reports["close"]["source_mjcf_targets_rad"]["motor2"] == pytest.approx(-1.10)
+
+    distal = next(
+        part for part in manifest["parts"] if part["finger"] == 1 and part["mesh_role"] == "distal_core"
+    )
+    opened = distal["transforms"]["open"]
+    closed = distal["transforms"]["close"]
+    dot = min(
+        1.0,
+        abs(sum(a * b for a, b in zip(opened["orient_wxyz"], closed["orient_wxyz"], strict=True))),
+    )
+    rotation_deg = math.degrees(2.0 * math.acos(dot))
+    translation_m = math.dist(opened["translate_m"], closed["translate_m"])
+    assert rotation_deg > 60.0
+    assert translation_m > 0.04
 
 
 OPEN_MEASURED = {

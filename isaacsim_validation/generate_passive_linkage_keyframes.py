@@ -34,6 +34,16 @@ PACKAGE_HAND_MJCF_PREFIX = "robot_arm_hand_package/hand_mjcf/"
 DISTRIBUTION_BASE_USDA_SUFFIX = "/usd/amazinghand_graspable/payloads/base.usda"
 
 
+def _source_mjcf_target(motor: int, isaac_target: float) -> float:
+    """Convert the positive Isaac curl convention to the source MJCF direction."""
+
+    if motor == 1:
+        return float(isaac_target)
+    if motor == 2:
+        return -float(isaac_target)
+    raise ValueError(f"Unknown AmazingHand motor index: {motor}")
+
+
 @dataclass(frozen=True)
 class SourcePrim:
     name: str
@@ -324,9 +334,13 @@ def _solve_keyframes(
     all_selected = tuple(index for values in selected_indices.values() for index in values)
     for keyframe_name, targets in KEYFRAMES.items():
         mujoco.mj_resetDataKeyframe(model, data, key_id)
+        source_targets = {
+            "motor1": _source_mjcf_target(1, targets["motor1"]),
+            "motor2": _source_mjcf_target(2, targets["motor2"]),
+        }
         for finger in range(1, 5):
-            data.ctrl[actuator_ids[f"finger{finger}_motor1"]] = targets["motor1"]
-            data.ctrl[actuator_ids[f"finger{finger}_motor2"]] = targets["motor2"]
+            data.ctrl[actuator_ids[f"finger{finger}_motor1"]] = source_targets["motor1"]
+            data.ctrl[actuator_ids[f"finger{finger}_motor2"]] = source_targets["motor2"]
         for _ in range(STEP_COUNT):
             mujoco.mj_step(model, data)
 
@@ -339,7 +353,10 @@ def _solve_keyframes(
             separation = float(np.linalg.norm(data.site_xpos[site1] - data.site_xpos[site2]))
             equality_sep = max(equality_sep, separation)
         motor_error = max(
-            abs(float(data.qpos[qpos_address]) - float(data.ctrl[actuator_ids[name]]))
+            abs(
+                float(data.qpos[qpos_address])
+                - source_targets["motor2" if name.endswith("motor2") else "motor1"]
+            )
             for name, qpos_address in joint_qpos.items()
         )
         if equality_sep >= MAX_EQUALITY_SITE_PAIR_SEPARATION_M:
@@ -375,6 +392,7 @@ def _solve_keyframes(
             {
                 "name": keyframe_name,
                 "targets_rad": dict(targets),
+                "source_mjcf_targets_rad": source_targets,
                 "max_equality_site_pair_separation_m": equality_sep,
                 "max_motor_target_error_rad": motor_error,
             }

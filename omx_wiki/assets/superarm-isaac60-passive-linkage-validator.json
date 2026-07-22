@@ -17,10 +17,10 @@
       "severity": "INFO"
     },
     {
-      "at": "StageId(root_layer=LayerId(identifier='/workspace/project/artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/zip_learning_isaac/superarm_amazinghand/superarm_amazinghand.usda'))",
+      "at": "StageId(root_layer=LayerId(identifier='/workspace/project/artifacts/isaacsim_superarm/20260722T163556Z-motor2-flexion-fix/zip_learning_isaac/superarm_amazinghand/superarm_amazinghand.usda'))",
       "code": null,
       "has_fix": false,
-      "message": "No thumbnail found at /workspace/project/artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/zip_learning_isaac/superarm_amazinghand/.thumbs/256x256/superarm_amazinghand.usda.png for robot asset </workspace/project/artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/zip_learning_isaac/superarm_amazinghand/superarm_amazinghand.usda>",
+      "message": "No thumbnail found at /workspace/project/artifacts/isaacsim_superarm/20260722T163556Z-motor2-flexion-fix/zip_learning_isaac/superarm_amazinghand/.thumbs/256x256/superarm_amazinghand.usda.png for robot asset </workspace/project/artifacts/isaacsim_superarm/20260722T163556Z-motor2-flexion-fix/zip_learning_isaac/superarm_amazinghand/superarm_amazinghand.usda>",
       "rule": "ThumbnailExists",
       "severity": "WARNING"
     }
@@ -68,7 +68,7 @@
     "IsaacRobotAPI"
   ],
   "runtime": "nvcr.io/nvidia/isaac-sim:6.0.0 (internal 6.0.0-rc.59)",
-  "target_usd": "/workspace/project/artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/zip_learning_isaac/superarm_amazinghand/superarm_amazinghand.usda",
+  "target_usd": "/workspace/project/artifacts/isaacsim_superarm/20260722T163556Z-motor2-flexion-fix/zip_learning_isaac/superarm_amazinghand/superarm_amazinghand.usda",
   "up_axis": "Z",
   "verdict": {
     "blocking_issue_count": 0,

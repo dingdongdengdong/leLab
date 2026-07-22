@@ -875,3 +875,47 @@ Do not write `PASS` until the named evidence exists and has been inspected.
 - **Reusable rule:** an evidence chain is complete only when the tested archive,
   manifest, checksum inventory, extracted bytes, and reported artifact hashes
   all agree; setup rollback must follow explicit resource ownership.
+
+### 26. Passive visual motor 2 used the wrong source-model direction
+
+- **Observed evidence:** the accepted Isaac report showed the eight positive
+  hand targets settling within `0.0000622 rad`, but the reviewed close PNG still
+  looked only partly curled. The first finger distal core changed only
+  `30.990 deg` and `0.01072 m` from open to close, which contradicted the
+  supplied AmazingHand source pose screenshots.
+- **Cause:** Isaac and LeLab intentionally use a positive motor-2 curl
+  convention, while the verified source AmazingHand MJCF closes motor 2 toward
+  negative values. The passive-linkage generator sent the positive Isaac value
+  directly into the source MJCF, so it solved visual followers from the wrong
+  side of the source actuator range. The physics articulation itself was not
+  sign-inverted.
+- **Repair:** `generate_passive_linkage_keyframes.py` now translates positive
+  Isaac motor-2 targets to negative source-MJCF targets only at the visual
+  solver boundary. Regenerated reports retain the public positive targets and
+  record the signed source targets separately. The checked close endpoint is
+  now source motor 2 `-1.10 rad`; distal-core motion is `64.900 deg` and
+  `0.04201 m`.
+- **Regression coverage:** a direction test locks motor 1 unchanged and motor 2
+  inverted at the source boundary. A committed-manifest test requires source
+  motor-2 targets `-0.02`, `-0.56`, and `-1.10 rad`, plus more than 60 degrees
+  and 40 mm of distal open-to-close travel. The 78-test passive-linkage,
+  passive-USD, visual, and Isaac contract suite passes.
+- **Verification:** fresh Isaac Sim 6.0 run
+  `artifacts/isaacsim_superarm/20260722T163556Z-motor2-flexion-fix/zip_learning_isaac/`
+  is `PASS`: five arm joints move, all eight hand joints reach open/half/close,
+  four independent-finger cases pass, all seven snapshots retain 88 checked
+  visual followers, and adjacent open/half/close RMS differences are `25.1546`
+  and `23.0963`. Strict validation passes with one articulation root, 13
+  revolute joints, and zero blocking issues. The reviewed evidence includes the
+  endpoint sheet and a GIF made only from the actual open/half/close renders.
+  A separate nine-step numeric sweep reaches 110 degrees, reverses
+  monotonically, and returns to zero.
+- **Result/commit:** this entry accompanies the motor-2 passive visual flexion
+  correction commit.
+- **Remaining boundary:** this proves Isaac numeric motion and reviewed static
+  measured-state visual snapshots. The GIF repeats those three real snapshots;
+  it is not live viewport video, contact/grasp-retention proof, real hardware,
+  or a trained ACT/VLA policy.
+- **Reusable rule:** when physics and source-visual models use different joint
+  signs, convert once at their boundary and preserve both coordinate values in
+  evidence so a numeric PASS cannot mask a visually inverted endpoint.

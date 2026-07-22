@@ -2,7 +2,7 @@
 title: "SuperArm plus AmazingHand USD validation in Isaac Sim 6.0"
 tags: ["superarm", "isaac-sim", "usd", "amazinghand", "lerobot", "vla"]
 created: 2026-07-22T01:19:58.784Z
-updated: 2026-07-22T12:45:00.000Z
+updated: 2026-07-22T16:47:00.000Z
 sources: []
 links: ["superarm-real-hardware-motor-protocol-boundary.md", "lelab-controlled-superarm-in-isaac-sim-6-0.md"]
 category: debugging
@@ -38,7 +38,7 @@ reference only its visual payloads beneath the existing wrist and finger links.
 
 ## Accepted evidence
 
-Run ID: `20260722T070208Z-combined-zip-passive-linkage-r3`.
+Run ID: `20260722T163556Z-motor2-flexion-fix`.
 
 - [Runtime report](assets/superarm-isaac60-passive-linkage-report.json): PASS,
   13 DOFs, one articulation, six-value logical action, arm and hand motion
@@ -51,7 +51,11 @@ Run ID: `20260722T070208Z-combined-zip-passive-linkage-r3`.
   [half close](assets/superarm-isaac60-passive-linkage-half-close.png), and
   [close](assets/superarm-isaac60-passive-linkage-close.png): reviewed direct
   fixed-camera frames from measured Isaac physics snapshots. Adjacent RMS
-  differences are `14.7731` and `16.5492`.
+  differences are `25.1546` and `23.0963`.
+- [Open/half/close GIF](assets/superarm-isaac60-passive-linkage-motion.gif) and
+  [endpoint sheet](assets/superarm-isaac60-passive-linkage-endpoint-sheet.png)
+  hold the actual rendered endpoints long enough for visual review; they do not
+  interpolate or invent intermediate robot states.
 - Independent-finger closeups:
   [finger 1](assets/superarm-isaac60-passive-linkage-finger1-close.png),
   [finger 2](assets/superarm-isaac60-passive-linkage-finger2-close.png),
@@ -67,8 +71,27 @@ local translation, and local orientation are checked against the generated
 snapshot contract within `1e-6`; quaternion sign equivalence is accepted.
 
 The full ignored runtime artifact is under
-`artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/`.
+`artifacts/isaacsim_superarm/20260722T163556Z-motor2-flexion-fix/`.
 Reproduction instructions are in `isaacsim_validation/README.md`.
+
+## Motor-2 flexion-direction correction
+
+The first passive-linkage screenshots were numerically valid in Isaac but did
+not visually reach the verified AmazingHand close pose. The generator had sent
+Isaac's positive motor-2 curl value directly into the source MuJoCo hand, whose
+verified flexion convention is negative for motor 2. The generated follower
+poses therefore used extension-biased source states while Isaac's eight motor
+joints still reached their positive targets.
+
+The generator now converts only the source-MJCF motor-2 target to the negative
+coordinate before solving the visual follower transforms. The public Isaac and
+LeRobot conventions remain positive and unchanged. For the first finger's
+distal core, open-to-close travel increased from `30.990 deg` and `0.01072 m`
+to `64.900 deg` and `0.04201 m`. A fresh nine-step Isaac sweep
+`0 -> 27.5 -> 55 -> 82.5 -> 110 -> 82.5 -> 55 -> 27.5 -> 0 deg` passed both
+directions, reached the 110-degree endpoint, and returned to open. The fresh
+Isaac render/physics report and strict validator both pass; the validator finds
+one articulation root, 13 revolute joints, and zero blocking issues.
 
 ## Distribution artifact
 
