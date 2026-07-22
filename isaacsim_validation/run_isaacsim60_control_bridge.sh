@@ -62,6 +62,19 @@ if paths_overlap "$run_dir" "$asset_root" || paths_overlap "$run_dir" "$module_r
 fi
 
 image=${ISAAC_SIM_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.0}
+webrtc_signal_port=${ISAACSIM_SIGNAL_PORT:-49100}
+webrtc_stream_port=${ISAACSIM_STREAM_PORT:-47998}
+webrtc_public_ip=${ISAACSIM_HOST:-}
+[[ "$webrtc_signal_port" =~ ^[0-9]+$ ]] && ((webrtc_signal_port >= 1 && webrtc_signal_port <= 65535)) || { echo "invalid WebRTC signaling port" >&2; exit 2; }
+[[ "$webrtc_stream_port" =~ ^[0-9]+$ ]] && ((webrtc_stream_port >= 1 && webrtc_stream_port <= 65535)) || { echo "invalid WebRTC media port" >&2; exit 2; }
+webrtc_args=(
+  --webrtc
+  --webrtc-signal-port "$webrtc_signal_port"
+  --webrtc-stream-port "$webrtc_stream_port"
+)
+if [[ -n "$webrtc_public_ip" ]]; then
+  webrtc_args+=(--webrtc-public-ip "$webrtc_public_ip")
+fi
 run_key=$(python3 - <<'PY'
 import secrets
 print(secrets.token_hex(6))
@@ -119,6 +132,7 @@ docker run --name "$container_name" --gpus all --network host --user "0:$contain
   --run-dir /workspace/run \
   --host "$host" --port "$port" \
   --token-file /run/secrets/isaac_bridge_token \
+  "${webrtc_args[@]}" \
   >"$run_dir/container.log" 2>&1 &
 docker_pid=$!
 wait "$docker_pid"

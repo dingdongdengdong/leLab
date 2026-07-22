@@ -324,3 +324,7 @@
 ## [2026-07-22T12:54:28.438Z] lint
 - **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, so-101-leader-to-superarm-recording-guide.md, superarm-follower-calibration-wizard.md, superarm-runtime-joint-status-semantics.md, superarm-urdf-validation-in-isaac-sim-6-0.md, superarm-website-real-hardware-readiness-page.md
 - **Summary:** Lint: 9 issues (8 orphan, 0 stale, 0 broken, 0 contradictions)
+
+## [2026-07-22T15:00:00.000Z] update
+- **Pages:** lelab-controlled-superarm-in-isaac-sim-6-0.md
+- **Summary:** Reused the existing SuperArm page at `/isaac-sim`, integrated NVIDIA direct WebRTC with client-host resolution, recorded live 1280x720 transport evidence, and preserved the black Isaac viewport as an unresolved non-PASS visual boundary.

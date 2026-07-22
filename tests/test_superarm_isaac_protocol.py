@@ -395,6 +395,18 @@ def test_control_bridge_import_is_host_safe_and_runtime_import_order_is_guarded(
     close_index = source.index("def close(self)", capture_index)
     assert "live Isaac capture is disabled" in source[capture_index:close_index]
     assert "import omni.replicator" not in source[runtime_index:]
+    assert 'UsdLux.DomeLight.Define(\n                    self.stage' in source[runtime_index:]
+    reset_index = source.index("self.world.reset()", runtime_index)
+    light_index = source.index("UsdLux.DomeLight.Define(", runtime_index)
+    custom_camera_index = source.index("UsdGeom.Camera.Define(", runtime_index)
+    look_at_index = source.index("Gf.Matrix4d().SetLookAt(", runtime_index)
+    active_camera_index = source.index("ViewportManager.set_camera(self.webrtc_camera)", runtime_index)
+    assert reset_index < light_index < custom_camera_index
+    assert custom_camera_index < look_at_index < active_camera_index
+    assert ".GetInverse()" in source[look_at_index:active_camera_index]
+    assert "frame_viewport_prims" not in source[runtime_index:]
+    assert "ViewportManager.set_camera_view(" not in source[runtime_index:]
+    assert "self.world.step(render=True)" in source[active_camera_index:]
     assert source.index("finally:\n        app.close()", app_index) > cleanup_try_index
 
 
@@ -407,6 +419,55 @@ def test_articulation_root_selection_requires_exactly_one_candidate():
         require_unique_articulation_root([])
     with pytest.raises(RuntimeError, match="expected one articulation root, found 2"):
         require_unique_articulation_root([object(), object()])
+
+
+def test_control_bridge_uses_official_isaac_streaming_experience_for_webrtc():
+    from argparse import Namespace
+
+    from isaacsim_validation.control_bridge import simulation_app_launch
+
+    config, experience = simulation_app_launch(
+        Namespace(
+            webrtc=True,
+            webrtc_signal_port=49100,
+            webrtc_stream_port=47998,
+            webrtc_public_ip="100.96.41.100",
+        )
+    )
+
+    assert experience == "/isaac-sim/apps/isaacsim.exp.full.streaming.kit"
+    assert config["headless"] is True
+    assert config["hide_ui"] is False
+    assert (config["width"], config["height"]) == (1280, 720)
+    assert (config["window_width"], config["window_height"]) == (1280, 720)
+    assert "--/exts/omni.kit.livestream.app/primaryStream/signalPort=49100" in config[
+        "extra_args"
+    ]
+    assert "--/exts/omni.kit.livestream.app/primaryStream/streamPort=47998" in config[
+        "extra_args"
+    ]
+    assert (
+        '--/exts/omni.kit.livestream.app/primaryStream/publicIp="100.96.41.100"'
+        in config["extra_args"]
+    )
+
+
+def test_control_bridge_keeps_non_webrtc_launch_lightweight():
+    from argparse import Namespace
+
+    from isaacsim_validation.control_bridge import simulation_app_launch
+
+    config, experience = simulation_app_launch(
+        Namespace(
+            webrtc=False,
+            webrtc_signal_port=49100,
+            webrtc_stream_port=47998,
+            webrtc_public_ip="",
+        )
+    )
+
+    assert experience == ""
+    assert "extra_args" not in config
 
 
 def test_control_bridge_dispatch_survives_repeated_capture_then_command():
@@ -641,6 +702,9 @@ def test_control_launcher_has_exact_isolation_and_lifecycle_contract():
         "PYTHONPATH=/workspace/isaacsim_validation",
         "--entrypoint /isaac-sim/python.sh",
         "-m isaacsim_validation.control_bridge",
+        "--webrtc",
+        "ISAACSIM_SIGNAL_PORT",
+        "ISAACSIM_STREAM_PORT",
         "container.log",
         "terminate() {",
         "trap cleanup EXIT",

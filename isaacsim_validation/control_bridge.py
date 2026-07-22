@@ -48,6 +48,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8765, type=int)
     parser.add_argument("--token-file", required=True, type=Path)
+    parser.add_argument("--webrtc", action="store_true")
+    parser.add_argument("--webrtc-signal-port", default=49100, type=int)
+    parser.add_argument("--webrtc-stream-port", default=47998, type=int)
+    parser.add_argument("--webrtc-public-ip", default="")
     return parser
 
 
@@ -64,6 +68,10 @@ def _validate_args(args: argparse.Namespace) -> argparse.Namespace:
         raise ValueError("managed Isaac bridge binds only 127.0.0.1")
     if not 1 <= args.port <= 65535:
         raise ValueError("bridge port must be between 1 and 65535")
+    if not 1 <= args.webrtc_signal_port <= 65535:
+        raise ValueError("WebRTC signaling port must be between 1 and 65535")
+    if not 1 <= args.webrtc_stream_port <= 65535:
+        raise ValueError("WebRTC media port must be between 1 and 65535")
     args.asset_root = args.asset_root.resolve(strict=True)
     if not args.asset_root.is_dir():
         raise ValueError("asset root must be a directory")
@@ -293,17 +301,38 @@ def require_unique_articulation_root(candidates: Sequence[Any]) -> Any:
     return candidates[0]
 
 
+def simulation_app_launch(args: argparse.Namespace) -> tuple[dict[str, Any], str]:
+    """Build the Isaac launch contract without importing Isaac on the host."""
+
+    config: dict[str, Any] = {
+        "headless": True,
+        "renderer": "RaytracedLighting",
+        "width": 1280,
+        "height": 720,
+        "window_width": 1280,
+        "window_height": 720,
+    }
+    if not args.webrtc:
+        return config, ""
+
+    prefix = "/exts/omni.kit.livestream.app/primaryStream"
+    extra_args = [
+        f"--{prefix}/signalPort={args.webrtc_signal_port}",
+        f"--{prefix}/streamPort={args.webrtc_stream_port}",
+        f'--{prefix}/streamType="webrtc"',
+        f"--{prefix}/targetFps=30",
+    ]
+    if args.webrtc_public_ip:
+        extra_args.append(f'--{prefix}/publicIp="{args.webrtc_public_ip}"')
+    config.update({"hide_ui": False, "extra_args": extra_args})
+    return config, "/isaac-sim/apps/isaacsim.exp.full.streaming.kit"
+
+
 def _run_isaac(args: argparse.Namespace, token: str) -> None:
     from isaacsim import SimulationApp
 
-    app = SimulationApp(
-        {
-            "headless": True,
-            "renderer": "RaytracedLighting",
-            "width": 1280,
-            "height": 720,
-        }
-    )
+    launch_config, experience = simulation_app_launch(args)
+    app = SimulationApp(launch_config, experience=experience)
 
     try:
         _run_isaac_after_app(args, token, app)
@@ -318,7 +347,8 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
     import omni.usd
     from isaacsim.core.api import World
     from isaacsim.core.experimental.prims import Articulation
-    from pxr import Usd, UsdPhysics
+    from isaacsim.core.rendering_manager import ViewportManager
+    from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics
 
     def flat(values: Any) -> list[float]:
         if hasattr(values, "numpy"):
@@ -346,8 +376,52 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             self.timeline.play()
             self.art = Articulation(self.root_path)
             self.world.reset()
-            for _ in range(2):
-                self.world.step(render=False)
+            self.viewport_metadata: dict[str, Any] | None = None
+            if args.webrtc:
+                from omni.kit.viewport.utility import get_active_viewport
+
+                # The distributed robot USD intentionally contains no authored
+                # camera or scene light. Configure both after World.reset(),
+                # because reset can replace the active viewport camera state.
+                UsdLux.DomeLight.Define(
+                    self.stage,
+                    "/LeLabWebRtcDomeLight",
+                ).CreateIntensityAttr(700.0)
+                self.webrtc_camera = UsdGeom.Camera.Define(self.stage, "/LeLabWebRtcCamera")
+                self.webrtc_camera.GetFocalLengthAttr().Set(35.0)
+                eye = Gf.Vec3d(1.6879932047709112, -1.422306776383411, 1.1664553903405106)
+                target = Gf.Vec3d(-0.008846982602745329, 0.2745334109902456, 0.39516439607975784)
+                camera_xform = UsdGeom.Xformable(self.webrtc_camera)
+                camera_xform.ClearXformOpOrder()
+                camera_xform.AddTransformOp().Set(
+                    Gf.Matrix4d().SetLookAt(eye, target, Gf.Vec3d(0.0, 0.0, 1.0)).GetInverse()
+                )
+                ViewportManager.set_camera(self.webrtc_camera)
+                viewport = get_active_viewport()
+                viewport_stage = viewport.stage if viewport is not None else None
+                bounds = UsdGeom.BBoxCache(
+                    Usd.TimeCode.Default(),
+                    [UsdGeom.Tokens.default_, UsdGeom.Tokens.render],
+                    useExtentsHint=False,
+                ).ComputeWorldBound(self.root).ComputeAlignedRange()
+                camera_transform = camera_xform.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+                self.viewport_metadata = {
+                    "camera_path": str(viewport.camera_path) if viewport is not None else None,
+                    "camera_position": [float(value) for value in camera_transform.ExtractTranslation()],
+                    "bounds_min": [float(value) for value in bounds.GetMin()],
+                    "bounds_max": [float(value) for value in bounds.GetMax()],
+                    "resolution": list(viewport.resolution) if viewport is not None else None,
+                    "stage_identifier": (
+                        viewport_stage.GetRootLayer().identifier if viewport_stage is not None else None
+                    ),
+                    "controlled_stage_identifier": self.stage.GetRootLayer().identifier,
+                }
+                print(json.dumps({"event": "viewport_ready", **self.viewport_metadata}), flush=True)
+                for _ in range(8):
+                    self.world.step(render=True)
+            else:
+                for _ in range(2):
+                    self.world.step(render=False)
             if not self.art.is_physics_tensor_entity_valid():
                 raise RuntimeError("Isaac physics tensor did not initialize the articulation")
             actual = set(self.art.dof_names)
@@ -367,7 +441,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             self.command_sequence = 0
 
         def hello(self) -> dict[str, Any]:
-            return {
+            payload = {
                 "runtime": "isaac_sim",
                 "isaac_sim_version": "6.0.0",
                 "articulation_root": self.root_path,
@@ -376,9 +450,17 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 "logical_action_width": 6,
                 "joint_names": list(PHYSICAL_JOINTS),
             }
+            if args.webrtc:
+                payload["webrtc"] = {
+                    "enabled": True,
+                    "signal_port": args.webrtc_signal_port,
+                    "stream_port": args.webrtc_stream_port,
+                    "viewport": self.viewport_metadata,
+                }
+            return payload
 
         def step(self) -> None:
-            self.world.step(render=False)
+            self.world.step(render=args.webrtc)
             self.physics_step += 1
 
         def command(self, targets: Mapping[str, float]) -> dict[str, Any]:

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Activity,
@@ -139,12 +139,18 @@ interface CaptureResult {
 }
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+const IsaacWebRtcViewport = lazy(() => import("@/components/IsaacWebRtcViewport"));
 
-const SuperArm = () => {
+interface SuperArmProps {
+  fixedRuntime?: SuperArmRuntime;
+  useIsaacWebRtc?: boolean;
+}
+
+const SuperArm = ({ fixedRuntime, useIsaacWebRtc = false }: SuperArmProps = {}) => {
   const navigate = useNavigate();
   const { baseUrl, wsBaseUrl, fetchWithHeaders } = useApi();
   const { toast } = useToast();
-  const [runtime, setRuntime] = useState<SuperArmRuntime>("mujoco");
+  const [runtime, setRuntime] = useState<SuperArmRuntime>(fixedRuntime ?? "mujoco");
   const [serialPort, setSerialPort] = useState("/dev/ttyACM0");
   const [availablePorts, setAvailablePorts] = useState<string[]>([]);
   const [isaacDistributionZip, setIsaacDistributionZip] = useState("");
@@ -226,14 +232,21 @@ const SuperArm = () => {
       .catch((error) => setStatusText(error.message));
     request<RuntimeStatus>("/api/superarm/session")
       .then((status) => {
-        setConnected(status.connected);
+        const ownsVisibleRuntime = !fixedRuntime || status.runtime === fixedRuntime;
+        setConnected(status.connected && ownsVisibleRuntime);
         setEmergencyStopped(status.emergency_stopped);
-        if (status.runtime) setRuntime(status.runtime);
-        setStatusText(status.connected ? `Connected: ${status.runtime}` : "Disconnected");
+        if (!fixedRuntime && status.runtime) setRuntime(status.runtime);
+        setStatusText(
+          status.connected && !ownsVisibleRuntime
+            ? `Another runtime is active: ${status.runtime}`
+            : status.connected
+              ? `Connected: ${status.runtime}`
+              : "Disconnected",
+        );
       })
       .catch((error) => setStatusText(error.message));
     refreshPrograms().catch(() => undefined);
-  }, [request, refreshPrograms]);
+  }, [fixedRuntime, request, refreshPrograms]);
 
   useEffect(() => {
     if (!connected) return;
@@ -507,16 +520,27 @@ const SuperArm = () => {
               <ArrowLeft />
             </Button>
             <div>
-              <h1 className="text-xl font-semibold">SuperArm + Hand</h1>
-              <p className="text-xs text-cyan-400">6 logical controls · 13 physical joints · MuJoCo or Isaac Sim 6.0</p>
+              <h1 className="text-xl font-semibold">
+                {fixedRuntime === "isaac_sim" ? "SuperArm + Hand · Isaac Sim" : "SuperArm + Hand"}
+              </h1>
+              <p className="text-xs text-cyan-400">
+                {fixedRuntime === "isaac_sim"
+                  ? "Existing LeLab controls · NVIDIA WebRTC viewport · Isaac Sim 6.0"
+                  : "6 logical controls · 13 physical joints · MuJoCo or Isaac Sim 6.0"}
+              </p>
             </div>
           </div>
-          <Button
-            onClick={emergencyStop}
-            className={`min-w-52 text-base font-bold ${emergencyStopped ? "bg-red-700 animate-pulse" : "bg-red-600 hover:bg-red-500"}`}
-          >
-            <CircleStop className="mr-2" /> {emergencyStopped ? "RESET EMERGENCY STOP" : "EMERGENCY STOP"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => navigate(fixedRuntime === "isaac_sim" ? "/superarm" : "/isaac-sim")}>
+              {fixedRuntime === "isaac_sim" ? "MuJoCo / hardware page" : "Isaac Sim page"}
+            </Button>
+            <Button
+              onClick={emergencyStop}
+              className={`min-w-52 text-base font-bold ${emergencyStopped ? "bg-red-700 animate-pulse" : "bg-red-600 hover:bg-red-500"}`}
+            >
+              <CircleStop className="mr-2" /> {emergencyStopped ? "RESET EMERGENCY STOP" : "EMERGENCY STOP"}
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -526,7 +550,7 @@ const SuperArm = () => {
             <div className="flex flex-wrap items-end gap-3">
               <label className="grid gap-1 text-sm">
                 Runtime
-                <select value={runtime} onChange={(event) => setRuntime(event.target.value as SuperArmRuntime)} disabled={connected} className="rounded border border-slate-700 bg-slate-950 p-2">
+                <select value={runtime} onChange={(event) => setRuntime(event.target.value as SuperArmRuntime)} disabled={connected || Boolean(fixedRuntime)} className="rounded border border-slate-700 bg-slate-950 p-2">
                   <option value="mujoco">MuJoCo (default)</option>
                   <option value="hybrid_serial">Hybrid serial</option>
                   <option value="isaac_sim">Isaac Sim 6.0 (USD)</option>
@@ -602,13 +626,20 @@ const SuperArm = () => {
             </div>
             <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
               <div className="border-b border-slate-800 px-4 py-3">
-                <h2 className="font-semibold">{showContinuousVideo ? "MuJoCo physics" : "Isaac Sim control telemetry"}</h2>
+                <h2 className="font-semibold">{useIsaacWebRtc ? "Isaac Sim WebRTC" : showContinuousVideo ? "MuJoCo physics" : "Isaac Sim control telemetry"}</h2>
                 <p className="text-xs text-slate-400">
-                  {showContinuousVideo
+                  {useIsaacWebRtc
+                    ? "NVIDIA Omniverse WebRTC streaming library; the LeLab controls remain unchanged."
+                    : showContinuousVideo
                     ? "Server-rendered closed-loop hand and full arm assembly at 15 FPS."
                     : "The measured 13-joint pose drives the URDF showroom. Live Isaac viewport capture is disabled; validated static USD images remain separate evidence."}
                 </p>
               </div>
+              {connected && useIsaacWebRtc ? (
+                <Suspense fallback={<div className="aspect-video min-h-[360px] bg-black" />}>
+                  <IsaacWebRtcViewport />
+                </Suspense>
+              ) : (
               <div className="aspect-[4/3] bg-black">
                 {connected && showContinuousVideo ? (
                   <img src={`${baseUrl}/api/superarm/video`} alt="Live MuJoCo SuperArm and Hand" className="h-full w-full object-contain" />
@@ -628,7 +659,8 @@ const SuperArm = () => {
                   <div className="flex h-full flex-col items-center justify-center text-slate-500"><Hand className="mb-3 h-16 w-16" />Connect {runtime === "isaac_sim" ? "Isaac Sim" : "MuJoCo"} to start visualization</div>
                 )}
               </div>
-              {showIsaacCapture && (
+              )}
+              {showIsaacCapture && !useIsaacWebRtc && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-slate-800 p-3 text-xs text-slate-400">
                   <span>{connected ? "Connected" : "Disconnected"}</span>
                   <span>Physics step: {telemetry.physics_step ?? capture?.physics_step ?? "—"}</span>

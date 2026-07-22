@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -26,6 +27,7 @@ import { ApiProvider } from "./contexts/ApiContext";
 import { HfAuthProvider } from "./contexts/HfAuthContext";
 
 const queryClient = new QueryClient();
+const IsaacSim = lazy(() => import("@/pages/IsaacSim"));
 
 function App() {
   return (
@@ -45,6 +47,14 @@ function App() {
                         <Route path="/teleoperation" element={<Teleoperation />} />
                         <Route path="/manual-leader" element={<ManualLeader />} />
                         <Route path="/superarm" element={<SuperArm />} />
+                        <Route
+                          path="/isaac-sim"
+                          element={
+                            <Suspense fallback={<div className="min-h-screen bg-slate-950" />}>
+                              <IsaacSim />
+                            </Suspense>
+                          }
+                        />
                         <Route path="/hardware-setup" element={<HardwareSetup />} />
                         <Route path="/so101-leader-setup" element={<SO101LeaderSetup />} />
                         <Route path="/recording" element={<Recording />} />
