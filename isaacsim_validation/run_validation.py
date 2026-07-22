@@ -131,6 +131,8 @@ def main() -> int:
     usd_path: Path | None = None
     pristine_package: bytes | None = None
     package_cleanup_written = False
+    original_exc: Exception | None = None
+    cleanup_restore_error: Exception | None = None
     _write_json(report_path, report)
 
     try:
@@ -367,6 +369,7 @@ def main() -> int:
         timeline.stop()
         return 0 if numeric_passed else 2
     except Exception as exc:
+        original_exc = exc
         report["error"] = f"{type(exc).__name__}: {exc}"
         _write_json(report_path, report)
         raise
@@ -381,6 +384,12 @@ def main() -> int:
                     "package_cleanup_written": package_cleanup_written,
                     "error": f"{type(cleanup_exc).__name__}: {cleanup_exc}",
                 }
+                report["status"] = "FAIL"
+                if "error" not in report:
+                    report["phase"] = "package_cleanup_failed"
+                    report["error"] = f"RuntimeError: could not restore pristine robot package: {cleanup_exc}"
+                if original_exc is None:
+                    cleanup_restore_error = cleanup_exc
             else:
                 package_cleanup_written = True
                 report["package_cleanup"] = {
@@ -390,6 +399,8 @@ def main() -> int:
                 }
             _write_json(report_path, report)
         app.close()
+        if cleanup_restore_error is not None:
+            raise RuntimeError("could not restore pristine robot package") from cleanup_restore_error
 
 
 raise SystemExit(main())

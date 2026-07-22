@@ -148,6 +148,36 @@ def test_numeric_runner_restores_pristine_package_after_runtime_snapshots():
     assert "package_cleanup_written" in runner
 
 
+def test_numeric_runner_restore_failure_fails_report_and_process_without_masking_original_error():
+    runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
+
+    original_init = runner.index("original_exc: Exception | None = None")
+    cleanup_error_init = runner.index("cleanup_restore_error: Exception | None = None")
+    except_start = runner.index("except Exception as exc:")
+    preserve_original = runner.index("original_exc = exc", except_start)
+    cleanup_except = runner.index("except Exception as cleanup_exc:")
+    cleanup_false = runner.index('"restored_pristine_root_layer_after_runtime": False', cleanup_except)
+    status_fail = runner.index('report["status"] = "FAIL"', cleanup_except)
+    preserve_error_guard = runner.index('if "error" not in report:', cleanup_except)
+    non_success_guard = runner.index("if original_exc is None:", cleanup_except)
+    defer_raise = runner.index("cleanup_restore_error = cleanup_exc", non_success_guard)
+    app_close = runner.index("app.close()", cleanup_except)
+    final_raise = runner.index(
+        'raise RuntimeError("could not restore pristine robot package") from cleanup_restore_error', app_close
+    )
+
+    assert original_init < cleanup_error_init < except_start < preserve_original < cleanup_except
+    assert (
+        cleanup_false
+        < status_fail
+        < preserve_error_guard
+        < non_success_guard
+        < defer_raise
+        < app_close
+        < final_raise
+    )
+
+
 def test_static_snapshot_renderer_uses_one_fixed_camera_for_all_hand_states():
     renderer = (Path(__file__).parents[1] / "isaacsim_validation" / "render_physics_snapshots.py").read_text()
 
