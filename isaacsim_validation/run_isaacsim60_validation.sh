@@ -32,7 +32,10 @@ docker run --name "$container_name" --gpus all --network host \
   -lc "set +e; /isaac-sim/python.sh /workspace/project/isaacsim_validation/run_validation.py \
     --urdf /workspace/project/artifacts/isaacsim_superarm/$run_id/${profile}_input/superarm_amazinghand.urdf \
     --run-dir /workspace/project/artifacts/isaacsim_superarm/$run_id/${profile}_isaac \
-    --profile $profile; status=\$?; chmod -R a+rwX \
+    --profile $profile; status=\$?; if (( status == 0 )); then \
+    /isaac-sim/python.sh /workspace/project/isaacsim_validation/render_physics_snapshots.py \
+    --run-dir /workspace/project/artifacts/isaacsim_superarm/$run_id/${profile}_isaac; \
+    status=\$?; fi; chmod -R a+rwX \
     /workspace/project/artifacts/isaacsim_superarm/$run_id/${profile}_isaac \
     2>/dev/null || true; exit \$status" \
   2>&1 | tee "$run_dir/isaac.log"

@@ -52,7 +52,7 @@ def test_direct_grasp_sequence_requires_three_changed_camera_frames(tmp_path: Pa
             {
                 "name": name,
                 "path": str(path),
-                "method": "isaacsim_camera_rgba",
+                "method": "static_replicator_from_physics_snapshot",
             }
         )
 
@@ -91,19 +91,23 @@ def test_direct_grasp_sequence_rejects_static_visuals(tmp_path: Path):
 
 
 def test_isaac_camera_bounds_include_render_purpose_payloads():
-    runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
+    renderer = (
+        Path(__file__).parents[1]
+        / "isaacsim_validation"
+        / "render_physics_snapshots.py"
+    ).read_text()
 
-    assert "[UsdGeom.Tokens.default_, UsdGeom.Tokens.render]" in runner
-    assert "useExtentsHint=True" in runner
-    assert "factor = 2.4 if closeup else 2.2" in runner
+    assert "[UsdGeom.Tokens.default_, UsdGeom.Tokens.render]" in renderer
+    assert "useExtentsHint=True" in renderer
+    assert "factor = 2.4 if closeup else 2.2" in renderer
 
 
 def test_direct_hand_capture_restores_a_deterministic_neutral_arm_pose():
     runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
 
     reset = runner.index("_set_positions(art, ARM_JOINTS, neutral_arm)")
-    first_hand_capture = runner.index('run_dir / f"hand_{name}.png"')
-    assert reset < first_hand_capture
+    first_hand_snapshot = runner.index('run_dir / f"hand_{name}_snapshot.usda"')
+    assert reset < first_hand_snapshot
     assert '"capture_arm_pose": capture_arm_pose' in runner
 
 
@@ -114,22 +118,25 @@ def test_runtime_wrapper_rejects_a_non_pass_report():
 
     assert 'report.get("status") != "PASS"' in wrapper
     assert "Isaac validation report is not PASS" in wrapper
+    assert "render_physics_snapshots.py" in wrapper
 
 
-def test_capture_camera_is_initialized_before_the_simulation_timeline():
+def test_numeric_runner_exports_each_measured_hand_state_before_visual_render():
     runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
 
-    initialized = runner.index("capture_camera.initialize()")
-    timeline_play = runner.index("timeline.play()", initialized)
-    first_capture = runner.index('run_dir / f"hand_{name}.png"')
-    assert initialized < timeline_play < first_capture
-    assert "camera.set_world_pose(" in runner
+    readback = runner.index("positions = _flat(art.get_dof_positions())")
+    snapshot = runner.index('stage.Export(str(snapshot))')
+    awaiting_render = runner.index('"awaiting_static_visual_render"')
+    assert readback < snapshot < awaiting_render
 
 
-def test_direct_capture_pauses_physics_and_steps_the_render_product():
-    runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
+def test_static_snapshot_renderer_uses_one_fixed_camera_for_all_hand_states():
+    renderer = (
+        Path(__file__).parents[1]
+        / "isaacsim_validation"
+        / "render_physics_snapshots.py"
+    ).read_text()
 
-    pause = runner.index("timeline.pause()")
-    render = runner.index("rep.orchestrator.step(rt_subframes=8)")
-    resume = runner.index("timeline.play()", render)
-    assert pause < render < resume
+    assert "fixed_hand_pose = None" in renderer
+    assert "fixed_pose=fixed_hand_pose" in renderer
+    assert '"static_replicator_from_physics_snapshot"' in renderer

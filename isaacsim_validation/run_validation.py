@@ -25,7 +25,6 @@ app = SimulationApp(
 )
 
 import numpy as np  # noqa: E402
-import omni.replicator.core as rep  # noqa: E402
 import omni.timeline  # noqa: E402
 import omni.usd  # noqa: E402
 from contracts import ARM_JOINTS, HAND_JOINTS, grasp_to_urdf_targets  # noqa: E402
@@ -33,11 +32,7 @@ from import_config import urdf_import_settings  # noqa: E402
 from isaacsim.core.api import World  # noqa: E402
 from isaacsim.core.experimental.prims import Articulation  # noqa: E402
 from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
-from isaacsim.core.utils.rotations import rot_matrix_to_quat  # noqa: E402
-from isaacsim.sensors.camera import Camera  # noqa: E402
-from PIL import Image  # noqa: E402
-from pxr import Usd, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
-from visuals import image_has_detail, validate_direct_grasp_frames  # noqa: E402
+from pxr import Usd, UsdGeom, UsdPhysics  # noqa: E402
 
 enable_extension("isaacsim.asset.importer.urdf")
 enable_extension("omni.kit.renderer.capture")
@@ -71,85 +66,6 @@ def _bounds(stage: Usd.Stage, prim) -> tuple[list[float], list[float], list[floa
     maximum = [float(value) for value in box.GetMax()]
     center = [(low + high) / 2.0 for low, high in zip(minimum, maximum, strict=True)]
     return minimum, maximum, center
-
-
-def _camera_pose(stage: Usd.Stage, prim, *, closeup: bool) -> tuple[list[float], list[float]]:
-    minimum, maximum, center = _bounds(stage, prim)
-    span = max(maximum[index] - minimum[index] for index in range(3))
-    radius = max(span, 0.08)
-    factor = 2.4 if closeup else 2.2
-    eye = [center[0] + factor * radius, center[1] - factor * radius, center[2] + radius]
-    return eye, center
-
-
-def _look_at_world_quat(eye: list[float], target: list[float]) -> np.ndarray:
-    forward = np.asarray(target, dtype=float) - np.asarray(eye, dtype=float)
-    forward /= max(float(np.linalg.norm(forward)), 1e-9)
-    up = np.array([0.0, 0.0, 1.0], dtype=float)
-    if abs(float(np.dot(forward, up))) > 0.98:
-        up = np.array([0.0, 1.0, 0.0], dtype=float)
-    side = np.cross(up, forward)
-    side /= max(float(np.linalg.norm(side)), 1e-9)
-    camera_up = np.cross(forward, side)
-    camera_up /= max(float(np.linalg.norm(camera_up)), 1e-9)
-    return np.asarray(rot_matrix_to_quat(np.column_stack([forward, side, camera_up])))
-
-
-def _save_rgba(path: Path, rgba) -> None:
-    pixels = np.asarray(rgba)
-    if pixels.dtype != np.uint8:
-        scale = 255 if pixels.max(initial=0) <= 1.0 else 1
-        pixels = np.clip(pixels * scale, 0, 255).astype(np.uint8)
-    Image.fromarray(pixels[:, :, :4]).save(path)
-
-
-def _capture(
-    path: Path,
-    stage: Usd.Stage,
-    prim,
-    camera: Camera,
-    *,
-    closeup: bool,
-) -> dict:
-    eye, target = _camera_pose(stage, prim, closeup=closeup)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    camera.set_world_pose(
-        position=np.asarray(eye), orientation=_look_at_world_quat(eye, target)
-    )
-    timeline = omni.timeline.get_timeline_interface()
-    was_playing = timeline.is_playing()
-    if was_playing:
-        timeline.pause()
-    rgba = None
-    try:
-        for _ in range(8):
-            rep.orchestrator.step(rt_subframes=8)
-            rgba = camera.get_rgba()
-            if rgba is not None and np.asarray(rgba).size:
-                break
-    finally:
-        if was_playing:
-            timeline.play()
-    if rgba is None or not np.asarray(rgba).size:
-        raise RuntimeError("Isaac Camera.get_rgba did not create a frame")
-    _save_rgba(path, rgba)
-
-    if not image_has_detail(path):
-        raise RuntimeError("Isaac Camera screenshot has no visible detail")
-    return {
-        "path": str(path),
-        "bytes": path.stat().st_size,
-        "eye": eye,
-        "target": target,
-        "method": "isaacsim_camera_rgba",
-    }
-
-
-def _prim_named(stage: Usd.Stage, name: str):
-    matches = [prim for prim in stage.Traverse() if prim.GetName() == name]
-    if len(matches) != 1:
-        raise RuntimeError(f"expected one prim named {name!r}, found {len(matches)}")
-    return matches[0]
 
 
 def _schema_report(stage: Usd.Stage, root_prim, prim_path: str) -> dict:
@@ -231,18 +147,6 @@ def main() -> int:
 
         world = World(stage_units_in_meters=1.0, physics_dt=1.0 / 120.0, rendering_dt=1.0 / 30.0)
         stage = omni.usd.get_context().get_stage()
-        if not stage.GetPrimAtPath("/World/SuperArmValidationLight").IsValid():
-            UsdLux.DomeLight.Define(stage, "/World/SuperArmValidationLight").CreateIntensityAttr(700.0)
-        capture_camera = Camera(
-            prim_path="/World/SuperArmValidationCamera",
-            position=np.array([1.0, -1.0, 1.0]),
-            orientation=np.array([1.0, 0.0, 0.0, 0.0]),
-            resolution=(1280, 720),
-        )
-        capture_camera.initialize()
-        capture_camera.set_focal_length(35.0)
-        for _ in range(4):
-            app.update()
         timeline = omni.timeline.get_timeline_interface()
         timeline.play()
         art = Articulation(prim_path)
@@ -302,8 +206,7 @@ def main() -> int:
             raise RuntimeError(f"could not restore neutral arm pose for direct hand captures: {capture_arm_pose}")
 
         hand_results = []
-        hand_frames = []
-        hand_root = _prim_named(stage, "r_wrist_interface")
+        hand_snapshots = []
         for name, grasp in (("open", 0.0), ("half_close", 0.5), ("close", 1.0)):
             targets = grasp_to_urdf_targets(grasp)
             _command_targets(art, HAND_JOINTS, targets)
@@ -319,14 +222,17 @@ def main() -> int:
                     "max_error": max(abs(measured[joint] - targets[joint]) for joint in HAND_JOINTS),
                 }
             )
-            frame = _capture(
-                run_dir / f"hand_{name}.png",
-                stage,
-                hand_root,
-                capture_camera,
-                closeup=True,
+            snapshot = run_dir / f"hand_{name}_snapshot.usda"
+            stage.Export(str(snapshot))
+            hand_snapshots.append(
+                {
+                    "name": name,
+                    "grasp": grasp,
+                    "path": str(snapshot),
+                    "bytes": snapshot.stat().st_size,
+                    "method": "usd_stage_export_after_physics_readback",
+                }
             )
-            hand_frames.append({"name": name, **frame})
 
         hand_motion_passed = all(
             hand_results[0]["measured"][joint]
@@ -343,38 +249,23 @@ def main() -> int:
             "arm_motion_passed": all(item["passed"] for item in arm_results),
             "hand_motion_passed": hand_motion_passed,
         }
-        report["visual_motion"] = validate_direct_grasp_frames(hand_frames)
-        report["visual_motion"]["frames"] = hand_frames
-        report["phase"] = "capturing_visuals"
-        _write_json(report_path, report)
-        whole_robot = run_dir / "whole_robot.png"
-        screenshots = [
-            _capture(whole_robot, stage, root_prim, capture_camera, closeup=False)
-        ]
-        report["screenshots"] = screenshots
-        report["visual_boundary"] = (
-            "Raw profile retains the generated full hand visual shell; detailed hand visual geometry "
-            "is not guaranteed to be partitioned across moving finger links."
-            if args.profile == "raw"
-            else (
-                "Aligned profile applies LeLab's wrist and joint-5 transforms while preserving the generated hand visuals."
-                if args.profile == "aligned"
-                else "Served profile matches LeLab's URDF tree after hand visuals are removed for the browser MJCF overlay."
-            )
-        )
-        passed = (
+        report["physics_snapshots"] = {
+            "status": "PASS",
+            "method": "flattened USD export after measured PhysX state",
+            "hand_states": hand_snapshots,
+        }
+        numeric_passed = (
             report["import"]["dof_count"] == 13
             and report["schema"]["rigid_body_prim_count"] > 0
             and report["schema"]["collision_prim_count"] > 0
             and report["motion"]["arm_motion_passed"]
             and report["motion"]["hand_motion_passed"]
-            and report["visual_motion"]["passed"]
         )
-        report["status"] = "PASS" if passed else "FAIL"
-        report["phase"] = "complete"
+        report["status"] = "NUMERIC_PASS" if numeric_passed else "FAIL"
+        report["phase"] = "awaiting_static_visual_render" if numeric_passed else "complete"
         _write_json(report_path, report)
         timeline.stop()
-        return 0 if passed else 2
+        return 0 if numeric_passed else 2
     except Exception as exc:
         report["error"] = f"{type(exc).__name__}: {exc}"
         _write_json(report_path, report)
