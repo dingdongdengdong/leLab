@@ -347,3 +347,30 @@ Do not write `PASS` until the named evidence exists and has been inspected.
 - **Reusable rule:** objects returned by a mutable global USD context are valid
   only while that context owns their stage; refresh retained handles after
   every stage switch.
+
+### 14. Cleanup and metadata fallbacks could weaken the acceptance contract
+
+- **Observed evidence:** the final changed-file deslop review found that a
+  reusable-package restore failure was recorded but not forced to fail the run,
+  a visual ordering test targeted an unused helper, and mandatory passive-part
+  metadata authoring could silently return when the USD API was unavailable.
+- **Cause:** compatibility-oriented exception handling and test fakes had
+  introduced fallback paths broader than the production contract.
+- **Repair:** commit `d78a225` makes pristine-package restore failure set report
+  `FAIL` and produce a non-success outcome without overwriting an earlier root
+  exception. Commit `43082b8` deletes the dead validator helper and makes the
+  regression test target the active snapshot-contract call. Commit `4613855`
+  uses explicit `Sdf.ValueTypeNames.Int/String` and requires both attribute
+  creation and value assignment to succeed.
+- **Regression coverage:** restore-failure tests lock report status and original
+  error preservation; renderer-order tests inspect the live contract-validation
+  path; USD fake prims now implement the required attribute API instead of
+  relying on a production bypass.
+- **Verification:** the post-cleanup full suite passes 334 tests; changed-file
+  Ruff, format, `py_compile`, shell syntax, and diff checks pass.
+- **Remaining boundary:** cleanup failure paths are unit-tested because forcing
+  a real published-package write failure would be destructive to the validated
+  run directory.
+- **Reusable rule:** evidence metadata and package restoration are acceptance
+  requirements, not optional compatibility features; fail explicitly when
+  either cannot be authored.
