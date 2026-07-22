@@ -106,14 +106,14 @@ Supported operations:
 | `command` | `targets`: exactly 13 finite named radians | accepted target map and incremented command sequence |
 | `observe` | none | measured/target/error for all 13 joints, timestamp, physics step, command sequence |
 | `hold` | none | current measured positions copied into all targets |
-| `capture` | `view`: `whole` or `hand`, `name`: safe filename stem | PNG metadata and server-side artifact path under the session run directory |
+| `capture` | `view`: `whole` or `hand`, `name`: safe filename stem | PNG metadata and a run-directory-relative artifact path; the host resolves and allowlists it beneath its own mounted run directory |
 | `shutdown` | none | acknowledgement followed by clean timeline/app shutdown |
 
 All failures return the same schema with `ok=false`, an error `code`, and a bounded `message`. Missing/extra joints, non-finite values, wrong tokens, stale schema versions, multiple active clients, invalid articulation state, and oversized frames fail closed.
 
 ### Runtime ownership
 
-- **Managed mode (default):** LeLab validates/extracts the ZIP, creates a `0600` token file, launches the wrapper with `subprocess.Popen([...], shell=False)`, waits up to `ISAAC_SIM_STARTUP_TIMEOUT_S` (default 180 s) for `hello`, owns shutdown, and removes only its own container/run state.
+- **Managed mode (default):** LeLab validates/extracts the ZIP, creates a `0600` token file, launches the wrapper with `subprocess.Popen([...], shell=False, start_new_session=True)`, redirects Isaac output to session log files, waits up to `ISAAC_SIM_STARTUP_TIMEOUT_S` (default 180 s) for `hello`, owns shutdown, and removes only its own container/run state. The wrapper mounts the packaged/source `isaacsim_validation` module read-only, sets `PYTHONPATH`, and runs `/isaac-sim/python.sh -m isaacsim_validation.control_bridge`.
 - **External mode:** LeLab connects to `SUPERARM_ISAAC_HOST`, `SUPERARM_ISAAC_PORT`, and a server-side `SUPERARM_ISAAC_BRIDGE_TOKEN`; disconnect never kills that externally owned process.
 - The bridge binds `127.0.0.1` by default. A non-loopback bind is rejected by the managed launcher in this scope.
 
@@ -130,7 +130,8 @@ All failures return the same schema with `ok=false`, an error `code`, and a boun
 ### New files
 
 - `lelab/superarm/isaac_distribution.py` — safe distribution validation, checksum verification, cache extraction, and entrypoint resolution; no Isaac imports.
-- `lelab/superarm/isaac_protocol.py` — JSONL schema, exact joint-map validation, bounded socket client, and error types; no Isaac imports.
+- `isaacsim_validation/bridge_protocol.py` — shared pure-stdlib JSONL schema/codec/server validation; no LeLab, LeRobot, Isaac, or Omniverse imports.
+- `lelab/superarm/isaac_protocol.py` — bounded host socket client and error types importing the shared codec; no Isaac imports.
 - `lelab/superarm/isaac_runtime.py` — host-side managed/external bridge adapter implementing the current SuperArm runtime surface.
 - `lelab/superarm/isaac_robot.py` — LeRobot `superarm_isaac` config and robot class with six policy features.
 - `lelab/superarm/data/superarm_isaac.yaml` — website/manual/SO-101 logical mapping and Isaac runtime defaults.
@@ -151,6 +152,7 @@ All failures return the same schema with `ok=false`, an error `code`, and a boun
 - `isaacsim_validation/contracts.py:8-47` — exact physical-target validation and public constants used by host and bridge.
 - `isaacsim_validation/README.md` — managed control commands and proof boundaries.
 - `lelab/superarm/actions.py:10-46` — add an Isaac logical expansion wrapper while retaining the MuJoCo arm/hand command function.
+- `lelab/superarm/transports.py:44-82` — define the concrete runtime protocol/atomic partial-command surface used by service, MuJoCo, and Isaac without leaving either adapter abstract.
 - `lelab/superarm/service.py:26-70,266-402` — runtime factory, Isaac capabilities/session fields, atomic logical action, capture, and generic runtime typing.
 - `lelab/superarm/api.py:38-43,287-320,419-434` — request schema, capture routes, and explicit MuJoCo-only continuous video error.
 - `lelab/teleoperate.py:79-92,194-267,304-326,511-531` — factory-based SuperArm backend selection and accurate telemetry labels.
@@ -271,6 +273,10 @@ uv run ruff check lelab/superarm/isaac_distribution.py \
 
 Expected: all pass and Ruff reports no errors.
 
+- [ ] **Step 6a: Prove installed-wheel package contents**
+
+Build a wheel into a temporary directory, install it into an isolated temporary virtual environment, import `isaacsim_validation`, and assert `Path(isaacsim_validation.__file__).parent` contains `run_isaacsim60_validation.sh` plus `data/amazinghand_passive_linkage_keyframes.json`. This proves the future launcher can derive and mount the same package root from source or an installed wheel.
+
 - [ ] **Step 7: Append the engineering-log entry and commit**
 
 Record the duplicate-mapping risk, malicious-archive tests, chosen single source, test command/result, and proof boundary in `isaacsim_usd_engineering_log.md`.
@@ -285,6 +291,7 @@ git commit -m "feat(isaac): validate USD distribution and 13-joint targets"
 ### Task 2: Define and test the local bridge protocol
 
 **Files:**
+- Create: `isaacsim_validation/bridge_protocol.py`
 - Create: `lelab/superarm/isaac_protocol.py`
 - Create: `tests/test_superarm_isaac_protocol.py`
 
@@ -307,21 +314,21 @@ assert "secret" not in repr(client)
 uv run --extra test pytest -q tests/test_superarm_isaac_protocol.py
 ```
 
-Expected: import failure for `lelab.superarm.isaac_protocol`.
+Expected: import failure for `isaacsim_validation.bridge_protocol` and `lelab.superarm.isaac_protocol`.
 
 - [ ] **Step 3: Implement the protocol without third-party dependencies**
 
-Expose these stable types:
+Expose the schema/codec in `isaacsim_validation.bridge_protocol` and the client in `lelab.superarm.isaac_protocol`:
 
 ```python
 SCHEMA = "lelab.superarm.isaac_bridge/v1"
 MAX_MESSAGE_BYTES = 65_536
 
-class IsaacBridgeError(RuntimeError):
-    code: str
-
 def encode_request(op: str, *, request_id: str, token: str, **payload: Any) -> bytes: ...
 def decode_message(raw: bytes) -> dict[str, Any]: ...
+
+class IsaacBridgeError(RuntimeError):
+    code: str
 
 class IsaacBridgeClient:
     def connect(self) -> dict[str, Any]: ...
@@ -333,14 +340,14 @@ class IsaacBridgeClient:
     def close(self) -> None: ...
 ```
 
-Use one lock around request/write/read so concurrent telemetry and action calls cannot interleave frames.
+Use one lock around request/write/read so concurrent telemetry and action calls cannot interleave frames. Never automatically retry `command`, `hold`, or `shutdown`; a caller must reconnect and reconcile observed state first.
 
 - [ ] **Step 4: Run tests and commit**
 
 ```bash
 uv run --extra test pytest -q tests/test_superarm_isaac_protocol.py
-uv run ruff check lelab/superarm/isaac_protocol.py tests/test_superarm_isaac_protocol.py
-git add lelab/superarm/isaac_protocol.py tests/test_superarm_isaac_protocol.py \
+uv run ruff check isaacsim_validation/bridge_protocol.py lelab/superarm/isaac_protocol.py tests/test_superarm_isaac_protocol.py
+git add isaacsim_validation/bridge_protocol.py lelab/superarm/isaac_protocol.py tests/test_superarm_isaac_protocol.py \
   isaacsim_usd_engineering_log.md
 git commit -m "feat(isaac): add versioned localhost control protocol"
 ```
@@ -355,11 +362,11 @@ git commit -m "feat(isaac): add versioned localhost control protocol"
 
 - [ ] **Step 1: Add source-level guard tests before the Isaac implementation**
 
-The tests read the script and assert `SimulationApp` construction precedes `omni`, `pxr`, and `isaacsim.core` imports; the launcher must use `--network host`, a read-only asset mount, `ACCEPT_EULA=Y`, the fixed image default `nvcr.io/nvidia/isaac-sim:6.0.0`, and a cleanup trap. These tests protect the runtime boundary even on hosts without Isaac.
+The tests read the script and assert `SimulationApp` construction precedes `omni`, `pxr`, and `isaacsim.core` imports; the launcher must use `--network host`, a read-only asset mount, `ACCEPT_EULA=Y`, the fixed image default `nvcr.io/nvidia/isaac-sim:6.0.0`, a read-only module mount derived by the host from `Path(isaacsim_validation.__file__).parent`, `PYTHONPATH`, `/isaac-sim/python.sh -m isaacsim_validation.control_bridge`, and a cleanup trap. These tests protect the runtime boundary even on hosts without Isaac.
 
 - [ ] **Step 2: Implement startup and articulation validation**
 
-Parse arguments before Isaac imports, then create `SimulationApp`, open the extracted USD, create `World`, play the timeline, and create `Articulation("/superarm_amazinghand")` using the proven sequence at `isaacsim_validation/run_validation.py:154-200`. Require:
+Parse arguments before Isaac imports, then create `SimulationApp`, open the extracted USD, create `World`, play the timeline, discover the stage default prim or the unique prim carrying `ArticulationRootAPI`, and create `Articulation(discovered_path)` using the proven sequence at `isaacsim_validation/run_validation.py:154-200`. Never hard-code `/superarm_amazinghand`. Require:
 
 ```python
 expected = set(PHYSICAL_JOINTS)
@@ -393,11 +400,11 @@ State has this fixed shape:
 
 - [ ] **Step 4: Add on-demand capture only**
 
-Adapt the proven camera framing and Replicator writer pattern from `isaacsim_validation/render_physics_snapshots.py:170-230`. `capture` renders either the full root or the unique `r_wrist_interface` subtree into the mounted run directory, validates that the PNG is nonblank with `image_has_detail`, and returns its path/size/camera metadata. It does not start a video loop.
+Adapt the proven camera framing and Replicator writer pattern from `isaacsim_validation/render_physics_snapshots.py:170-230`. `capture` renders either the full root or the unique `r_wrist_interface` subtree into the mounted run directory, validates that the PNG is nonblank with `image_has_detail`, and returns only its relative path/size/camera metadata. Warm rendering explicitly and detach/destroy the writer, render product, camera graph, and temporary layer after every capture. Add a repeated-capture followed by command test to catch resource accumulation or timeline corruption. It does not start a video loop.
 
 - [ ] **Step 5: Implement deterministic launcher cleanup**
 
-The wrapper accepts `--asset-root`, `--entrypoint`, `--run-dir`, `--host`, `--port`, and `--token-file`; validates all resolved paths; mounts the asset root read-only; mounts the run directory read-write; uses the existing Isaac cache volumes; generates a unique container name; writes startup/container metadata; and removes only that container in `trap cleanup EXIT INT TERM`.
+The wrapper accepts `--asset-root`, `--entrypoint`, `--run-dir`, `--host`, `--port`, and `--token-file`; validates all resolved paths; mounts the asset root and packaged/source `isaacsim_validation` package read-only; mounts the run directory read-write; sets `PYTHONPATH`; launches the bridge with `python.sh -m`; uses the existing Isaac cache volumes; generates a unique container name; writes startup/container metadata and log files; and removes only that container in `trap cleanup EXIT INT TERM`.
 
 - [ ] **Step 6: Run host-safe tests and shell validation**
 
@@ -409,7 +416,18 @@ uv run ruff check isaacsim_validation/control_bridge.py
 
 Expected: all pass without starting Isaac.
 
-- [ ] **Step 7: Append the bridge boundary to docs and commit**
+- [ ] **Step 7: Prove the completed bridge ships from an installed wheel**
+
+Build a fresh wheel, install it into an isolated temporary virtual environment,
+and import both `isaacsim_validation.bridge_protocol` and
+`isaacsim_validation.control_bridge` without importing Isaac-only modules at
+module-import time. From the installed package root, assert the wheel contains
+`bridge_protocol.py`, `control_bridge.py`, executable/source-readable
+`run_isaacsim60_control_bridge.sh`, and the required passive-linkage JSON data.
+This proof occurs here, after every bridge artifact exists; the earlier Task 1
+wheel smoke remains only the distribution-loader packaging proof.
+
+- [ ] **Step 8: Append the bridge boundary to docs and commit**
 
 ```bash
 git add isaacsim_validation/control_bridge.py \
@@ -424,6 +442,7 @@ git commit -m "feat(isaac): add managed SuperArm articulation bridge"
 **Files:**
 - Create: `lelab/superarm/isaac_runtime.py`
 - Create: `tests/test_superarm_isaac_runtime.py`
+- Modify: `lelab/superarm/transports.py:44-82`
 - Modify: `lelab/superarm/service.py:26-70,266-402`
 - Modify: `lelab/superarm/api.py:38-43,287-320,419-434`
 - Modify: `tests/test_superarm_dashboard.py:300-430`
@@ -441,7 +460,7 @@ Use a fake JSONL bridge process/server, not Isaac, to assert:
 - `stop()` sends `hold`;
 - owned close sends `shutdown` and reaps the child, while external close does not;
 - connect timeout includes the current startup phase and last bounded log lines;
-- `capture()` only returns allowlisted files inside the run directory.
+- `capture()` accepts only a safe relative path returned by the bridge, resolves it beneath the host run directory, rejects traversal/symlinks, and survives repeated captures followed by another command.
 
 - [ ] **Step 2: Write failing API/service tests**
 
@@ -472,12 +491,23 @@ uv run --extra test pytest -q \
 
 Expected: failure for missing `IsaacSimRuntime` and unsupported `isaac_sim`.
 
-- [ ] **Step 4: Implement `IsaacSimRuntime`**
+- [ ] **Step 4: Define a concrete common runtime surface and implement `IsaacSimRuntime`**
 
 The constructor is dependency-injectable for unit tests:
 
 ```python
-class IsaacSimRuntime(ArmTransport, HandTransport):
+class SuperArmRuntime(Protocol):
+    connected: bool
+    failure: str | None
+    supports_video: bool
+    def connect(self) -> None: ...
+    def command_partial(self, *, arm_rad=None, hand_deg=None, hand_speed=None) -> None: ...
+    def command_logical(self, values: list[float]) -> None: ...
+    def observe(self) -> dict[str, Any]: ...
+    def stop(self) -> None: ...
+    def close(self) -> None: ...
+
+class IsaacSimRuntime:
     def __init__(
         self,
         distribution_zip: str | Path,
@@ -492,28 +522,23 @@ class IsaacSimRuntime(ArmTransport, HandTransport):
     ) -> None: ...
 ```
 
-`command(arm_rad)` and `command(hand_deg, speeds)` merge into `_targets` and send the entire validated map. `command_logical(values)` sends `action_to_isaac_targets(values)` once. `frame()` returns `(0, None)` and `supports_video=False`; `capture()` is explicit.
+`command_partial(arm_rad=None, hand_deg=None)` merges every provided subsystem into `_targets` and sends the entire validated map exactly once. `command_logical(values)` sends `action_to_isaac_targets(values)` once. Give `MuJoCoRuntime` compatible `command_partial` and `command_logical` wrappers while preserving its existing `command()` behavior: `command_logical` normalizes the six-value action, converts its five arm values and fixed grasp code, updates both subsystems in one cached target snapshot, and applies that snapshot atomically through the existing MuJoCo command path. Both concrete adapters therefore satisfy `SuperArmRuntime`. `IsaacSimRuntime.frame()` returns `(0, None)` and `supports_video=False`; `capture()` is explicit. Managed launch redirects stdout/stderr to files and owns a process group; close performs bridge shutdown, timed wait, process-group terminate, then kill fallback. External close is socket-only.
 
 - [ ] **Step 5: Generalize the service through a runtime factory**
 
-Change `self.runtime` from `MuJoCoRuntime | None` to the common transport/runtime protocol. `start_session()` keeps existing arguments and adds keyword-only Isaac settings. Construct MuJoCo exactly as before for its two modes; construct `IsaacSimRuntime` only for `isaac_sim`. Add:
+Change `self.runtime` from `MuJoCoRuntime | None` to the common transport/runtime protocol. `start_session()` keeps existing arguments and adds keyword-only Isaac settings. Construct MuJoCo exactly as before for its two modes; construct `IsaacSimRuntime` only for `isaac_sim`. Add one safety-gated dispatcher used by manual, pose, sequence, logical, and teleoperation actions; it checks connection, emergency stop, live-rate state, and then composes one atomic runtime command:
 
 ```python
 def logical_action(self, values: list[float]) -> dict[str, Any]:
     normalized = normalize_superarm_action(values)
-    if self.mode == "isaac_sim":
-        self.runtime.command_logical(normalized)
-    else:
-        arm, hand = action_to_runtime_commands(normalized)
-        self.action(arm_rad=arm, hand_deg=hand, source="staged")
-    return {"accepted": True, "logical_action": normalized, **self.status()}
+    return self._dispatch(logical=normalized, source="staged")
 ```
 
-Capabilities report Docker CLI availability, configured image, validated distribution path/contract, bridge mode defaults, and errors without launching Isaac.
+Capabilities report Docker CLI availability, configured image, validated distribution path/contract, bridge mode defaults, and errors without launching Isaac. A service-owned monotonic watchdog enforces the 10-second live timeout even when no browser/websocket/telemetry poll is active. Its fake-runtime test sends one live command, performs zero telemetry/websocket calls, crosses the deadline, and observes exactly one hold.
 
 - [ ] **Step 6: Extend the API and explicit video boundary**
 
-`SessionRequest.runtime` becomes `Literal["mujoco", "hybrid_serial", "isaac_sim"]` and gains server-local Isaac fields. Add `POST /api/superarm/capture` and `GET /api/superarm/capture/latest`; both reject non-Isaac runtimes. `/api/superarm/video` checks `supports_video` and returns `409` with “Continuous video is only available for MuJoCo; use the Isaac capture endpoint.”
+`SessionRequest.runtime` becomes `Literal["mujoco", "hybrid_serial", "isaac_sim"]` and gains server-local Isaac fields. Add `PUT /api/superarm/logical-action` accepting exactly six mutually exclusive logical values and routing through the common service safety gate. Add `POST /api/superarm/capture` and `GET /api/superarm/capture/latest`; both reject non-Isaac runtimes. `/api/superarm/video` checks `supports_video` and returns `409` with “Continuous video is only available for MuJoCo; use the Isaac capture endpoint.”
 
 - [ ] **Step 7: Run runtime/service/API regressions**
 
@@ -529,7 +554,8 @@ uv run ruff check lelab/superarm/isaac_runtime.py lelab/superarm/service.py \
 - [ ] **Step 8: Record and commit the runtime slice**
 
 ```bash
-git add lelab/superarm/isaac_runtime.py lelab/superarm/service.py lelab/superarm/api.py \
+git add lelab/superarm/isaac_runtime.py lelab/superarm/transports.py \
+  lelab/superarm/service.py lelab/superarm/api.py \
   tests/test_superarm_isaac_runtime.py tests/test_superarm_dashboard.py \
   isaacsim_usd_engineering_log.md
 git commit -m "feat(superarm): control Isaac Sim through LeLab sessions"
@@ -581,7 +607,7 @@ class SuperArmIsaacRobotConfig(RobotConfig):
     cameras: dict = field(default_factory=dict)
 ```
 
-`SuperArmIsaacRobot` exposes the same six features as `SuperArmMujocoRobot`, calls `runtime_service.logical_action()` from `send_action`, reads five arm positions plus the last logical grasp for observations, returns 13 measured positions for visualization, and owns/disconnects only a session it started.
+`SuperArmIsaacRobot` exposes the same six features as `SuperArmMujocoRobot`, calls `runtime_service.logical_action()` from `send_action`, reads five measured arm positions plus the last commanded discrete grasp code for observations, returns 13 measured positions for visualization, and owns/disconnects only a session it started. Document that the sixth observation is commanded-state semantics until a separately validated measured-grasp classifier exists.
 
 - [ ] **Step 4: Add the YAML config**
 
@@ -770,7 +796,7 @@ git commit -m "feat(web): add truthful Isaac Sim SuperArm controls"
 
 - [ ] **Step 1: Implement an API-driven acceptance runner**
 
-The runner takes `--base-url`, `--distribution-zip`, and `--run-dir`; starts an `isaac_sim` session through `POST /api/superarm/session`; waits for connected telemetry; then sends these canonical actions through the same endpoint used by LeRobot/manual control:
+The runner takes `--base-url`, `--distribution-zip`, and `--run-dir`; starts an `isaac_sim` session through `POST /api/superarm/session`; waits for connected telemetry; then sends these canonical actions through `PUT /api/superarm/logical-action`, the same safety-gated service dispatch used by the LeRobot backend:
 
 ```python
 CASES = [
