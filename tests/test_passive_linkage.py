@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 from isaacsim_validation.generate_passive_linkage_keyframes import MANIFEST_VERSION
 
@@ -10,6 +14,43 @@ MANIFEST = Path("isaacsim_validation/data/amazinghand_passive_linkage_keyframes.
 
 def load_manifest(path: Path) -> dict:
     return json.loads(path.read_text())
+
+
+def test_module_imports_without_mujoco_for_manifest_boundaries() -> None:
+    code = """
+import builtins
+real_import = builtins.__import__
+def guarded_import(name, *args, **kwargs):
+    if name == 'mujoco' or name.startswith('mujoco.'):
+        raise ModuleNotFoundError('blocked mujoco import')
+    return real_import(name, *args, **kwargs)
+builtins.__import__ = guarded_import
+from isaacsim_validation.generate_passive_linkage_keyframes import MANIFEST_VERSION, write_manifest
+assert MANIFEST_VERSION == 1
+assert callable(write_manifest)
+"""
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_mujoco_id_validation_rejects_missing_ids_before_indexing() -> None:
+    from isaacsim_validation.generate_passive_linkage_keyframes import _require_mujoco_id
+
+    assert _require_mujoco_id(0, "joint", "finger1_motor1") == 0
+    with pytest.raises(ValueError, match="Missing MuJoCo joint: finger1_motor1"):
+        _require_mujoco_id(-1, "joint", "finger1_motor1")
+    with pytest.raises(ValueError, match="Missing MuJoCo body: r_wrist_interface"):
+        _require_mujoco_id(-1, "body", "r_wrist_interface")
+
+
+def test_committed_manifest_serialization_is_byte_stable_without_generation(tmp_path: Path) -> None:
+    from isaacsim_validation.generate_passive_linkage_keyframes import write_manifest
+
+    manifest = load_manifest(MANIFEST)
+    regenerated = tmp_path / "manifest.json"
+
+    write_manifest(manifest, regenerated)
+
+    assert regenerated.read_bytes() == MANIFEST.read_bytes()
 
 
 def test_manifest_uses_checked_original_mjcf_and_zip_geometry() -> None:

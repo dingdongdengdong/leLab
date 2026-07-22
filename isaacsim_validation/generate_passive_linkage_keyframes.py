@@ -9,10 +9,8 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from xml.etree import ElementTree
-
-import mujoco
-import numpy as np
 
 MANIFEST_VERSION = 1
 SOURCE_MJCF_SHA256 = "d21366e7c9a1f5debe04b8abb5ea1ade7fade42e493e09d003f5db196548b098"
@@ -210,7 +208,26 @@ def structural_indices(geoms: dict[int, VisualGeom]) -> dict[int, tuple[int, ...
     return result
 
 
-def _quat_normalized(quat: np.ndarray) -> np.ndarray:
+def _load_mujoco() -> Any:
+    import mujoco
+
+    return mujoco
+
+
+def _load_numpy() -> Any:
+    import numpy as np
+
+    return np
+
+
+def _require_mujoco_id(identifier: int, object_kind: str, name: str) -> int:
+    if identifier < 0:
+        raise ValueError(f"Missing MuJoCo {object_kind}: {name}")
+    return int(identifier)
+
+
+def _quat_normalized(quat: Any) -> Any:
+    np = _load_numpy()
     norm = float(np.linalg.norm(quat))
     if norm == 0.0:
         raise ValueError("zero quaternion")
@@ -219,48 +236,71 @@ def _quat_normalized(quat: np.ndarray) -> np.ndarray:
     return quat / norm
 
 
-def _quat_mul(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+def _quat_mul(a: Any, b: Any) -> Any:
+    mujoco = _load_mujoco()
+    np = _load_numpy()
     out = np.empty(4, dtype=np.float64)
     mujoco.mju_mulQuat(out, a.astype(np.float64), b.astype(np.float64))
     return _quat_normalized(out)
 
 
-def _quat_conj(quat: np.ndarray) -> np.ndarray:
+def _quat_conj(quat: Any) -> Any:
     out = quat.copy()
     out[1:] *= -1.0
     return out
 
 
-def _quat_rotate(quat: np.ndarray, vector: np.ndarray) -> np.ndarray:
+def _quat_rotate(quat: Any, vector: Any) -> Any:
+    mujoco = _load_mujoco()
+    np = _load_numpy()
     out = np.empty(3, dtype=np.float64)
     mujoco.mju_rotVecQuat(out, vector.astype(np.float64), quat.astype(np.float64))
     return out
 
 
-def _rounded(values: np.ndarray | tuple[float, ...], digits: int = 10) -> list[float]:
+def _rounded(values: Any | tuple[float, ...], digits: int = 10) -> list[float]:
     return [0.0 if math.isclose(float(value), 0.0, abs_tol=0.5 * 10 ** -digits) else round(float(value), digits) for value in values]
 
 
-def _solve_keyframes(model: mujoco.MjModel, selected_indices: dict[int, tuple[int, ...]], geoms: dict[int, VisualGeom]) -> tuple[dict[str, dict[int, dict[str, list[float]]]], dict[str, object]]:
+def _solve_keyframes(model: Any, selected_indices: dict[int, tuple[int, ...]], geoms: dict[int, VisualGeom]) -> tuple[dict[str, dict[int, dict[str, list[float]]]], dict[str, object]]:
+    mujoco = _load_mujoco()
+    np = _load_numpy()
     data = mujoco.MjData(model)
     key_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, "zero")
     if key_id < 0:
         raise ValueError("Expected a MuJoCo keyframe named 'zero'")
     model.opt.timestep = TIMESTEP_S
-    actuator_ids = {name: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, name) for name in MOTOR_NAMES}
-    joint_qpos = {
-        name: int(model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)]) for name in MOTOR_NAMES
+    actuator_ids = {
+        name: _require_mujoco_id(
+            mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, name),
+            "actuator",
+            name,
+        )
+        for name in MOTOR_NAMES
     }
-    if any(identifier < 0 for identifier in actuator_ids.values()):
-        raise ValueError(f"Missing actuator among {MOTOR_NAMES}")
+    joint_ids = {
+        name: _require_mujoco_id(
+            mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name),
+            "joint",
+            name,
+        )
+        for name in MOTOR_NAMES
+    }
+    joint_qpos = {name: int(model.jnt_qposadr[joint_id]) for name, joint_id in joint_ids.items()}
 
     body_ids = {
-        geom.body_name: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, geom.body_name)
+        geom.body_name: _require_mujoco_id(
+            mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, geom.body_name),
+            "body",
+            geom.body_name,
+        )
         for geom in geoms.values()
     }
-    if any(identifier < 0 for identifier in body_ids.values()):
-        raise ValueError("Missing one or more MJCF visual bodies in compiled MuJoCo model")
-    wrist_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "r_wrist_interface")
+    wrist_body_id = _require_mujoco_id(
+        mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "r_wrist_interface"),
+        "body",
+        "r_wrist_interface",
+    )
     transforms_by_keyframe: dict[str, dict[int, dict[str, list[float]]]] = {}
     keyframe_reports: list[dict[str, object]] = []
     max_sep = 0.0
@@ -353,6 +393,7 @@ def build_manifest(source_package_zip: Path, hand_distribution_zip: Path) -> dic
         with tempfile.TemporaryDirectory(prefix="amazinghand_mjcf_") as tmp:
             tmp_path = Path(tmp)
             _safe_extract_prefix(package_archive, PACKAGE_HAND_MJCF_PREFIX, tmp_path)
+            mujoco = _load_mujoco()
             model = mujoco.MjModel.from_xml_path(str(tmp_path / PACKAGE_HAND_MJCF_PREFIX / "scene.xml"))
             transforms_by_keyframe, solver = _solve_keyframes(model, selected_indices, geoms)
 
