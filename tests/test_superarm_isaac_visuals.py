@@ -154,3 +154,13 @@ def test_static_snapshot_renderer_enables_capture_extension_before_rendering():
     extension = 'enable_extension("omni.kit.renderer.capture")'
     assert extension in renderer
     assert renderer.index(extension) < renderer.index("def _capture(")
+
+
+def test_static_snapshot_renderer_does_not_advance_snapshot_physics():
+    renderer = (
+        Path(__file__).parents[1]
+        / "isaacsim_validation"
+        / "render_physics_snapshots.py"
+    ).read_text()
+
+    assert "rep.orchestrator.step(delta_time=0.0, rt_subframes=8)" in renderer

@@ -79,7 +79,7 @@ def _capture(
             writer.initialize(output_dir=str(temporary), rgb=True)
             writer.attach([product])
             for _ in range(8):
-                rep.orchestrator.step(rt_subframes=8)
+                rep.orchestrator.step(delta_time=0.0, rt_subframes=8)
             writer.detach()
         frames = sorted(temporary.glob("rgb*.png"))
         if not frames:
