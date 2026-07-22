@@ -17,6 +17,8 @@ from typing import Any
 
 from PIL import Image, ImageChops, ImageStat
 
+from lelab.superarm.isaac_distribution import validate_and_extract_distribution
+
 from .contracts import ARM_JOINTS, HAND_JOINTS, PHYSICAL_JOINTS, expand_logical_action
 
 CASES = [
@@ -27,11 +29,11 @@ CASES = [
 ARM_ERROR_LIMIT_RAD = 0.02
 HAND_ERROR_LIMIT_RAD = 0.01
 STATIC_VISUAL_FILES = {
-    "whole": "superarm-isaac60-zip-learning-whole.png",
-    "open": "superarm-isaac60-zip-learning-open.png",
-    "half_close": "superarm-isaac60-zip-learning-half-close.png",
-    "close": "superarm-isaac60-zip-learning-close.png",
-    "report": "superarm-isaac60-zip-learning-report.json",
+    "whole": "superarm-isaac60-passive-linkage-whole.png",
+    "open": "superarm-isaac60-passive-linkage-open.png",
+    "half_close": "superarm-isaac60-passive-linkage-half-close.png",
+    "close": "superarm-isaac60-passive-linkage-close.png",
+    "report": "superarm-isaac60-passive-linkage-report.json",
 }
 
 
@@ -167,7 +169,41 @@ def write_hand_gif(paths: list[Path], output: Path) -> None:
             frame.close()
 
 
-def collect_static_visual_evidence(source_dir: Path, run_dir: Path) -> dict[str, Any]:
+def distribution_visual_provenance(manifest: dict[str, Any]) -> dict[str, str]:
+    files = manifest.get("files")
+    source = manifest.get("source")
+    if not isinstance(files, list) or not isinstance(source, dict):
+        raise RuntimeError("distribution manifest lacks visual provenance")
+    report = next(
+        (
+            item
+            for item in files
+            if isinstance(item, dict) and item.get("path") == "validation/isaac-report.json"
+        ),
+        None,
+    )
+    report_sha256 = report.get("sha256") if isinstance(report, dict) else None
+    validation_run_id = source.get("validation_run_id")
+    if (
+        not isinstance(report_sha256, str)
+        or len(report_sha256) != 64
+        or not isinstance(validation_run_id, str)
+        or not validation_run_id
+    ):
+        raise RuntimeError("distribution manifest lacks visual provenance")
+    return {
+        "report_sha256": report_sha256,
+        "validation_run_id": validation_run_id,
+    }
+
+
+def collect_static_visual_evidence(
+    source_dir: Path,
+    run_dir: Path,
+    *,
+    expected_report_sha256: str,
+    expected_validation_run_id: str,
+) -> dict[str, Any]:
     """Copy the separately validated Isaac USD frames without calling them live captures."""
 
     source_dir = source_dir.resolve(strict=True)
@@ -180,8 +216,21 @@ def collect_static_visual_evidence(source_dir: Path, run_dir: Path) -> dict[str,
         destination = run_dir / filename
         shutil.copyfile(source, destination)
         copied[key] = destination
+    source_report_sha256 = sha256_file(copied["report"])
+    if source_report_sha256 != expected_report_sha256:
+        raise RuntimeError(
+            "static Isaac visual report does not match the controlled distribution"
+        )
     validation = json.loads(copied["report"].read_text(encoding="utf-8"))
-    if validation.get("status") != "PASS":
+    passive_linkages = validation.get("passive_linkage_visuals")
+    input_urdf = validation.get("input_urdf")
+    if (
+        validation.get("status") != "PASS"
+        or not isinstance(passive_linkages, dict)
+        or not passive_linkages
+        or not isinstance(input_urdf, str)
+        or expected_validation_run_id not in input_urdf
+    ):
         raise RuntimeError("static Isaac visual evidence report is not PASS")
     hand_frames = [copied[key] for key in ("open", "half_close", "close")]
     return {
@@ -190,7 +239,9 @@ def collect_static_visual_evidence(source_dir: Path, run_dir: Path) -> dict[str,
         "whole_frame": str(copied["whole"]),
         "hand_frames": [str(path) for path in hand_frames],
         "source_report": str(copied["report"]),
-        "source_report_sha256": sha256_file(copied["report"]),
+        "source_report_sha256": source_report_sha256,
+        "distribution_validation_report_sha256": expected_report_sha256,
+        "validation_run_id": expected_validation_run_id,
     }
 
 
@@ -268,7 +319,7 @@ def wait_hold_stability(
     initial: dict[str, Any],
     *,
     minimum_steps: int = 120,
-    timeout_s: float = 10.0,
+    timeout_s: float = 30.0,
 ) -> dict[str, Any]:
     initial_step = int(initial["physics_step"])
     targets = initial["reported_targets"]
@@ -310,13 +361,16 @@ def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
     run_dir.mkdir(parents=True, exist_ok=False)
     client = ApiClient(args.base_url, timeout_s=args.http_timeout_s)
     distribution = args.distribution_zip.resolve(strict=True)
+    resolved_distribution = validate_and_extract_distribution(distribution)
+    visual_provenance = distribution_visual_provenance(resolved_distribution.manifest)
     report: dict[str, Any] = {
         "schema": "lelab.superarm.isaac_e2e/v1",
         "status": "FAIL",
         "started_at": utc_now(),
         "base_url": args.base_url.rstrip("/"),
         "distribution_zip": str(distribution),
-        "distribution_sha256": sha256_file(distribution),
+        "distribution_sha256": resolved_distribution.archive_sha256,
+        "distribution_validation": visual_provenance,
         "run_dir": str(run_dir),
         "cases": [],
     }
@@ -370,7 +424,12 @@ def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
                 }
             )
 
-        visual_evidence = collect_static_visual_evidence(args.visual_evidence_dir, run_dir)
+        visual_evidence = collect_static_visual_evidence(
+            args.visual_evidence_dir,
+            run_dir,
+            expected_report_sha256=visual_provenance["report_sha256"],
+            expected_validation_run_id=visual_provenance["validation_run_id"],
+        )
         hand_paths = [Path(path) for path in visual_evidence["hand_frames"]]
         report["static_visual_evidence"] = visual_evidence
         report["hand_frame_metrics"] = evaluate_hand_frames(hand_paths)

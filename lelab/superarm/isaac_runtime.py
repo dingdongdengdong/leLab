@@ -264,7 +264,7 @@ class IsaacSimRuntime:
                 self.host,
                 self.port,
                 token=token,
-                timeout_s=min(2.0, self.startup_timeout_s),
+                timeout_s=min(5.0, self.startup_timeout_s),
                 capture_timeout_s=120.0,
             )
             phase = "waiting for authenticated hello"

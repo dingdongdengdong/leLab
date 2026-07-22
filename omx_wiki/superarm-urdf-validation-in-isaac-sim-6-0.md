@@ -249,15 +249,18 @@ close-ups, GIF, numeric acceptance, and real episode evidence remain open.
 
 This section supersedes the earlier pending-live-capture statements above. The
 API-driven run at
-`isaacsim_test/artifacts/lelab_isaac_e2e_20260722T112742Z/` is `PASS` for the
+`isaacsim_test/artifacts/lelab_isaac_e2e_20260722T121339Z/` is `PASS` for the
 live numeric and lifecycle categories. Its report records Isaac Sim `6.0.0`,
 one articulation, exactly 13 expected joint names, and a six-value logical
 action. Open, arm-probe plus half-close, and close were accepted only after the
 command sequence advanced and all 13 reported targets matched the requested
-vector. Maximum settled errors were `0.009771 rad` for the arm and
-`0.000989 rad` for the hand. Emergency hold remained stable for 196 physics
+vector. The controlled ZIP and copied visual report are bound by manifest SHA
+`1785dfe1b790ad42f0ce4798637eab13e3325acf86a9f507289c33b76e84d29b`
+and validation run `20260722T070208Z-combined-zip-passive-linkage-r3`.
+Maximum settled errors were `0.008436 rad` for the arm and
+`0.000995 rad` for the hand. Emergency hold remained stable for 211 physics
 steps, the ten-second live timeout hold for 137 steps, managed disconnect
-finished in `6.446 s`, and reconnect passed.
+finished in `6.249 s`, and reconnect passed.
 
 Live headless capture is disabled. Replicator writer, legacy camera,
 experimental RTX camera, viewport, isolated child-Kit, and paused Replicator
@@ -269,7 +272,7 @@ joint telemetry to drive the hand-preserving URDF showroom.
 The copied whole/open/half-close PNGs and GIF in the run directory are
 explicitly `prevalidated_static_isaac_visuals` with
 `is_live_session_capture=false`. They are nonblank and visibly distinct, with
-adjacent mean absolute differences `8.2428` and `6.3470`, but they are not
+adjacent mean absolute differences `3.0509` and `3.5683`, but they are not
 frames from the live LeLab session. The live report proves control convergence,
 holds, cleanup, and reconnect; it does not prove a real recording episode,
 trained policy, contact/grasp retention, passive followers as live PhysX

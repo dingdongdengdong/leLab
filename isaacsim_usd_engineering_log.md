@@ -770,3 +770,52 @@ Do not write `PASS` until the named evidence exists and has been inspected.
   never merge numeric runtime proof with a separate static visual proof. A
   simulator capture capability is enabled only after it produces a reviewed
   frame and returns within a bounded control-safe deadline.
+
+### 24. Final evidence now binds to the controlled distribution and tolerates measured Isaac stalls
+
+- **Observed evidence:** independent verification rejected the first Task 8
+  report because its static frames came from validation run
+  `20260722T045604Z-combined-zip-usd-clean`, while the controlled ZIP embeds the
+  later passive-linkage validation run
+  `20260722T070208Z-combined-zip-passive-linkage-r3`. During the repair, repeated
+  full-sequence runs also exposed occasional headless Isaac physics steps long
+  enough to exceed the original two-second bridge response deadline or make a
+  ten-second 120-step stability window too short. Instrumented diagnosis showed
+  the request protocol remained ordered and measured closed-hand step latency
+  spikes into the hundreds of milliseconds; one clean run completed at 9,211
+  physics steps.
+- **Cause:** the acceptance runner proved that its copied report was `PASS`, but
+  did not prove that report was the one hashed into the controlled distribution
+  manifest. Separately, host bridge deadlines assumed smoother Isaac stepping
+  than this passive-linkage asset produces under a long closed-hand dwell.
+- **Repair:** distribution validation now extracts the manifest before launch,
+  requires the exact `validation/isaac-report.json` SHA and validation run ID,
+  copies only the final passive-linkage whole/open/half/close evidence, and
+  rejects any provenance mismatch. The host bridge request timeout is still
+  bounded but is five seconds, and the condition-based hold gate allows up to
+  30 seconds to accumulate 120 real physics steps. No state-changing request is
+  retried, and the live timeout remains ten seconds.
+- **Regression coverage:** tests reject mismatched report SHA/run provenance,
+  require nonempty passive-linkage visual results, lock the five-second bounded
+  bridge timeout, and prove the stability gate waits for 120 steps rather than
+  accepting elapsed wall time.
+- **Verification:** the clean final report
+  `isaacsim_test/artifacts/lelab_isaac_e2e_20260722T121339Z/lelab-isaac-e2e-report.json`
+  is `PASS` for distribution SHA
+  `a26ba228eee76f815291adef029c7ed510020cd20bdfae9046c6319d7d99c195`
+  and embedded validation report SHA
+  `1785dfe1b790ad42f0ce4798637eab13e3325acf86a9f507289c33b76e84d29b`.
+  All three logical cases settled with maximum arm error `0.008436 rad` and
+  maximum hand error `0.000995 rad`; emergency hold remained stable for 211
+  steps, the ten-second watchdog hold for 137 steps, managed disconnect took
+  `6.249 s`, and reconnect passed. Final passive-linkage frame differences are
+  `3.0509` and `3.5683`; their reviewed static/not-live proof boundary is
+  unchanged.
+- **Result/commit:** this entry accompanies the distribution-bound evidence and
+  Isaac stall-tolerance repair commit.
+- **Remaining boundary:** this remains numeric live control plus separately
+  validated static USD visual evidence. It does not claim live viewport capture,
+  a real LeRobot episode, contact/grasp retention, ROS 2, or real hardware.
+- **Reusable rule:** bind every copied proof artifact to the exact tested
+  distribution digest, and express simulator stability as a physics-step
+  condition with a bounded but hardware-realistic wall-clock allowance.

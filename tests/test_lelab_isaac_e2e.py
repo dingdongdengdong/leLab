@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -9,8 +10,10 @@ from isaacsim_validation.contracts import ARM_JOINTS, HAND_JOINTS, PHYSICAL_JOIN
 from isaacsim_validation.run_lelab_isaac_e2e import (
     build_joint_snapshot,
     collect_static_visual_evidence,
+    distribution_visual_provenance,
     evaluate_hand_frames,
     snapshot_matches_command,
+    wait_hold_stability,
     write_hand_gif,
 )
 
@@ -100,16 +103,74 @@ def test_collect_static_visual_evidence_keeps_visual_and_live_proof_separate(tmp
     ):
         image = Image.new("RGB", (32, 32), color)
         image.putpixel((1, 1), (255, 255, 255))
-        image.save(source / f"superarm-isaac60-zip-learning-{name}.png")
-    (source / "superarm-isaac60-zip-learning-report.json").write_text(
-        '{"status":"PASS","source":{"kind":"validated_distribution"}}\n',
+        image.save(source / f"superarm-isaac60-passive-linkage-{name}.png")
+    report = source / "superarm-isaac60-passive-linkage-report.json"
+    report.write_text(
+        '{"status":"PASS","passive_linkage_visuals":{"grasp_sequence":{"passed":true}},'
+        '"input_urdf":"/runs/final-passive-linkage/superarm.urdf"}\n',
         encoding="utf-8",
     )
+    report_sha256 = hashlib.sha256(report.read_bytes()).hexdigest()
 
-    evidence = collect_static_visual_evidence(source, tmp_path / "run")
+    evidence = collect_static_visual_evidence(
+        source,
+        tmp_path / "run",
+        expected_report_sha256=report_sha256,
+        expected_validation_run_id="final-passive-linkage",
+    )
 
     assert evidence["proof_category"] == "prevalidated_static_isaac_visuals"
     assert evidence["is_live_session_capture"] is False
+    assert evidence["distribution_validation_report_sha256"] == report_sha256
+    assert evidence["validation_run_id"] == "final-passive-linkage"
     assert len(evidence["hand_frames"]) == 3
     assert all(Path(path).is_file() for path in evidence["hand_frames"])
     assert Path(evidence["whole_frame"]).is_file()
+
+    with pytest.raises(RuntimeError, match="does not match the controlled distribution"):
+        collect_static_visual_evidence(
+            source,
+            tmp_path / "wrong-run",
+            expected_report_sha256="0" * 64,
+            expected_validation_run_id="final-passive-linkage",
+        )
+
+
+def test_distribution_visual_provenance_requires_bound_validation_report() -> None:
+    manifest = {
+        "files": [
+            {
+                "path": "validation/isaac-report.json",
+                "sha256": "a" * 64,
+            }
+        ],
+        "source": {"validation_run_id": "final-passive-linkage"},
+    }
+
+    assert distribution_visual_provenance(manifest) == {
+        "report_sha256": "a" * 64,
+        "validation_run_id": "final-passive-linkage",
+    }
+    with pytest.raises(RuntimeError, match="lacks visual provenance"):
+        distribution_visual_provenance({"files": [], "source": {}})
+
+
+def test_hold_stability_allows_slow_isaac_physics_to_reach_120_steps(monkeypatch) -> None:
+    initial_state = _state(0.0, 0.0)
+    initial = build_joint_snapshot(initial_state)
+    final_state = _state(0.0, 0.0)
+    final_state["physics_step"] = 320
+    captured = {}
+
+    def fake_wait_for(operation, predicate, **kwargs):
+        captured.update(kwargs)
+        value = {"state": final_state}
+        assert predicate(value) is True
+        return value
+
+    monkeypatch.setattr("isaacsim_validation.run_lelab_isaac_e2e.wait_for", fake_wait_for)
+
+    result = wait_hold_stability(object(), initial)
+
+    assert captured["timeout_s"] == 30.0
+    assert result["stable_steps"] == 120

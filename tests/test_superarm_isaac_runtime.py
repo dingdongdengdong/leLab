@@ -162,6 +162,7 @@ def test_managed_runtime_launches_with_file_token_and_sends_complete_named_targe
     assert token_path.read_text(encoding="utf-8").strip() not in repr(args)
     assert kwargs["shell"] is False
     assert kwargs["start_new_session"] is True
+    assert client_calls[0][1]["timeout_s"] == 5.0
     assert client_calls[0][1]["capture_timeout_s"] == 120.0
 
     runtime.command_partial(arm_rad={"joint_rev_1": 0.25})
