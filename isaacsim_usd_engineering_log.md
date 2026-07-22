@@ -525,3 +525,59 @@ Do not write `PASS` until the named evidence exists and has been inspected.
 - **Reusable rule:** keep simulator APIs on the thread that owns the application,
   mount code/assets read-only, and treat wheel-installed resources as part of
   the runtime contract rather than relying on the repository checkout.
+
+### 19. LeLab had no runtime-neutral session path to the long-lived Isaac bridge
+
+- **Observed evidence:** the managed bridge could own and control the 13-joint
+  articulation, but the LeLab service accepted only MuJoCo modes. Browser,
+  manual, and future LeRobot callers had no six-value logical-action route,
+  Isaac telemetry route, explicit capture route, or independent live-command
+  watchdog.
+- **Cause:** the existing service and API were typed and constructed around
+  `MuJoCoRuntime`; MuJoCo arm and hand updates were separate calls, continuous
+  video was assumed for every runtime, and the ten-second hold depended on a
+  later telemetry/websocket call.
+- **Repair:** a common SuperArm runtime protocol now supports atomic partial and
+  six-value logical commands. `IsaacSimRuntime` validates/extracts the pinned
+  distribution, launches or connects to the authenticated bridge, requires the
+  exact 13-joint hello contract, caches complete named targets, maps website
+  hand degrees to positive Isaac coordinates, bounds observation polling to
+  20 Hz, owns hold/shutdown/process-group escalation, and confines captures to
+  regular non-symlink files under its managed session directory or an explicit
+  shared external run directory. The LeLab service
+  now selects MuJoCo or Isaac through injected factories, enforces live timeout
+  from a per-session watchdog, validates the configured distribution before
+  advertising readiness, and exposes session, telemetry, logical-action, and
+  on-demand capture APIs while returning a clear 409 for Isaac continuous
+  video. MuJoCo received compatible atomic wrappers and remains a separate
+  backend with its existing sign convention.
+- **Regression coverage:** fake bridge/process tests cover file-backed token
+  launch, exact hello names/counts, full 13-target commands, positive motor2
+  mapping, 20 Hz observation caching, bounded timeout phase/log diagnostics,
+  safe and repeated captures followed by command, managed/external ownership,
+  and TERM/KILL process-group fallback. Service/API tests cover serialized
+  command/e-stop ordering, blocked-watchdog disconnect/reconnect safety, stale
+  callback rejection, validated capability reporting, factory
+  selection, 5+8 telemetry, six-value logical action, independent watchdog,
+  capture/latest, video rejection, and atomic MuJoCo arm-plus-hand updates. The
+  former MuJoCo-only source-removal assertion is replaced by the durable host
+  import boundary: importing `lelab.server` must not load `isaacsim`, `omni`,
+  or `pxr`.
+- **Verification:** the runtime/service/API plus MuJoCo regression command
+  passes 54 tests with the repository's existing deprecation warnings; Ruff,
+  `py_compile`, and `git diff --check` pass on the changed slice. An independent
+  read-only test-engineer reran the 54 tests and focused Ruff, re-reviewed every
+  rejected safety/lifecycle gap, and returned APPROVE with no remaining Task 4
+  blocker.
+- **Result/commit:** this entry is included in the LeLab Isaac session-runtime
+  feature commit.
+- **Remaining boundary:** this is fake-bridge, host lifecycle, API, and MuJoCo
+  regression proof. The LeRobot `superarm_isaac` backend, website selector,
+  real Isaac Sim 6.0 process, measured motion, close-up captures, GIF, and final
+  distribution-controlled acceptance report remain pending. Isaac capture is
+  intentionally serialized and non-preemptible on the single bridge connection,
+  so an emergency stop waits for an in-progress capture request to finish.
+- **Reusable rule:** keep policy actions logical and runtime-neutral, expand to
+  the physical joint set only at the backend boundary, and give simulators with
+  different rendering capabilities explicit APIs rather than pretending every
+  backend is a video stream.

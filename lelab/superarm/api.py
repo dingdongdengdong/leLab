@@ -37,10 +37,42 @@ router = APIRouter()
 
 class SessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    runtime: Literal["mujoco", "hybrid_serial"] = "mujoco"
+    runtime: Literal["mujoco", "hybrid_serial", "isaac_sim"] = "mujoco"
     serial_port: str = "/dev/ttyACM0"
     workspace_root: str | None = None
     model_path: str | None = None
+    isaac_distribution_zip: str | None = None
+    isaac_expected_sha256: str | None = None
+    isaac_bridge_mode: Literal["managed", "external"] = "managed"
+    isaac_host: str = "127.0.0.1"
+    isaac_port: int = 8765
+    isaac_external_run_dir: str | None = None
+
+
+class LogicalActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    values: list[float]
+
+    @model_validator(mode="after")
+    def validate_values(self) -> LogicalActionRequest:
+        if len(self.values) != 6 or any(not math.isfinite(value) for value in self.values):
+            raise ValueError("Logical action requires exactly six finite values")
+        return self
+
+
+class CaptureRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    view: Literal["whole", "hand"]
+    name: str
+
+    @model_validator(mode="after")
+    def validate_name(self) -> CaptureRequest:
+        if not self.name or len(self.name) > 64 or any(
+            not (character.isalnum() or character in {"-", "_"})
+            for character in self.name
+        ):
+            raise ValueError("Capture name must contain only letters, numbers, hyphens, or underscores")
+        return self
 
 
 class ActionRequest(BaseModel):
@@ -292,6 +324,12 @@ def start_session(request: SessionRequest):
             serial_port=request.serial_port,
             workspace_root=request.workspace_root,
             model_path=request.model_path,
+            isaac_distribution_zip=request.isaac_distribution_zip,
+            isaac_expected_sha256=request.isaac_expected_sha256,
+            isaac_bridge_mode=request.isaac_bridge_mode,
+            isaac_host=request.isaac_host,
+            isaac_port=request.isaac_port,
+            isaac_external_run_dir=request.isaac_external_run_dir,
         )
     except Exception as exc:
         raise api_error(exc) from exc
@@ -300,6 +338,11 @@ def start_session(request: SessionRequest):
 @router.get("/api/superarm/session")
 def session_status():
     return service.status()
+
+
+@router.get("/api/superarm/telemetry")
+def telemetry():
+    return service.telemetry()
 
 
 @router.delete("/api/superarm/session")
@@ -311,6 +354,30 @@ def delete_session():
 def action(request: ActionRequest):
     try:
         return service.action(**request.model_dump())
+    except Exception as exc:
+        raise api_error(exc) from exc
+
+
+@router.put("/api/superarm/logical-action")
+def logical_action(request: LogicalActionRequest):
+    try:
+        return service.logical_action(request.values)
+    except Exception as exc:
+        raise api_error(exc) from exc
+
+
+@router.post("/api/superarm/capture")
+def capture(request: CaptureRequest):
+    try:
+        return service.capture(request.view, request.name)
+    except Exception as exc:
+        raise api_error(exc) from exc
+
+
+@router.get("/api/superarm/capture/latest")
+def latest_capture():
+    try:
+        return service.latest_capture()
     except Exception as exc:
         raise api_error(exc) from exc
 
@@ -420,6 +487,11 @@ def export_upstream():
 def video():
     if not service.runtime or not service.runtime.connected:
         raise HTTPException(status_code=409, detail="SuperArm runtime is disconnected")
+    if not service.runtime.supports_video:
+        raise HTTPException(
+            status_code=409,
+            detail="Continuous video is only available for MuJoCo; use the Isaac capture endpoint.",
+        )
 
     def frames():
         last_sequence = -1

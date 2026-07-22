@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -83,15 +84,20 @@ def test_direct_mujoco_robot_keeps_policy_action_six_dimensional():
     assert fake.runtime.observe()["hand"]["finger1_motor2"]["position"] == pytest.approx(-0.56)
 
 
-def test_focused_branch_has_no_isaac_backend_source():
-    root = Path(__file__).resolve().parents[1]
-    checked = [root / "lelab", root / "frontend" / "src", root / "README.md"]
-    offenders = []
-    for entry in checked:
-        paths = [entry] if entry.is_file() else entry.rglob("*")
-        for path in paths:
-            if not path.is_file() or path.suffix not in {".py", ".ts", ".tsx", ".md"}:
-                continue
-            if "isaac" in path.read_text(encoding="utf-8").lower():
-                offenders.append(path.relative_to(root).as_posix())
-    assert offenders == []
+def test_host_server_import_does_not_load_isaac_omniverse_modules():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; import lelab.server; "
+                "forbidden = [name for name in sys.modules "
+                "if name == 'isaacsim' or name.startswith(('isaacsim.', 'omni.', 'pxr.'))]; "
+                "assert forbidden == [], forbidden"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

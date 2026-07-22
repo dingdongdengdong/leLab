@@ -236,3 +236,7 @@
 ## [2026-07-22T09:01:36.252Z] update
 - **Pages:** superarm-urdf-validation-in-isaac-sim-6-0.md
 - **Summary:** Recorded the pinned LeLab distribution, authenticated localhost protocol, approved main-thread Isaac bridge boundary, installed-wheel proof, and remaining live Isaac acceptance requirement.
+
+## [2026-07-22T09:26:22.000Z] update
+- **Pages:** superarm-urdf-validation-in-isaac-sim-6-0.md
+- **Summary:** Recorded the runtime-neutral LeLab session/API, six-to-13 command boundary, independent watchdog, explicit Isaac capture capability, lifecycle tests, and remaining live Isaac acceptance gate.

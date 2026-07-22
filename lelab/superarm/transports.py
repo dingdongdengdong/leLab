@@ -12,10 +12,11 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from PIL import Image
 
+from .actions import action_to_runtime_commands
 from .mapping import (
     ARM_JOINTS,
     ARM_MAX_RAD,
@@ -79,8 +80,40 @@ class HandTransport(ABC):
     def close(self) -> None: ...
 
 
+class SuperArmRuntime(Protocol):
+    connected: bool
+    failure: str | None
+    supports_video: bool
+    supports_capture: bool
+
+    def connect(self) -> None: ...
+
+    def command_partial(
+        self,
+        *,
+        arm_rad: dict[str, float] | None = None,
+        hand_deg: dict[str, list[float]] | None = None,
+        hand_speed: dict[str, list[int]] | None = None,
+    ) -> None: ...
+
+    def command_logical(self, values: list[float]) -> None: ...
+
+    def observe(self) -> dict[str, Any]: ...
+
+    def stop(self) -> None: ...
+
+    def close(self) -> None: ...
+
+    def frame(self) -> tuple[int, bytes | None]: ...
+
+    def capture(self, view: str, name: str) -> dict[str, Any]: ...
+
+
 class MuJoCoRuntime(ArmTransport, HandTransport):
     """Physics worker at model timestep with nonblocking 15 FPS EGL rendering."""
+
+    supports_video = True
+    supports_capture = False
 
     def __init__(
         self,
@@ -251,14 +284,31 @@ class MuJoCoRuntime(ArmTransport, HandTransport):
             self.state_callback(state)
 
     def command(self, values: dict[str, Any], hand_speed: dict[str, list[int]] | None = None) -> None:
+        if any(name in ARM_JOINTS for name in values):
+            self.command_partial(arm_rad=values)
+        else:
+            self.command_partial(hand_deg=values, hand_speed=hand_speed)
+
+    def command_partial(
+        self,
+        *,
+        arm_rad: dict[str, float] | None = None,
+        hand_deg: dict[str, list[float]] | None = None,
+        hand_speed: dict[str, list[int]] | None = None,
+    ) -> None:
+        del hand_speed
         if not self.connected:
             raise RuntimeError("MuJoCo runtime is disconnected")
         with self._lock:
-            if any(name in ARM_JOINTS for name in values):
-                for name, value in values.items():
+            if arm_rad:
+                for name, value in arm_rad.items():
                     self._targets[name] = max(ARM_MIN_RAD, min(ARM_MAX_RAD, float(value)))
-            else:
-                self._targets.update(named_hand_to_mujoco(values))
+            if hand_deg:
+                self._targets.update(named_hand_to_mujoco(hand_deg))
+
+    def command_logical(self, values: list[float]) -> None:
+        arm, hand = action_to_runtime_commands(values)
+        self.command_partial(arm_rad=arm, hand_deg=hand)
 
     def observe(self) -> dict[str, Any]:
         return dict(self._latest_state)

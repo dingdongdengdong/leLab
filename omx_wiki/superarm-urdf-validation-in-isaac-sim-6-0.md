@@ -2,7 +2,7 @@
 title: "SuperArm plus AmazingHand USD validation in Isaac Sim 6.0"
 tags: ["superarm", "isaac-sim", "usd", "amazinghand", "lerobot", "vla"]
 created: 2026-07-22T01:19:58.784Z
-updated: 2026-07-22T08:03:00.000Z
+updated: 2026-07-22T09:26:22.000Z
 sources: []
 links: ["superarm-real-hardware-motor-protocol-boundary.md"]
 category: debugging
@@ -157,3 +157,30 @@ smoke. Do not call the new LeLab-to-Isaac path live-validated until the host
 runtime/API are connected and the final Isaac 6.0 motion plus close-up capture
 acceptance run is recorded. MuJoCo remains a separate backend; no ROS 2, real
 hardware, or external AmazingHandControl runtime is introduced.
+
+The host session layer now has a runtime-neutral boundary. `isaac_sim` sessions
+validate and extract the distribution, authenticate to the long-lived bridge,
+require the exact 13 named joints, and accept the same six logical values used
+by MuJoCo and future ACT/VLA policies. Website hand-degree commands are mapped
+to positive Isaac motor coordinates; MuJoCo retains its negative motor2 runtime
+coordinate and its own backend. LeLab exposes explicit telemetry,
+logical-action, and on-demand whole/hand capture routes. Continuous video is a
+MuJoCo-only capability, not an Isaac claim.
+
+The per-session service watchdog sends one hold after a stale live command even
+when no browser, websocket, or telemetry poll occurs, and a blocked old
+watchdog prevents disconnect/reconnect rather than being reused against a new
+runtime. Commands, emergency stop, capture, and disconnect share one serialized
+control boundary, while stale runtime callbacks are generation-filtered.
+Managed runtime shutdown asks
+the bridge to stop, reaps the owned child, then escalates the child process
+group through TERM and KILL only if needed. Host-side tests also prove 20 Hz
+observation caching, timeout phase plus bounded suffix-only log diagnostics,
+cleanup after signal failures, observed-target cache rebasing, finite direct
+inputs, exact unique hello names, validated distribution capability reporting,
+explicit shared-root external capture, capture path confinement, and that
+importing the LeLab server does not load Isaac/Omniverse modules. This remains
+host/fake-bridge proof; the live Isaac motion and visual acceptance gate is
+still open. On-demand capture is intentionally non-preemptible on the single
+serialized bridge connection, so emergency stop waits for an in-progress
+capture request to finish; continuous capture/video is not enabled for Isaac.

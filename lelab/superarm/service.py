@@ -5,15 +5,21 @@ from __future__ import annotations
 import importlib.util
 import os
 import queue
+import shutil
 import threading
 import time
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 import yaml
 
+from .actions import action_to_runtime_commands, normalize_superarm_action
+from .isaac_distribution import IsaacDistribution, validate_and_extract_distribution
+from .isaac_runtime import IsaacSimRuntime
 from .mapping import ARM_JOINTS, UI_FINGERS
 from .programs import ProgramStore
 from .showroom import (
@@ -23,23 +29,46 @@ from .showroom import (
     build_amazinghand_visual_manifest,
     remove_amazinghand_visuals,
 )
-from .transports import MuJoCoRuntime, SerialAmazingHandTransport
+from .transports import MuJoCoRuntime, SerialAmazingHandTransport, SuperArmRuntime
 
 
 class SuperArmService:
-    def __init__(self, program_store: ProgramStore | None = None) -> None:
+    def __init__(
+        self,
+        program_store: ProgramStore | None = None,
+        *,
+        mujoco_runtime_factory: Callable[..., SuperArmRuntime] = MuJoCoRuntime,
+        isaac_runtime_factory: Callable[..., SuperArmRuntime] = IsaacSimRuntime,
+        isaac_distribution_loader: Callable[..., IsaacDistribution] = validate_and_extract_distribution,
+        live_timeout_s: float = 10.0,
+        watchdog_interval_s: float = 0.1,
+        watchdog_join_timeout_s: float = 1.0,
+    ) -> None:
         self.programs = program_store or ProgramStore()
-        self.runtime: MuJoCoRuntime | None = None
+        self.runtime: SuperArmRuntime | None = None
         self.serial: SerialAmazingHandTransport | None = None
         self.mode: str | None = None
         self.emergency_stopped = False
         self._events: list[queue.Queue[dict[str, Any]]] = []
         self._lock = threading.RLock()
+        self._control_lock = threading.RLock()
         self._last_live_command = 0.0
         self._live_enabled = False
         self._sequence_thread: threading.Thread | None = None
         self._sequence_stop = threading.Event()
         self._sequence_pause = threading.Event()
+        self._mujoco_runtime_factory = mujoco_runtime_factory
+        self._isaac_runtime_factory = isaac_runtime_factory
+        self._isaac_distribution_loader = isaac_distribution_loader
+        self._live_timeout_s = float(live_timeout_s)
+        self._watchdog_interval_s = float(watchdog_interval_s)
+        self._watchdog_join_timeout_s = float(watchdog_join_timeout_s)
+        self._watchdog_stop: threading.Event | None = None
+        self._watchdog_thread: threading.Thread | None = None
+        self._watchdog_generation: int | None = None
+        self._session_generation = 0
+        self._closing = False
+        self._latest_capture: dict[str, Any] | None = None
 
     def capabilities(self, workspace_root: str | Path | None = None) -> dict[str, Any]:
         errors: list[str] = []
@@ -52,6 +81,21 @@ class SuperArmService:
             errors.append(f"MuJoCo unavailable: {exc}")
         rustypot_available = importlib.util.find_spec("rustypot") is not None
         root = self.resolve_workspace(workspace_root)
+        isaac_distribution = os.environ.get("SUPERARM_ISAAC_DISTRIBUTION_ZIP")
+        isaac_path = Path(isaac_distribution).expanduser().resolve() if isaac_distribution else None
+        isaac_validation_error: str | None = None
+        isaac_archive_sha256: str | None = None
+        isaac_entrypoint: str | None = None
+        isaac_contract: dict[str, int] | None = None
+        if isaac_path is not None and isaac_path.is_file():
+            try:
+                distribution = self._isaac_distribution_loader(isaac_path)
+                isaac_archive_sha256 = distribution.archive_sha256
+                isaac_entrypoint = str(distribution.entrypoint)
+                isaac_contract = dict(distribution.robot_contract)
+            except Exception as exc:
+                isaac_validation_error = str(exc)
+                errors.append(f"Isaac distribution invalid: {exc}")
         return {
             "runtimes": {
                 "mujoco": {"enabled": mujoco_version == "3.10.0", "version": mujoco_version},
@@ -60,6 +104,22 @@ class SuperArmService:
                     "serial_ports": SerialAmazingHandTransport.available_ports(),
                     "default_port": "/dev/ttyACM0",
                     "baudrate": 1_000_000,
+                },
+                "isaac_sim": {
+                    "enabled": shutil.which("docker") is not None
+                    and isaac_contract is not None
+                    and isaac_validation_error is None,
+                    "image": os.environ.get(
+                        "ISAAC_SIM_IMAGE", "nvcr.io/nvidia/isaac-sim:6.0.0"
+                    ),
+                    "distribution_zip": str(isaac_path) if isaac_path else None,
+                    "archive_sha256": isaac_archive_sha256,
+                    "entrypoint": isaac_entrypoint,
+                    "validation_error": isaac_validation_error,
+                    "contract": isaac_contract,
+                    "bridge_mode": "managed",
+                    "physical_dof_count": 13,
+                    "logical_action_width": 6,
                 },
             },
             "workspace_root": str(root) if root else None,
@@ -270,10 +330,16 @@ class SuperArmService:
         serial_port: str = "/dev/ttyACM0",
         workspace_root: str | Path | None = None,
         model_path: str | Path | None = None,
+        isaac_distribution_zip: str | Path | None = None,
+        isaac_expected_sha256: str | None = None,
+        isaac_bridge_mode: str = "managed",
+        isaac_host: str = "127.0.0.1",
+        isaac_port: int = 8765,
+        isaac_external_run_dir: str | Path | None = None,
     ) -> dict[str, Any]:
-        if mode not in {"mujoco", "hybrid_serial"}:
-            raise ValueError("Runtime must be mujoco or hybrid_serial")
-        with self._lock:
+        if mode not in {"mujoco", "hybrid_serial", "isaac_sim"}:
+            raise ValueError("Runtime must be mujoco, hybrid_serial, or isaac_sim")
+        with self._control_lock:
             if self.runtime is not None:
                 if self.mode == mode and self.runtime.connected:
                     return self.status()
@@ -281,11 +347,32 @@ class SuperArmService:
                     f"A SuperArm {self.mode} runtime session is already active; "
                     f"disconnect it before starting {mode}"
                 )
-            resolved_model_path = self.model_path(workspace_root, model_path)
-            runtime = MuJoCoRuntime(
-                resolved_model_path,
-                state_callback=lambda state: self.publish({"type": "state", **self.status(), "state": state}),
-            )
+            generation = self._session_generation + 1
+
+            def state_callback(state: dict[str, Any]) -> None:
+                if generation == self._session_generation and not self._closing:
+                    self.publish({"type": "state", **self.status(), "state": state})
+            if mode == "isaac_sim":
+                configured_zip = isaac_distribution_zip or os.environ.get(
+                    "SUPERARM_ISAAC_DISTRIBUTION_ZIP"
+                )
+                if not configured_zip:
+                    raise ValueError("isaac_sim requires a server-local distribution ZIP path")
+                runtime = self._isaac_runtime_factory(
+                    configured_zip,
+                    bridge_mode=isaac_bridge_mode,
+                    host=isaac_host,
+                    port=isaac_port,
+                    expected_sha256=isaac_expected_sha256,
+                    external_run_dir=isaac_external_run_dir,
+                    state_callback=state_callback,
+                )
+            else:
+                resolved_model_path = self.model_path(workspace_root, model_path)
+                runtime = self._mujoco_runtime_factory(
+                    resolved_model_path,
+                    state_callback=state_callback,
+                )
             serial = None
             try:
                 runtime.connect()
@@ -295,11 +382,19 @@ class SuperArmService:
                 self.runtime = runtime
                 self.serial = serial
                 self.mode = mode
+                self._session_generation = generation
+                self._closing = False
                 self._live_enabled = False
+                self._latest_capture = None
+                self._start_watchdog()
             except Exception:
-                runtime.close()
+                with suppress(Exception):
+                    runtime.close()
                 if serial:
                     serial.close()
+                self.runtime = None
+                self.serial = None
+                self.mode = None
                 raise
         event = self.status()
         self.publish({"type": "runtime_status", **event})
@@ -307,17 +402,29 @@ class SuperArmService:
 
     def disconnect(self) -> dict[str, Any]:
         self.stop_sequence()
-        with self._lock:
+        self._stop_watchdog()
+        close_error: Exception | None = None
+        with self._control_lock:
+            self._closing = True
+            self._session_generation += 1
             self._live_enabled = False
-            if self.serial:
-                self.serial.close()
-            if self.runtime:
-                self.runtime.close()
-            self.serial = None
-            self.runtime = None
-            self.mode = None
+            try:
+                if self.serial:
+                    self.serial.close()
+                if self.runtime:
+                    self.runtime.close()
+            except Exception as exc:
+                close_error = exc
+            finally:
+                self.serial = None
+                self.runtime = None
+                self.mode = None
+                self._latest_capture = None
+                self._closing = False
         event = self.status()
         self.publish({"type": "runtime_status", **event})
+        if close_error is not None:
+            raise close_error
         return event
 
     def status(self) -> dict[str, Any]:
@@ -327,6 +434,10 @@ class SuperArmService:
             "emergency_stopped": self.emergency_stopped,
             "live_enabled": self._live_enabled,
             "error": self.runtime.failure if self.runtime else None,
+            "supports_video": bool(self.runtime and getattr(self.runtime, "supports_video", False)),
+            "supports_capture": bool(
+                self.runtime and getattr(self.runtime, "supports_capture", False)
+            ),
         }
 
     def action(
@@ -337,69 +448,180 @@ class SuperArmService:
         hand_speed: dict[str, list[int]] | None = None,
         source: str = "staged",
     ) -> dict[str, Any]:
-        if not self.runtime or not self.runtime.connected:
-            raise RuntimeError("SuperArm runtime is disconnected")
-        if self.emergency_stopped:
-            raise RuntimeError("Commands are blocked by emergency stop")
-        now = time.monotonic()
-        if source == "live":
-            if now - self._last_live_command < 0.05:
+        return self._dispatch(
+            arm_rad=arm_rad,
+            hand_deg=hand_deg,
+            hand_speed=hand_speed,
+            source=source,
+        )
+
+    def _dispatch(
+        self,
+        *,
+        arm_rad: dict[str, float] | None = None,
+        hand_deg: dict[str, list[float]] | None = None,
+        hand_speed: dict[str, list[int]] | None = None,
+        logical: list[float] | None = None,
+        source: str = "staged",
+    ) -> dict[str, Any]:
+        with self._control_lock:
+            if not self.runtime or not self.runtime.connected or self._closing:
+                raise RuntimeError("SuperArm runtime is disconnected")
+            if self.emergency_stopped:
+                raise RuntimeError("Commands are blocked by emergency stop")
+            now = time.monotonic()
+            if source == "live" and now - self._last_live_command < 0.05:
                 raise RuntimeError("Live commands are capped at 20 Hz")
-            self._last_live_command = now
-            self._live_enabled = True
-        else:
-            self._live_enabled = False
-        if arm_rad:
-            self.runtime.command(arm_rad)
-        if hand_deg:
-            speeds = hand_speed or {finger: [3, 3] for finger in hand_deg}
-            if self.serial:
+            if logical is not None:
+                self.runtime.command_logical(logical)
+                if self.serial:
+                    _, serial_hand = action_to_runtime_commands(logical)
+                    speeds = {finger: [3, 3] for finger in serial_hand}
+                    self.serial.command(serial_hand, speeds)
+            else:
+                command_partial = getattr(self.runtime, "command_partial", None)
+                if callable(command_partial):
+                    command_partial(
+                        arm_rad=arm_rad,
+                        hand_deg=hand_deg,
+                        hand_speed=hand_speed,
+                    )
+                else:  # Compatibility for injected legacy test/runtime adapters.
+                    if arm_rad:
+                        self.runtime.command(arm_rad)
+                    if hand_deg:
+                        self.runtime.command(hand_deg, hand_speed)
+            if hand_deg and self.serial:
+                speeds = hand_speed or {finger: [3, 3] for finger in hand_deg}
                 self.serial.command(hand_deg, speeds)
-            self.runtime.command(hand_deg, speeds)
-        result = {"accepted": True, **self.status()}
+            if source == "live":
+                self._last_live_command = now
+                self._live_enabled = True
+            else:
+                self._live_enabled = False
+            result = {"accepted": True, **self.status()}
         self.publish({"type": "action", **result})
         return result
 
-    def enforce_live_timeout(self) -> None:
-        if self._live_enabled and time.monotonic() - self._last_live_command >= 10.0:
-            self._live_enabled = False
-            if self.runtime:
-                self.runtime.stop()
+    def logical_action(self, values: list[float]) -> dict[str, Any]:
+        normalized = normalize_superarm_action(values)
+        result = self._dispatch(logical=normalized, source="staged")
+        return {**result, "logical_action": normalized}
+
+    def enforce_live_timeout(
+        self,
+        generation: int | None = None,
+        stop_event: threading.Event | None = None,
+    ) -> None:
+        timed_out = False
+        with self._control_lock:
+            if (
+                (generation is None or generation == self._session_generation)
+                and (stop_event is None or not stop_event.is_set())
+                and not self._closing
+                and self._live_enabled
+                and time.monotonic() - self._last_live_command >= self._live_timeout_s
+            ):
+                self._live_enabled = False
+                if self.runtime:
+                    self.runtime.stop()
+                timed_out = True
+        if timed_out:
             self.publish({"type": "live_timeout", **self.status()})
 
+    def _watchdog_worker(self, generation: int, stop_event: threading.Event) -> None:
+        while not stop_event.wait(self._watchdog_interval_s):
+            self.enforce_live_timeout(generation, stop_event)
+
+    def _start_watchdog(self) -> None:
+        if self._watchdog_thread:
+            if self._watchdog_thread.is_alive():
+                raise RuntimeError("previous SuperArm watchdog is still running")
+            self._watchdog_thread = None
+            self._watchdog_stop = None
+            self._watchdog_generation = None
+        stop_event = threading.Event()
+        generation = self._session_generation
+        self._watchdog_stop = stop_event
+        self._watchdog_generation = generation
+        self._watchdog_thread = threading.Thread(
+            target=self._watchdog_worker,
+            args=(generation, stop_event),
+            name="superarm-live-watchdog",
+            daemon=True,
+        )
+        self._watchdog_thread.start()
+
+    def _stop_watchdog(self) -> None:
+        thread = self._watchdog_thread
+        stop_event = self._watchdog_stop
+        if stop_event is not None:
+            stop_event.set()
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout=self._watchdog_join_timeout_s)
+            if thread.is_alive():
+                raise RuntimeError("SuperArm watchdog did not stop before disconnect")
+        self._watchdog_thread = None
+        self._watchdog_stop = None
+        self._watchdog_generation = None
+
+    def capture(self, view: str, name: str) -> dict[str, Any]:
+        if self.mode != "isaac_sim" or self.runtime is None:
+            raise RuntimeError("Isaac capture is available only for isaac_sim sessions")
+        with self._control_lock:
+            if self.mode != "isaac_sim" or self.runtime is None or self._closing:
+                raise RuntimeError("Isaac capture is available only for isaac_sim sessions")
+            capture = self.runtime.capture(view, name)
+            self._latest_capture = dict(capture)
+            return dict(capture)
+
+    def latest_capture(self) -> dict[str, Any]:
+        with self._control_lock:
+            if self.mode != "isaac_sim":
+                raise RuntimeError("Isaac capture is available only for isaac_sim sessions")
+            if self._latest_capture is None:
+                raise RuntimeError("No Isaac capture has been created")
+            return dict(self._latest_capture)
+
     def emergency_stop(self, active: bool = True) -> dict[str, Any]:
-        if not active and self.mode == "hybrid_serial" and self.serial and not self.serial.connected:
-            try:
-                self.serial.connect()
-            except Exception:
-                self.emergency_stopped = True
-                raise
-        self.emergency_stopped = active
-        self._live_enabled = False
+        self._sequence_stop.set()
+        self._sequence_pause.clear()
+        with self._control_lock:
+            if not active and self.mode == "hybrid_serial" and self.serial and not self.serial.connected:
+                try:
+                    self.serial.connect()
+                except Exception:
+                    self.emergency_stopped = True
+                    raise
+            self.emergency_stopped = active
+            self._live_enabled = False
+            if active:
+                if self.serial:
+                    self.serial.stop()
+                if self.runtime:
+                    self.runtime.stop()
+            result = self.status()
         self.stop_sequence()
-        if active:
-            if self.serial:
-                self.serial.stop()
-            if self.runtime:
-                self.runtime.stop()
-        result = self.status()
         self.publish({"type": "emergency_stop", **result})
         return result
 
     def telemetry(self) -> dict[str, Any]:
         self.enforce_live_timeout()
-        state = self.runtime.observe() if self.runtime else {}
-        if self.serial:
-            state = dict(state)
-            serial = self.serial.observe()
-            mapped: dict[str, Any] = {}
-            for finger_index, finger in enumerate(["pointer", "middle", "ring", "thumb"], start=1):
-                for motor in (1, 2):
-                    value = serial.get(f"{finger}_motor{motor}")
-                    if value is not None:
-                        mapped[f"finger{finger_index}_motor{motor}"] = value
-            state["serial_hand"] = mapped
-        return {"type": "state", **self.status(), "state": state}
+        with self._control_lock:
+            state = self.runtime.observe() if self.runtime and not self._closing else {}
+            if self.serial:
+                state = dict(state)
+                serial = self.serial.observe()
+                mapped: dict[str, Any] = {}
+                for finger_index, finger in enumerate(
+                    ["pointer", "middle", "ring", "thumb"], start=1
+                ):
+                    for motor in (1, 2):
+                        value = serial.get(f"{finger}_motor{motor}")
+                        if value is not None:
+                            mapped[f"finger{finger_index}_motor{motor}"] = value
+                state["serial_hand"] = mapped
+            return {"type": "state", **self.status(), "state": state}
 
     def publish(self, event: dict[str, Any]) -> None:
         with self._lock:
@@ -432,6 +654,7 @@ class SuperArmService:
         if sequence is None:
             raise KeyError(name)
         poses = self.programs.list_poses()
+        generation = self._session_generation
         self._sequence_stop.clear()
         self._sequence_pause.clear()
 
@@ -448,7 +671,10 @@ class SuperArmService:
             try:
                 while not self._sequence_stop.is_set():
                     for index, step in enumerate(sequence["steps"]):
-                        if self._sequence_stop.is_set():
+                        if (
+                            self._sequence_stop.is_set()
+                            or generation != self._session_generation
+                        ):
                             return
                         self.publish({"type": "sequence_step", "sequence": name, "index": index})
                         if "sleep_s" in step:

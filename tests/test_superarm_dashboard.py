@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import io
 import math
+import threading
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -28,7 +30,7 @@ from lelab.superarm.showroom import (
     align_joint5_urdf,
     remove_amazinghand_visuals,
 )
-from lelab.superarm.transports import configure_superarm_camera
+from lelab.superarm.transports import MuJoCoRuntime, configure_superarm_camera
 
 
 def test_calibrated_mujoco_interpolation_and_clamping() -> None:
@@ -468,7 +470,11 @@ def test_api_namespace_is_registered() -> None:
     assert "/api/superarm/hardware-readiness" in paths
     assert "/api/superarm/hardware-config/preview" in paths
     assert "/api/superarm/session" in paths
+    assert "/api/superarm/telemetry" in paths
     assert "/api/superarm/action" in paths
+    assert "/api/superarm/logical-action" in paths
+    assert "/api/superarm/capture" in paths
+    assert "/api/superarm/capture/latest" in paths
     assert "/api/superarm/video" in paths
     assert "/api/superarm/urdf" in paths
     assert "/api/superarm/mujoco-visual-manifest" in paths
@@ -478,10 +484,330 @@ def test_api_namespace_is_registered() -> None:
     assert "/ws/superarm" in paths
     response = TestClient(app).get("/api/superarm/capabilities")
     assert response.status_code == 200
-    assert set(response.json()["runtimes"]) == {"mujoco", "hybrid_serial"}
+    assert set(response.json()["runtimes"]) == {"mujoco", "hybrid_serial", "isaac_sim"}
     readiness = TestClient(app).get("/api/superarm/hardware-readiness")
     assert readiness.status_code == 200
     assert readiness.json()["website_controls_physical_arm"] is False
     session = TestClient(app).get("/api/superarm/session")
     assert session.status_code == 200
     assert session.json()["connected"] is False
+
+
+class _FakeIsaacRuntime:
+    supports_video = False
+    supports_capture = True
+
+    def __init__(self, distribution_zip, **kwargs):
+        self.distribution_zip = distribution_zip
+        self.kwargs = kwargs
+        self.connected = False
+        self.failure = None
+        self.partial_commands = []
+        self.logical_commands = []
+        self.stop_calls = 0
+        self.close_calls = 0
+        self.capture_calls = []
+
+    def connect(self):
+        self.connected = True
+
+    def command_partial(self, **kwargs):
+        self.partial_commands.append(kwargs)
+
+    def command_logical(self, values):
+        self.logical_commands.append(list(values))
+
+    def observe(self):
+        return {
+            "runtime": "isaac_sim",
+            "arm": {f"joint_rev_{index}": {"position": 0.0} for index in range(1, 6)},
+            "hand": {
+                f"finger{finger}_motor{motor}": {"position": 0.0}
+                for finger in range(1, 5)
+                for motor in range(1, 3)
+            },
+        }
+
+    def stop(self):
+        self.stop_calls += 1
+
+    def close(self):
+        self.connected = False
+        self.close_calls += 1
+
+    def frame(self):
+        return 0, None
+
+    def capture(self, view, name):
+        self.capture_calls.append((view, name))
+        return {"path": f"/tmp/{view}-{name}.png", "bytes": 10}
+
+
+class _BlockingCommandRuntime(_FakeIsaacRuntime):
+    def __init__(self, distribution_zip):
+        super().__init__(distribution_zip)
+        self.command_started = threading.Event()
+        self.release_command = threading.Event()
+        self.events = []
+
+    def command_partial(self, **kwargs):
+        self.events.append("command-start")
+        self.command_started.set()
+        self.release_command.wait(2.0)
+        super().command_partial(**kwargs)
+        self.events.append("command-end")
+
+    def stop(self):
+        super().stop()
+        self.events.append("stop")
+
+
+class _BlockingHoldRuntime(_FakeIsaacRuntime):
+    def __init__(self, distribution_zip):
+        super().__init__(distribution_zip)
+        self.hold_started = threading.Event()
+        self.release_hold = threading.Event()
+
+    def stop(self):
+        self.stop_calls += 1
+        self.hold_started.set()
+        self.release_hold.wait(2.0)
+
+
+def test_isaac_service_uses_common_atomic_dispatch_and_capture(tmp_path: Path) -> None:
+    created = []
+
+    def factory(distribution_zip, **kwargs):
+        runtime = _FakeIsaacRuntime(distribution_zip, **kwargs)
+        created.append(runtime)
+        return runtime
+
+    service = SuperArmService(
+        ProgramStore(tmp_path / "programs.yaml"),
+        isaac_runtime_factory=factory,
+    )
+    started = service.start_session(
+        "isaac_sim",
+        isaac_distribution_zip="/server/superarm.zip",
+        isaac_bridge_mode="managed",
+    )
+    runtime = created[0]
+
+    assert started["runtime"] == "isaac_sim"
+    assert started["connected"] is True
+    assert service.action(arm_rad={"joint_rev_1": 0.2})["accepted"] is True
+    assert runtime.partial_commands[-1]["arm_rad"] == {"joint_rev_1": 0.2}
+    logical = service.logical_action([0.0, 0.0, 0.0, 0.0, 0.0, 1.0])
+    assert logical["logical_action"][-1] == 1.0
+    assert runtime.logical_commands[-1][-1] == 1.0
+    assert len(service.telemetry()["state"]["arm"]) == 5
+    assert len(service.telemetry()["state"]["hand"]) == 8
+    capture = service.capture("hand", "close")
+    assert capture["path"].endswith("hand-close.png")
+    assert service.latest_capture() == capture
+    assert service.disconnect()["connected"] is False
+
+
+def test_stale_runtime_callback_is_ignored_after_reconnect(tmp_path: Path) -> None:
+    created = []
+
+    def factory(distribution_zip, **kwargs):
+        runtime = _FakeIsaacRuntime(distribution_zip, **kwargs)
+        created.append(runtime)
+        return runtime
+
+    service = SuperArmService(
+        ProgramStore(tmp_path / "programs.yaml"),
+        isaac_runtime_factory=factory,
+    )
+    service.start_session("isaac_sim", isaac_distribution_zip="/server/superarm.zip")
+    stale_callback = created[0].kwargs["state_callback"]
+    service.disconnect()
+    service.start_session("isaac_sim", isaac_distribution_zip="/server/superarm.zip")
+    subscriber = service.subscribe()
+
+    stale_callback({"runtime": "isaac_sim", "stale": True})
+
+    assert subscriber.empty()
+    service.unsubscribe(subscriber)
+    service.disconnect()
+
+
+def test_live_watchdog_holds_once_without_telemetry_or_websocket_calls(tmp_path: Path) -> None:
+    runtime = _FakeIsaacRuntime("/server/superarm.zip")
+    service = SuperArmService(
+        ProgramStore(tmp_path / "programs.yaml"),
+        isaac_runtime_factory=lambda *_args, **_kwargs: runtime,
+        live_timeout_s=0.05,
+        watchdog_interval_s=0.01,
+    )
+    service.start_session("isaac_sim", isaac_distribution_zip="/server/superarm.zip")
+    service.action(arm_rad={"joint_rev_1": 0.1}, source="live")
+
+    time.sleep(0.12)
+
+    assert runtime.stop_calls == 1
+    assert service.status()["live_enabled"] is False
+    service.disconnect()
+
+
+def test_emergency_stop_is_serialized_after_an_inflight_command(tmp_path: Path) -> None:
+    runtime = _BlockingCommandRuntime("/server/superarm.zip")
+    service = SuperArmService(
+        ProgramStore(tmp_path / "programs.yaml"),
+        isaac_runtime_factory=lambda *_args, **_kwargs: runtime,
+    )
+    service.start_session("isaac_sim", isaac_distribution_zip="/server/superarm.zip")
+    action_thread = threading.Thread(
+        target=lambda: service.action(arm_rad={"joint_rev_1": 0.1})
+    )
+    stop_thread = threading.Thread(target=service.emergency_stop)
+    action_thread.start()
+    assert runtime.command_started.wait(1.0)
+    stop_thread.start()
+    time.sleep(0.02)
+
+    runtime.release_command.set()
+    action_thread.join(1.0)
+    stop_thread.join(1.0)
+
+    assert not action_thread.is_alive()
+    assert not stop_thread.is_alive()
+    assert runtime.events == ["command-start", "command-end", "stop"]
+    service.disconnect()
+
+
+def test_blocked_watchdog_prevents_disconnect_and_reconnect_until_worker_exits(tmp_path: Path) -> None:
+    runtimes = []
+
+    def factory(*_args, **_kwargs):
+        runtime = _BlockingHoldRuntime("/server/superarm.zip")
+        runtimes.append(runtime)
+        return runtime
+
+    service = SuperArmService(
+        ProgramStore(tmp_path / "programs.yaml"),
+        isaac_runtime_factory=factory,
+        live_timeout_s=0.01,
+        watchdog_interval_s=0.005,
+        watchdog_join_timeout_s=0.05,
+    )
+    service.start_session("isaac_sim", isaac_distribution_zip="/server/superarm.zip")
+    service.action(arm_rad={"joint_rev_1": 0.1}, source="live")
+    assert runtimes[0].hold_started.wait(1.0)
+
+    with pytest.raises(RuntimeError, match="watchdog did not stop"):
+        service.disconnect()
+    assert service.status()["connected"] is True
+    with pytest.raises(RuntimeError, match="already active"):
+        service.start_session("mujoco", model_path="/unused")
+    assert len(runtimes) == 1
+
+    runtimes[0].release_hold.set()
+    deadline = time.monotonic() + 1.0
+    while service._watchdog_thread and service._watchdog_thread.is_alive() and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert service.disconnect()["connected"] is False
+    assert service.start_session(
+        "isaac_sim", isaac_distribution_zip="/server/superarm.zip"
+    )["connected"] is True
+    assert len(runtimes) == 2
+    runtimes[1].release_hold.set()
+    service.disconnect()
+
+
+def test_capabilities_validate_configured_isaac_distribution(tmp_path, monkeypatch):
+    import lelab.superarm.service as service_module
+
+    archive = tmp_path / "distribution.zip"
+    archive.write_bytes(b"zip")
+    distribution = SimpleNamespace(
+        archive_sha256="a" * 64,
+        entrypoint=tmp_path / "asset" / "robot.usda",
+        robot_contract={"physical_dof_count": 13, "logical_action_width": 6},
+    )
+    monkeypatch.setenv("SUPERARM_ISAAC_DISTRIBUTION_ZIP", str(archive))
+    monkeypatch.setattr(service_module.shutil, "which", lambda _name: "/usr/bin/docker")
+    service = SuperArmService(
+        ProgramStore(tmp_path / "programs.yaml"),
+        isaac_distribution_loader=lambda *_args, **_kwargs: distribution,
+    )
+
+    isaac = service.capabilities()["runtimes"]["isaac_sim"]
+    assert isaac["enabled"] is True
+    assert isaac["archive_sha256"] == "a" * 64
+    assert isaac["entrypoint"].endswith("robot.usda")
+    assert isaac["validation_error"] is None
+
+    invalid = SuperArmService(
+        ProgramStore(tmp_path / "invalid-programs.yaml"),
+        isaac_distribution_loader=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ValueError("bad manifest")
+        ),
+    ).capabilities()["runtimes"]["isaac_sim"]
+    assert invalid["enabled"] is False
+    assert "bad manifest" in invalid["validation_error"]
+
+
+def test_mujoco_runtime_logical_command_updates_arm_and_hand_atomically() -> None:
+    runtime = object.__new__(MuJoCoRuntime)
+    runtime._connected = True
+    runtime._failure = None
+    runtime._lock = __import__("threading").RLock()
+    runtime._targets = {}
+
+    runtime.command_logical([0.1, 0.2, 0.3, 0.4, 0.5, 1.0])
+
+    assert runtime._targets["joint_rev_5"] == pytest.approx(0.5)
+    assert runtime._targets["finger1_motor1"] == pytest.approx(0.95)
+    assert runtime._targets["finger1_motor2"] == pytest.approx(-1.10)
+
+
+def test_isaac_api_session_logical_capture_and_video_boundary(tmp_path, monkeypatch):
+    import lelab.superarm.api as api_module
+    from lelab.server import app
+
+    runtime = _FakeIsaacRuntime("/server/superarm.zip")
+
+    def runtime_factory(*_args, **kwargs):
+        runtime.kwargs.update(kwargs)
+        return runtime
+
+    local_service = SuperArmService(
+        ProgramStore(tmp_path / "programs.yaml"),
+        isaac_runtime_factory=runtime_factory,
+    )
+    monkeypatch.setattr(api_module, "service", local_service)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/superarm/session",
+        json={
+            "runtime": "isaac_sim",
+            "isaac_distribution_zip": "/server/superarm.zip",
+            "isaac_bridge_mode": "managed",
+            "isaac_external_run_dir": "/server/shared-run",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["runtime"] == "isaac_sim"
+    assert runtime.kwargs["external_run_dir"] == "/server/shared-run"
+    telemetry = client.get("/api/superarm/telemetry")
+    assert telemetry.status_code == 200
+    assert len(telemetry.json()["state"]["arm"]) == 5
+    assert len(telemetry.json()["state"]["hand"]) == 8
+    logical = client.put(
+        "/api/superarm/logical-action",
+        json={"values": [0.0, 0.0, 0.0, 0.0, 0.0, 1.0]},
+    )
+    assert logical.status_code == 200
+    capture = client.post(
+        "/api/superarm/capture",
+        json={"view": "hand", "name": "close"},
+    )
+    assert capture.status_code == 200
+    assert client.get("/api/superarm/capture/latest").json() == capture.json()
+    video = client.get("/api/superarm/video")
+    assert video.status_code == 409
+    assert "Continuous video is only available for MuJoCo" in video.json()["detail"]
+    local_service.disconnect()
