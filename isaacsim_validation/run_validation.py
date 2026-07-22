@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import math
 import shutil
@@ -13,7 +12,7 @@ from pathlib import Path
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--urdf", required=True, type=Path)
 parser.add_argument("--run-dir", required=True, type=Path)
-parser.add_argument("--profile", choices=("raw", "aligned", "served"), required=True)
+parser.add_argument("--profile", choices=("raw", "aligned", "learning", "served"), required=True)
 args, _ = parser.parse_known_args()
 
 from isaacsim import SimulationApp  # noqa: E402
@@ -36,8 +35,6 @@ from import_config import urdf_import_settings  # noqa: E402
 from isaacsim.core.api import World  # noqa: E402
 from isaacsim.core.experimental.prims import Articulation  # noqa: E402
 from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
-from isaacsim.core.utils.viewports import set_camera_view  # noqa: E402
-from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport  # noqa: E402
 from pxr import Usd, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
 from visuals import image_has_detail, validate_direct_grasp_frames  # noqa: E402
 
@@ -83,59 +80,32 @@ def _camera_pose(stage: Usd.Stage, prim, *, closeup: bool) -> tuple[list[float],
 def _capture(path: Path, stage: Usd.Stage, prim, *, closeup: bool) -> dict:
     eye, target = _camera_pose(stage, prim, closeup=closeup)
     path.parent.mkdir(parents=True, exist_ok=True)
-    errors: list[str] = []
-    method: str | None = None
+    output_dir = Path(tempfile.mkdtemp(prefix="isaac-superarm-capture-"))
     try:
-        set_camera_view(eye=eye, target=target, camera_prim_path="/OmniverseKit_Persp")
-        for _ in range(8):
-            app.update()
-        viewport = get_active_viewport()
-        if viewport is None:
-            raise RuntimeError("no active viewport")
-
-        async def capture() -> None:
-            result = capture_viewport_to_file(viewport, file_path=str(path))
-            await asyncio.wait_for(result.wait_for_result(), timeout=20.0)
-
-        asyncio.get_event_loop().run_until_complete(capture())
-        method = "viewport_camera"
-    except Exception as exc:
-        errors.append(f"viewport: {type(exc).__name__}: {exc}")
-
-    if path.is_file() and not image_has_detail(path):
-        errors.append("viewport: captured frame has no visible detail")
-        path.unlink()
-
-    if not path.is_file():
-        output_dir = Path(tempfile.mkdtemp(prefix="isaac-superarm-capture-"))
-        try:
-            with rep.new_layer():
-                camera = rep.create.camera(position=eye, look_at=target, focal_length=35)
-                product = rep.create.render_product(camera, (1280, 720))
-                writer = rep.WriterRegistry.get("BasicWriter")
-                writer.initialize(output_dir=str(output_dir), rgb=True)
-                writer.attach([product])
-                for _ in range(6):
-                    rep.orchestrator.step(rt_subframes=4)
-                writer.detach()
-            frames = sorted(output_dir.glob("rgb*.png"))
-            if not frames:
-                raise RuntimeError("Replicator did not create an RGB frame")
-            shutil.copyfile(frames[-1], path)
-            method = "replicator_render_product"
-        except Exception as exc:
-            errors.append(f"replicator: {type(exc).__name__}: {exc}")
-        finally:
-            shutil.rmtree(output_dir, ignore_errors=True)
+        with rep.new_layer():
+            camera = rep.create.camera(position=eye, look_at=target, focal_length=35)
+            product = rep.create.render_product(camera, (1280, 720))
+            writer = rep.WriterRegistry.get("BasicWriter")
+            writer.initialize(output_dir=str(output_dir), rgb=True)
+            writer.attach([product])
+            for _ in range(6):
+                rep.orchestrator.step(rt_subframes=4)
+            writer.detach()
+        frames = sorted(output_dir.glob("rgb*.png"))
+        if not frames:
+            raise RuntimeError("Replicator did not create an RGB frame")
+        shutil.copyfile(frames[-1], path)
+    finally:
+        shutil.rmtree(output_dir, ignore_errors=True)
 
     if not image_has_detail(path):
-        raise RuntimeError("screenshot capture failed: " + "; ".join(errors))
+        raise RuntimeError("Replicator screenshot has no visible detail")
     return {
         "path": str(path),
         "bytes": path.stat().st_size,
         "eye": eye,
         "target": target,
-        "method": method,
+        "method": "replicator_render_product",
     }
 
 

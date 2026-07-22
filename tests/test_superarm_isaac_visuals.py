@@ -84,7 +84,7 @@ def test_direct_grasp_sequence_rejects_static_visuals(tmp_path: Path):
         frame = Image.new("RGB", (320, 240), (210, 210, 210))
         ImageDraw.Draw(frame).rectangle((80, 40, 160, 190), fill=(30, 60, 90))
         frame.save(path)
-        frames.append({"name": name, "path": str(path), "method": "viewport_camera"})
+        frames.append({"name": name, "path": str(path), "method": "replicator_render_product"})
 
     with pytest.raises(RuntimeError, match="did not visibly change"):
         validate_direct_grasp_frames(frames)
