@@ -1,10 +1,11 @@
 # Wiki Index
 
-> 12 pages | Last updated: 2026-07-22T10:16:36.016Z
+> 13 pages | Last updated: 2026-07-22T11:39:26.105Z
 
 ## architecture
 
 - [Exact AmazingHand MJCF visuals in the LeLab URDF showroom](exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md) — # Exact AmazingHand MJCF visuals in the LeLab URDF showroom
+- [LeLab-controlled SuperArm in Isaac Sim 6.0](lelab-controlled-superarm-in-isaac-sim-6-0.md) — # LeLab-controlled SuperArm in Isaac Sim 6.0
 
 ## debugging
 

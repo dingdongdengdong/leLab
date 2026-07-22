@@ -2,9 +2,9 @@
 title: "SuperArm plus AmazingHand USD validation in Isaac Sim 6.0"
 tags: ["superarm", "isaac-sim", "usd", "amazinghand", "lerobot", "vla"]
 created: 2026-07-22T01:19:58.784Z
-updated: 2026-07-22T09:39:26.000Z
+updated: 2026-07-22T11:39:20.000Z
 sources: []
-links: ["superarm-real-hardware-motor-protocol-boundary.md"]
+links: ["superarm-real-hardware-motor-protocol-boundary.md", "lelab-controlled-superarm-in-isaac-sim-6-0.md"]
 category: debugging
 confidence: high
 schemaVersion: 1
@@ -130,7 +130,7 @@ repair, regression check, exact result/commit, remaining boundary, and reusable
 rule. Do not delete earlier entries and do not write PASS before inspecting the
 named evidence.
 
-## LeLab control integration in progress
+## LeLab control integration
 
 The accepted distribution is now a pinned LeLab runtime input rather than an
 unvalidated ZIP. Commit `a7c63c9` validates safe members, exact manifest/joint
@@ -244,3 +244,34 @@ cross-session UI state in sequence, then approved the repairs. Final leader
 verification passed 122 Python tests, Ruff, 28 frontend tests, ESLint, and the
 Vite build. This is still website/fake-runtime proof; live Isaac motion, reviewed
 close-ups, GIF, numeric acceptance, and real episode evidence remain open.
+
+## Live LeLab-to-Isaac acceptance result
+
+This section supersedes the earlier pending-live-capture statements above. The
+API-driven run at
+`isaacsim_test/artifacts/lelab_isaac_e2e_20260722T112742Z/` is `PASS` for the
+live numeric and lifecycle categories. Its report records Isaac Sim `6.0.0`,
+one articulation, exactly 13 expected joint names, and a six-value logical
+action. Open, arm-probe plus half-close, and close were accepted only after the
+command sequence advanced and all 13 reported targets matched the requested
+vector. Maximum settled errors were `0.009771 rad` for the arm and
+`0.000989 rad` for the hand. Emergency hold remained stable for 196 physics
+steps, the ten-second live timeout hold for 137 steps, managed disconnect
+finished in `6.446 s`, and reconnect passed.
+
+Live headless capture is disabled. Replicator writer, legacy camera,
+experimental RTX camera, viewport, isolated child-Kit, and paused Replicator
+probes did not both create a usable frame and return within a bounded deadline
+on the long-lived control stage. The runtime now reports
+`supports_capture=false`; the UI hides capture controls and uses measured 5+8
+joint telemetry to drive the hand-preserving URDF showroom.
+
+The copied whole/open/half-close PNGs and GIF in the run directory are
+explicitly `prevalidated_static_isaac_visuals` with
+`is_live_session_capture=false`. They are nonblank and visibly distinct, with
+adjacent mean absolute differences `8.2428` and `6.3470`, but they are not
+frames from the live LeLab session. The live report proves control convergence,
+holds, cleanup, and reconnect; it does not prove a real recording episode,
+trained policy, contact/grasp retention, passive followers as live PhysX
+bodies, ROS 2, or physical motor protocols. See
+[[lelab-controlled-superarm-in-isaac-sim-6-0]] for commands and troubleshooting.
