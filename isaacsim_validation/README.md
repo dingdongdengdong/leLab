@@ -37,7 +37,7 @@ wrist, proximal, and distal links. This avoids two competing articulations.
 
 | Profile | Purpose | Hand appearance |
 | --- | --- | --- |
-| `zip_learning` | Recommended Isaac/VLA/RL asset | Supplied Isaac USD wrist/palm/servo frame plus shell-free proximal/distal cores bound to the combined 13-DOF physics tree |
+| `zip_learning` | Recommended Isaac/VLA/RL asset | Supplied Isaac USD wrist/palm/servo frame plus 88 shell-free structural linkage followers driven from the combined 13-DOF physics tree |
 | `learning` | Diagnostic serial-URDF learning asset | Selected local URDF shell meshes |
 | `aligned` | LeLab transforms with original URDF visuals | All generated URDF visuals retained |
 | `served` | Browser/showroom-compatible tree | Hand visuals removed for the website overlay |
@@ -76,27 +76,33 @@ isaacsim_validation/run_asset_validator.sh \
 
 ## Evidence and proof boundaries
 
-The accepted frame-first run is
-`artifacts/isaacsim_superarm/20260722T051559Z-combined-zip-frame-first/`:
+The accepted passive-linkage run is
+`artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/`:
 
 - `zip_learning_isaac/isaac-report.json`: runtime `PASS`, 13 DOFs, one
-  articulation, arm motion PASS, hand motion PASS;
+  articulation, six-value logical action, arm motion PASS, hand motion PASS,
+  88 passive visual followers with 22 per finger, zero outer shells, and zero
+  physics schemas on the visual followers;
 - `zip_learning_isaac/asset-validator.json`: strict Isaac Sim 6.0 validator
   PASS with zero blocking issues;
 - `zip_learning_isaac/whole_robot.png`: reviewed full robot with attached hand;
 - `zip_learning_isaac/hand_open.png`, `hand_half_close.png`, and
   `hand_close.png`: reviewed, nonblank direct frames from measured physics
-  snapshots, with adjacent RMS differences 22.06 and 19.63.
+  snapshots, with adjacent RMS differences `14.7731` and `16.5492`;
+- `zip_learning_isaac/hand_finger1_close.png` through
+  `hand_finger4_close.png`: reviewed independent-finger evidence after each
+  case resets to the measured open baseline;
+- every reopened snapshot validates all 88 local transforms and source
+  identities against its generated follower contract within `1e-6`.
 
 This proves source integrity, USD composition, Isaac articulation response, and
-visible open/close motion. It does not prove real DM4340P CAN transport,
-AmazingHand serial transport, contact/grasp quality, or a trained policy
-rollout. The stable wrist/palm/servo-frame assembly remains visual-only. The
-rounded `proximal_shell` and `distal_shell` parts are excluded; one supplied
-proximal core and one supplied distal core are rigidly bound to each finger's
-two moving links. This follows the open-chain Isaac frame lineage in source
-commit `0e53b0dfadaae3234d14fb5830108ae931734d0c`, but does not claim to recreate
-the original closed-loop passive linkage.
+visible open/close motion with source-informed passive-linkage geometry. It
+does not prove real DM4340P CAN transport, AmazingHand serial transport,
+closed-loop PhysX constraints, contact/grasp quality, or a trained policy
+rollout. The runtime physics remains the existing eight-joint open-chain hand;
+the supplied linkage members are visual-only followers solved from checked
+offline source keyframes. Rounded `proximal_shell` and `distal_shell` parts
+remain excluded and are intentionally deferred to a later cosmetic pass.
 
 ## Required engineering record
 

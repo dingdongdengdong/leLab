@@ -2,7 +2,7 @@
 title: "SuperArm plus AmazingHand USD validation in Isaac Sim 6.0"
 tags: ["superarm", "isaac-sim", "usd", "amazinghand", "lerobot", "vla"]
 created: 2026-07-22T01:19:58.784Z
-updated: 2026-07-22T05:03:00.000Z
+updated: 2026-07-22T07:20:00.000Z
 sources: []
 links: ["superarm-real-hardware-motor-protocol-boundary.md"]
 category: debugging
@@ -38,35 +38,48 @@ reference only its visual payloads beneath the existing wrist and finger links.
 
 ## Accepted evidence
 
-Run ID: `20260722T051559Z-combined-zip-frame-first`.
+Run ID: `20260722T070208Z-combined-zip-passive-linkage-r3`.
 
-- [Runtime report](assets/superarm-isaac60-zip-frame-first-report.json): PASS,
-  13 DOFs, one articulation, five arm joints moved independently, and all eight
-  hand joints moved monotonically with maximum error below `0.000063 rad`.
-- [Strict validator](assets/superarm-isaac60-zip-frame-first-validator.json): PASS,
-  zero blocking issues, one articulation root, 13 revolute joints, 28 rigid
-  bodies, and 13 collisions.
-- [Whole robot](assets/superarm-isaac60-zip-frame-first-whole.png): reviewed full
-  SuperArm with the AmazingHand attached.
-- [Open](assets/superarm-isaac60-zip-frame-first-open.png),
-  [half close](assets/superarm-isaac60-zip-frame-first-half-close.png), and
-  [close](assets/superarm-isaac60-zip-frame-first-close.png): reviewed direct
+- [Runtime report](assets/superarm-isaac60-passive-linkage-report.json): PASS,
+  13 DOFs, one articulation, six-value logical action, arm and hand motion
+  PASS, and maximum eight-joint hand error `0.0000622 rad`.
+- [Strict validator](assets/superarm-isaac60-passive-linkage-validator.json):
+  PASS with zero blocking issues.
+- [Whole robot](assets/superarm-isaac60-passive-linkage-whole.png): reviewed
+  complete SuperArm with the composed hand attached.
+- [Open](assets/superarm-isaac60-passive-linkage-open.png),
+  [half close](assets/superarm-isaac60-passive-linkage-half-close.png), and
+  [close](assets/superarm-isaac60-passive-linkage-close.png): reviewed direct
   fixed-camera frames from measured Isaac physics snapshots. Adjacent RMS
-  differences are `22.0600` and `19.6275`.
+  differences are `14.7731` and `16.5492`.
+- Independent-finger closeups:
+  [finger 1](assets/superarm-isaac60-passive-linkage-finger1-close.png),
+  [finger 2](assets/superarm-isaac60-passive-linkage-finger2-close.png),
+  [finger 3](assets/superarm-isaac60-passive-linkage-finger3-close.png), and
+  [finger 4](assets/superarm-isaac60-passive-linkage-finger4-close.png).
+- [Reviewed contact sheet](assets/superarm-isaac60-passive-linkage-contact-sheet.png)
+  contains all seven hand frames plus the whole-robot frame.
+
+Each of the seven reopened snapshot stages contains exactly 88 structural
+visual followers, 22 per finger, zero excluded outer shells, and zero
+rigid-body/collision/joint/mass schemas on those followers. Source identity,
+local translation, and local orientation are checked against the generated
+snapshot contract within `1e-6`; quaternion sign equivalence is accepted.
 
 The full ignored runtime artifact is under
-`artifacts/isaacsim_superarm/20260722T051559Z-combined-zip-frame-first/`.
+`artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/`.
 Reproduction instructions are in `isaacsim_validation/README.md`.
 
 ## Proof boundaries
 
 This proves archive provenance, USD composition, one-articulation ownership,
-Isaac joint response, clean-package validation, and visible grasp-state change.
-It does not prove hardware transport, torque/current tuning, contact-quality
-simulation, grasp success, or a trained ACT/VLA policy. The stable
-wrist/palm/servo-frame assembly remains visual-only. Rounded proximal/distal
-outer shells are deliberately excluded, while the supplied proximal/distal
-cores follow the eight moving links.
+Isaac joint response, clean-package validation, source-identity-preserving
+linkage following, and visible grasp-state change. It does not prove hardware
+transport, torque/current tuning, closed-loop linkage physics, contact-quality
+simulation, grasp success, or a trained ACT/VLA policy. The 88 supplied
+structural linkage parts are visual-only followers driven from the eight
+measured hand motors. Rounded proximal/distal outer shells remain deliberately
+excluded until a later appearance-only validation pass.
 
 ## Historical Isaac frame lineage
 

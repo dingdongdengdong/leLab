@@ -1,0 +1,78 @@
+{
+  "articulation_root_count": 1,
+  "collision_count": 13,
+  "default_prim": "/superarm_amazinghand",
+  "fixed_joint_count": 15,
+  "issue_counts": {
+    "INFO": 1,
+    "WARNING": 1
+  },
+  "issues": [
+    {
+      "at": null,
+      "code": null,
+      "has_fix": false,
+      "message": "No Looks prim found in the stage, skipping MaterialsOnTopLevelOnlyRule",
+      "rule": "MaterialsOnTopLevelOnly",
+      "severity": "INFO"
+    },
+    {
+      "at": "StageId(root_layer=LayerId(identifier='/workspace/project/artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/zip_learning_isaac/superarm_amazinghand/superarm_amazinghand.usda'))",
+      "code": null,
+      "has_fix": false,
+      "message": "No thumbnail found at /workspace/project/artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/zip_learning_isaac/superarm_amazinghand/.thumbs/256x256/superarm_amazinghand.usda.png for robot asset </workspace/project/artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/zip_learning_isaac/superarm_amazinghand/superarm_amazinghand.usda>",
+      "rule": "ThumbnailExists",
+      "severity": "WARNING"
+    }
+  ],
+  "mass_api_count": 28,
+  "mesh_count": 0,
+  "meters_per_unit": 1.0,
+  "prim_count": 152,
+  "registered_rules": {
+    "IsaacSim.PhysicsRules": [
+      "PhysicsJointHasDriveOrMimicAPI",
+      "PhysicsJointMaxVelocity",
+      "PhysicsDriveAndJointState",
+      "DriveJointValueReasonable",
+      "JointHasCorrectTransformAndState",
+      "JointHasJointStateAPI",
+      "MimicAPICheck",
+      "RigidBodyHasMassAPI",
+      "RigidBodyHasCollider",
+      "NonAdjacentCollisionMeshesDoNotClash",
+      "InvisibleCollisionMeshHasPurposeGuide",
+      "HasArticulationRoot"
+    ],
+    "IsaacSim.RobotRules": [
+      "RobotNaming",
+      "CleanFolder",
+      "NoOverrides",
+      "RobotSchema",
+      "JointsExist",
+      "LinksExist",
+      "ThumbnailExists",
+      "CheckRobotRelationships",
+      "VerifyRobotPhysicsAttributesSourceLayer",
+      "VerifyRobotPhysicsSchemaSourceLayer"
+    ],
+    "IsaacSim.SimReadyAssetRules": [
+      "NoNestedMaterials",
+      "MaterialsOnTopLevelOnly"
+    ]
+  },
+  "revolute_joint_count": 13,
+  "rigid_body_count": 28,
+  "root_applied_schemas": [
+    "GeomModelAPI",
+    "IsaacRobotAPI"
+  ],
+  "runtime": "nvcr.io/nvidia/isaac-sim:6.0.0 (internal 6.0.0-rc.59)",
+  "target_usd": "/workspace/project/artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/zip_learning_isaac/superarm_amazinghand/superarm_amazinghand.usda",
+  "up_axis": "Z",
+  "verdict": {
+    "blocking_issue_count": 0,
+    "blocking_rules": [],
+    "passed": true
+  }
+}
