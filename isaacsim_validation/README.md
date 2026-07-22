@@ -74,6 +74,43 @@ isaacsim_validation/run_asset_validator.sh \
   "$RUN_ROOT/zip_learning_isaac/asset-validator.json"
 ```
 
+## Export the validated distribution
+
+The exporter accepts only a runtime `PASS`, a strict validator pass with zero
+blocking issues, one articulation root, 13 revolute joints, successful arm and
+hand motion, clean-package restoration, and the checked 88-part passive visual
+contract. It writes a deterministic single-root ZIP with relative USD
+composition arcs, both license texts, a manifest, per-file checksums, the
+shell-free passive-linkage helper, and bounded validation evidence. Measured
+70 MB snapshot stages and runtime world state are deliberately excluded.
+
+```bash
+export ACCEPTED_RUN=artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/zip_learning_isaac
+export DIST=superarm_amazinghand_isaac_sim_usd_distribution_20260722
+
+.venv/bin/python -m isaacsim_validation.export_superarm_usd_distribution \
+  --source-asset-dir "$ACCEPTED_RUN/superarm_amazinghand" \
+  --runtime-report "$ACCEPTED_RUN/isaac-report.json" \
+  --validator-report "$ACCEPTED_RUN/asset-validator.json" \
+  --preview-image "$ACCEPTED_RUN/passive_linkage_contact_sheet.png" \
+  --hand-license-file artifacts/amazinghand_distribution_audit/20260722/amazinghand_isaac_sim_usd_distribution_20260722/LICENSE-AmazingHandControl \
+  --output-zip "artifacts/distributions/$DIST.zip" \
+  --distribution-name "$DIST" \
+  --validation-run-id 20260722T070208Z-combined-zip-passive-linkage-r3
+```
+
+Accepted archive:
+
+```text
+artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722.zip
+SHA256: 98fab68292fce974aba37cb86faa1d4bb314a53b503ca7f3affc1052fd6071db
+entry: usd/superarm_amazinghand/superarm_amazinghand.usda
+```
+
+After extraction, run `sha256sum -c SHA256SUMS` from the distribution
+directory. The accepted clean-extraction validator result is retained under
+`artifacts/distribution_validation/superarm_amazinghand_isaac_sim_usd_distribution_20260722/`.
+
 ## Evidence and proof boundaries
 
 The accepted passive-linkage run is
