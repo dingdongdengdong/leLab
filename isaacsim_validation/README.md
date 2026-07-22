@@ -111,6 +111,38 @@ After extraction, run `sha256sum -c SHA256SUMS` from the distribution
 directory. The accepted clean-extraction validator result is retained under
 `artifacts/distribution_validation/superarm_amazinghand_isaac_sim_usd_distribution_20260722/`.
 
+## Managed LeLab control bridge
+
+`run_isaacsim60_control_bridge.sh` starts one long-lived Isaac Sim 6.0
+container for a previously validated/extracted distribution. It mounts the
+asset and Python package read-only, mounts only the session run directory
+read-write, binds the authenticated JSONL bridge to localhost, and removes only
+its uniquely named container.
+
+```bash
+install -d -m 0700 /tmp/superarm-isaac-session /tmp/superarm-isaac-secret
+python3 - <<'PY' > /tmp/superarm-isaac-secret/token
+import secrets
+print(secrets.token_hex(32))
+PY
+chmod 0600 /tmp/superarm-isaac-secret/token
+
+isaacsim_validation/run_isaacsim60_control_bridge.sh \
+  --asset-root /path/to/extracted/distribution-root \
+  --entrypoint /path/to/extracted/distribution-root/usd/superarm_amazinghand/superarm_amazinghand.usda \
+  --run-dir /tmp/superarm-isaac-session \
+  --host 127.0.0.1 --port 8765 \
+  --token-file /tmp/superarm-isaac-secret/token
+```
+
+The bridge owns Isaac APIs on its main thread and supports `hello`, atomic
+13-joint `command`, `observe`, `hold`, on-demand `capture`, and `shutdown`.
+Commands are named by the exact five-arm/eight-hand joint contract; articulation
+array order is never trusted. Capture creates and destroys a temporary
+Replicator camera/render product for each request and returns a path relative to
+the mounted run directory. It deliberately provides no continuous video loop,
+ROS 2 transport, external AmazingHand runtime, or real-hardware control.
+
 ## Evidence and proof boundaries
 
 The accepted passive-linkage run is

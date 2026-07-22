@@ -55,6 +55,9 @@ class IsaacBridgeClient:
             f"connected={self.connected})"
         )
 
+    def _redact(self, message: str) -> str:
+        return message.replace(self._token, "[REDACTED]") if self._token else message
+
     @property
     def connected(self) -> bool:
         return self._socket is not None and self._hello is not None
@@ -123,7 +126,7 @@ class IsaacBridgeClient:
                 raise IsaacBridgeError(code, "Isaac bridge request failed") from exc
             if response["ok"] is False:
                 error = response["error"]
-                raise IsaacBridgeError(error["code"], error["message"])
+                raise IsaacBridgeError(error["code"], self._redact(error["message"]))
             return {key: value for key, value in response.items() if key not in {"schema", "request_id", "ok"}}
 
     def command(self, targets: Mapping[str, float]) -> dict[str, Any]:

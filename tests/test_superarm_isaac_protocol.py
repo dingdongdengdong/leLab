@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import socket
+import struct
+import subprocess
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
@@ -85,6 +88,31 @@ def test_server_request_validation_has_stable_error_codes(
         validate_request(message, expected_token="secret")
 
     assert raised.value.code == code
+    assert "secret" not in str(raised.value)
+
+
+def test_server_rejects_unbounded_request_id():
+    message = _request()
+    message["request_id"] = "x" * 129
+
+    with pytest.raises(ProtocolError) as raised:
+        validate_request(message, expected_token="secret")
+
+    assert raised.value.code == "invalid_request"
+
+
+def test_auth_rejects_non_ascii_token_without_raw_type_error():
+    with pytest.raises(ProtocolError) as raised:
+        validate_request(_request(token="secrét"), expected_token="secret")
+
+    assert raised.value.code == "unauthorized"
+
+
+def test_unknown_operation_error_never_echoes_operation_or_token():
+    with pytest.raises(ProtocolError) as raised:
+        validate_request(_request("secret"), expected_token="secret")
+
+    assert raised.value.code == "unknown_op"
     assert "secret" not in str(raised.value)
 
 
@@ -226,7 +254,7 @@ def test_client_error_redacts_token():
             "schema": SCHEMA,
             "request_id": request["request_id"],
             "ok": False,
-            "error": {"code": "rejected", "message": "command rejected"},
+            "error": {"code": "rejected", "message": "command rejected for secret"},
         }
 
     client, thread, _ = _client_and_server(handler)
@@ -322,3 +350,447 @@ def test_client_serializes_concurrent_requests_without_frame_interleaving():
 
     assert errors == []
     assert operations == ["hello", "observe", "observe", "observe", "observe"]
+
+
+def test_control_bridge_import_is_host_safe_and_runtime_import_order_is_guarded():
+    from isaacsim_validation import control_bridge
+
+    source = Path(control_bridge.__file__).read_text(encoding="utf-8")
+    app_index = source.index("SimulationApp(")
+    cleanup_try_index = source.index("try:", app_index)
+    assert cleanup_try_index < source.index("import omni", app_index)
+    assert source.index("import omni", app_index) > app_index
+    assert source.index("from pxr", app_index) > app_index
+    assert source.index("from isaacsim.core", app_index) > app_index
+    assert source.index("finally:\n        app.close()", app_index) > cleanup_try_index
+
+
+def test_articulation_root_selection_requires_exactly_one_candidate():
+    from isaacsim_validation.control_bridge import require_unique_articulation_root
+
+    only = object()
+    assert require_unique_articulation_root([only]) is only
+    with pytest.raises(RuntimeError, match="expected one articulation root, found 0"):
+        require_unique_articulation_root([])
+    with pytest.raises(RuntimeError, match="expected one articulation root, found 2"):
+        require_unique_articulation_root([object(), object()])
+
+
+class _FakeResource:
+    def __init__(self, events, name):
+        self.events = events
+        self.name = name
+
+    def destroy(self):
+        self.events.append(f"destroy:{self.name}")
+
+
+class _FakeWriter:
+    def __init__(self, owner, *, fail_detach=False):
+        self.owner = owner
+        self.fail_detach = fail_detach
+
+    def initialize(self, *, output_dir, rgb):
+        assert rgb is True
+        self.owner.output_dir = Path(output_dir)
+
+    def attach(self, products):
+        assert len(products) == 1
+        self.owner.events.append("attach")
+
+    def detach(self):
+        self.owner.events.append("detach")
+        if self.fail_detach:
+            raise RuntimeError("detach failed")
+
+
+class _FakeReplicator:
+    class _Layer:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def __init__(self, *, fail_detach=False):
+        self.events = []
+        self.output_dir = None
+        self.writer = _FakeWriter(self, fail_detach=fail_detach)
+        owner = self
+
+        class Create:
+            @staticmethod
+            def camera(**_kwargs):
+                return _FakeResource(owner.events, "camera")
+
+            @staticmethod
+            def render_product(_camera, _resolution, *, force_new):
+                assert force_new is True
+                return _FakeResource(owner.events, "product")
+
+        class Registry:
+            @staticmethod
+            def get(name):
+                assert name == "BasicWriter"
+                return owner.writer
+
+        class Orchestrator:
+            @staticmethod
+            def step(**_kwargs):
+                assert owner.output_dir is not None
+                (owner.output_dir / "rgb_0.png").write_bytes(b"new-frame")
+
+            @staticmethod
+            def wait_until_complete():
+                owner.events.append("complete")
+
+        self.create = Create()
+        self.WriterRegistry = Registry()
+        self.orchestrator = Orchestrator()
+
+    def new_layer(self):
+        return self._Layer()
+
+
+def test_replicator_capture_atomically_replaces_output_and_destroys_resources(tmp_path):
+    from isaacsim_validation.control_bridge import render_replicator_png
+
+    output = tmp_path / "captures" / "hand.png"
+    output.parent.mkdir()
+    output.write_bytes(b"old-frame")
+    rep = _FakeReplicator()
+
+    size = render_replicator_png(
+        rep,
+        output=output,
+        temporary_root=tmp_path,
+        eye=[1.0, 1.0, 1.0],
+        target=[0.0, 0.0, 0.0],
+        image_has_detail=lambda path: path.read_bytes() == b"new-frame",
+    )
+
+    assert size == len(b"new-frame")
+    assert output.read_bytes() == b"new-frame"
+    assert rep.events[-3:] == ["detach", "destroy:product", "destroy:camera"]
+    assert not list(tmp_path.glob("capture-*"))
+
+
+def test_replicator_cleanup_continues_when_detach_fails(tmp_path):
+    from isaacsim_validation.control_bridge import render_replicator_png
+
+    rep = _FakeReplicator(fail_detach=True)
+    with pytest.raises(RuntimeError, match="detach failed"):
+        render_replicator_png(
+            rep,
+            output=tmp_path / "hand.png",
+            temporary_root=tmp_path,
+            eye=[1.0, 1.0, 1.0],
+            target=[0.0, 0.0, 0.0],
+            image_has_detail=lambda _path: True,
+        )
+
+    assert "destroy:product" in rep.events
+    assert "destroy:camera" in rep.events
+    assert not list(tmp_path.glob("capture-*"))
+
+
+def test_control_bridge_dispatch_survives_repeated_capture_then_command():
+    from isaacsim_validation.control_bridge import dispatch_request
+
+    class FakeRuntime:
+        def __init__(self):
+            self.commands = []
+            self.captures = []
+
+        def capture(self, view, name):
+            self.captures.append((view, name))
+            return {"path": f"captures/{name}.png", "bytes": 123}
+
+        def command(self, targets):
+            self.commands.append(targets)
+            return {"accepted": True, "command_sequence": len(self.commands)}
+
+    runtime = FakeRuntime()
+    first, shutdown = dispatch_request(
+        runtime,
+        {"op": "capture", "request_id": "one", "view": "hand", "name": "before"},
+    )
+    second, shutdown_again = dispatch_request(
+        runtime,
+        {"op": "capture", "request_id": "two", "view": "whole", "name": "after"},
+    )
+    targets = expand_logical_action([0.0] * 6)
+    command, command_shutdown = dispatch_request(
+        runtime,
+        {"op": "command", "request_id": "three", "targets": targets},
+    )
+
+    assert first["path"] == "captures/before.png"
+    assert second["path"] == "captures/after.png"
+    assert command["accepted"] is True
+    assert runtime.captures == [("hand", "before"), ("whole", "after")]
+    assert runtime.commands == [targets]
+    assert (shutdown, shutdown_again, command_shutdown) == (False, False, False)
+
+
+def test_control_bridge_server_handles_full_client_lifecycle():
+    from isaacsim_validation.control_bridge import serve
+
+    class FakeRuntime:
+        def __init__(self):
+            self.steps = 0
+            self.commands = []
+
+        def hello(self):
+            return {
+                "runtime": "isaac_sim",
+                "physical_dof_count": 13,
+                "logical_action_width": 6,
+                "joint_names": list(expand_logical_action([0.0] * 6)),
+            }
+
+        def step(self):
+            self.steps += 1
+            time.sleep(0.0001)
+
+        def command(self, targets):
+            self.commands.append(targets)
+            return {"accepted": True}
+
+        def observe(self):
+            return {"physics_step": self.steps}
+
+        def hold(self):
+            return {"accepted": True}
+
+        def capture(self, view, name):
+            return {"path": f"captures/{view}-{name}.png", "bytes": 123}
+
+        def close(self):
+            return None
+
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    runtime = FakeRuntime()
+    thread = threading.Thread(
+        target=serve,
+        kwargs={"runtime": runtime, "host": "127.0.0.1", "port": port, "token": "secret"},
+        daemon=True,
+    )
+    thread.start()
+    deadline = time.monotonic() + 1.0
+    idle_client = socket.create_connection(("127.0.0.1", port), timeout=0.2)
+    client = IsaacBridgeClient("127.0.0.1", port, token="secret", timeout_s=0.2)
+    while True:
+        try:
+            client.connect()
+            break
+        except (IsaacBridgeError, ConnectionRefusedError):
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
+
+    assert client.capture("hand", "one")["path"] == "captures/hand-one.png"
+    targets = expand_logical_action([0.0] * 6)
+    assert client.command(targets)["accepted"] is True
+    assert client.shutdown()["accepted"] is True
+    thread.join(timeout=1)
+
+    assert not thread.is_alive()
+    assert runtime.commands == [targets]
+    assert idle_client.recv(1) == b""
+    idle_client.close()
+
+
+def test_control_bridge_survives_runtime_hello_failure_for_later_client():
+    from isaacsim_validation.control_bridge import serve
+
+    class FlakyRuntime:
+        def __init__(self):
+            self.hello_calls = 0
+
+        def hello(self):
+            self.hello_calls += 1
+            if self.hello_calls == 1:
+                raise RuntimeError("hello failed")
+            return {"runtime": "isaac_sim"}
+
+        def step(self):
+            time.sleep(0.0001)
+
+        def close(self):
+            return None
+
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    runtime = FlakyRuntime()
+    thread = threading.Thread(
+        target=serve,
+        kwargs={"runtime": runtime, "host": "127.0.0.1", "port": port, "token": "secret"},
+        daemon=True,
+    )
+    thread.start()
+    deadline = time.monotonic() + 1.0
+    first = IsaacBridgeClient("127.0.0.1", port, token="secret", timeout_s=0.2)
+    while True:
+        try:
+            first.connect()
+        except ConnectionRefusedError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
+            continue
+        except IsaacBridgeError as exc:
+            assert exc.code == "runtime_error"
+            break
+
+    second = IsaacBridgeClient("127.0.0.1", port, token="secret", timeout_s=0.2)
+    assert second.connect()["runtime"] == "isaac_sim"
+    second.shutdown()
+    thread.join(timeout=1)
+    assert not thread.is_alive()
+
+
+def test_control_bridge_survives_hello_peer_reset_before_response():
+    from isaacsim_validation.control_bridge import serve
+
+    class SlowRuntime:
+        def __init__(self):
+            self.hello_calls = 0
+
+        def hello(self):
+            self.hello_calls += 1
+            if self.hello_calls == 1:
+                time.sleep(0.05)
+            return {"runtime": "isaac_sim"}
+
+        def step(self):
+            time.sleep(0.0001)
+
+        def close(self):
+            return None
+
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    runtime = SlowRuntime()
+    thread = threading.Thread(
+        target=serve,
+        kwargs={"runtime": runtime, "host": "127.0.0.1", "port": port, "token": "secret"},
+        daemon=True,
+    )
+    thread.start()
+    deadline = time.monotonic() + 1.0
+    while True:
+        try:
+            reset_peer = socket.create_connection(("127.0.0.1", port), timeout=0.2)
+            break
+        except ConnectionRefusedError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
+    reset_peer.sendall(encode_message(_request()))
+    reset_peer.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    reset_peer.close()
+    time.sleep(0.1)
+
+    client = IsaacBridgeClient("127.0.0.1", port, token="secret", timeout_s=0.2)
+    assert client.connect()["runtime"] == "isaac_sim"
+    client.shutdown()
+    thread.join(timeout=1)
+    assert not thread.is_alive()
+
+
+def test_control_launcher_has_exact_isolation_and_lifecycle_contract():
+    launcher = Path("isaacsim_validation/run_isaacsim60_control_bridge.sh").read_text(
+        encoding="utf-8"
+    )
+
+    required = [
+        "nvcr.io/nvidia/isaac-sim:6.0.0",
+        "--network host",
+        "ACCEPT_EULA=Y",
+        "NVIDIA_VISIBLE_DEVICES=all",
+        "NVIDIA_DRIVER_CAPABILITIES=all",
+        "Path(isaacsim_validation.__file__).parent",
+        ":/workspace/isaacsim_validation/isaacsim_validation:ro",
+        ":/workspace/asset:ro",
+        ":/workspace/run:rw",
+        "PYTHONPATH=/workspace/isaacsim_validation",
+        "--entrypoint /isaac-sim/python.sh",
+        "-m isaacsim_validation.control_bridge",
+        "container.log",
+        "trap cleanup EXIT INT TERM",
+        "docker rm -f \"$container_name\"",
+    ]
+    for marker in required:
+        assert marker in launcher
+
+
+def test_control_launcher_rejects_token_inside_rw_run_directory(tmp_path):
+    asset_root = tmp_path / "asset"
+    run_dir = tmp_path / "run"
+    asset_root.mkdir()
+    run_dir.mkdir()
+    entrypoint = asset_root / "robot.usda"
+    entrypoint.write_text("#usda 1.0\n", encoding="utf-8")
+    token = run_dir / "token"
+    token.write_text("secret\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            "bash",
+            "isaacsim_validation/run_isaacsim60_control_bridge.sh",
+            "--asset-root",
+            str(asset_root),
+            "--entrypoint",
+            str(entrypoint),
+            "--run-dir",
+            str(run_dir),
+            "--token-file",
+            str(token),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "outside the read-write run directory" in result.stderr
+
+
+def test_control_launcher_rejects_rw_run_directory_overlapping_read_only_asset(tmp_path):
+    asset_root = tmp_path / "asset"
+    asset_root.mkdir()
+    entrypoint = asset_root / "robot.usda"
+    entrypoint.write_text("#usda 1.0\n", encoding="utf-8")
+    token = tmp_path.parent / f"{tmp_path.name}-bridge-token"
+    token.write_text("secret\n", encoding="utf-8")
+    try:
+        result = subprocess.run(
+            [
+                "bash",
+                "isaacsim_validation/run_isaacsim60_control_bridge.sh",
+                "--asset-root",
+                str(asset_root),
+                "--entrypoint",
+                str(entrypoint),
+                "--run-dir",
+                str(tmp_path),
+                "--token-file",
+                str(token),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    finally:
+        token.unlink(missing_ok=True)
+
+    assert result.returncode == 2
+    assert "read-write run directory must not overlap read-only sources" in result.stderr

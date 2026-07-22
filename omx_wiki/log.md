@@ -232,3 +232,7 @@
 - **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, so-101-leader-to-superarm-recording-guide.md, superarm-follower-calibration-wizard.md, superarm-runtime-joint-status-semantics.md, superarm-urdf-validation-in-isaac-sim-6-0.md, superarm-website-real-hardware-readiness-page.md
 - **Summary:** Lint: 8 issues (8 orphan, 0 stale, 0 broken, 0 contradictions)
 
+
+## [2026-07-22T09:01:36.252Z] update
+- **Pages:** superarm-urdf-validation-in-isaac-sim-6-0.md
+- **Summary:** Recorded the pinned LeLab distribution, authenticated localhost protocol, approved main-thread Isaac bridge boundary, installed-wheel proof, and remaining live Isaac acceptance requirement.

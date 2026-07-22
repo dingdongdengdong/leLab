@@ -129,3 +129,31 @@ Every later resolved Isaac USD problem must be appended to
 repair, regression check, exact result/commit, remaining boundary, and reusable
 rule. Do not delete earlier entries and do not write PASS before inspecting the
 named evidence.
+
+## LeLab control integration in progress
+
+The accepted distribution is now a pinned LeLab runtime input rather than an
+unvalidated ZIP. Commit `a7c63c9` validates safe members, exact manifest/joint
+contracts, checksums, and the extraction cache, then expands one six-value
+logical action into the named 13-joint Isaac target. Commit `7c994a8` adds the
+versioned authenticated localhost JSONL protocol with bounded frames, response
+correlation, credential redaction, serialized calls, and no implicit retry of
+state changes.
+
+Commit `73409a2` records the architect-approved implementation boundaries. The
+subsequent bridge slice keeps all Isaac APIs on the SimulationApp main thread,
+discovers the articulation root rather than hard-coding a prim path, maps every
+DOF by name, and provides atomic command, observation, hold, on-demand capture,
+and shutdown operations. The container launcher mounts the asset and package
+read-only, passes a file-backed token, writes session-local metadata/logs, and
+removes only its unique owned container. The token and read-write run directory
+must be disjoint from both read-only source mounts. A socket is not promoted to
+the sole active client until it completes an authenticated `hello`; idle
+unauthenticated sockets expire after one second.
+
+Current proof is intentionally limited to host-safe tests, loopback protocol
+lifecycle, shell validation, Ruff, and an isolated installed-wheel resource
+smoke. Do not call the new LeLab-to-Isaac path live-validated until the host
+runtime/API are connected and the final Isaac 6.0 motion plus close-up capture
+acceptance run is recorded. MuJoCo remains a separate backend; no ROS 2, real
+hardware, or external AmazingHandControl runtime is introduced.

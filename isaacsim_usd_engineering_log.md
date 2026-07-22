@@ -479,3 +479,49 @@ Do not write `PASS` until the named evidence exists and has been inspected.
   next committed slice.
 - **Reusable rule:** once delivery of a state change becomes uncertain, close
   the transport and require explicit recovery instead of guessing or replaying.
+
+### 18. The validated USD had no package-safe long-lived Isaac control process
+
+- **Observed evidence:** the accepted distribution could be validated and
+  rendered only by one-shot scripts. LeLab could not keep its articulation
+  alive, address joints by name, request telemetry, hold safely, or capture a
+  frame without restarting Isaac.
+- **Cause:** validation scripts owned both the test sequence and application
+  lifecycle; there was no main-thread bridge, isolated launcher, or installed
+  package contract for continuous local control.
+- **Repair:** the new bridge starts `SimulationApp` before every Omniverse/Isaac
+  import, enumerates and requires exactly one articulation root, rejects anything
+  except the exact 13 names, maps indices by name, and runs physics plus a
+  single-client authenticated JSONL server on the Isaac main thread. Its
+  launcher mounts the asset and Python package read-only, keeps artifacts in a
+  session run directory, requires the token file to remain outside that
+  read-write directory, mounts the token separately read-only, uses a unique
+  owned container, and records metadata/logs. Each on-demand capture warms
+  Replicator, waits for output, independently tears down its writer, render
+  product, camera, and temporary layer, validates a staged PNG, and atomically
+  publishes it before another command. All post-app imports are inside the
+  application cleanup guard, and token-bearing client/server messages are
+  redacted. An unauthenticated socket stays pending only until a one-second
+  hello deadline (and is replaced by the next candidate), while the read-write
+  run directory must be disjoint from both read-only source mounts. Runtime or
+  peer-reset failures during authenticated hello close only that pending socket,
+  leaving the bridge available for a later client.
+- **Regression coverage:** the 41-test protocol/bridge suite locks standalone
+  import ordering and cleanup, unique articulation selection, request-ID bounds,
+  non-ASCII authentication, token redaction, full loopback lifecycle, executed
+  Replicator teardown including a detach failure, repeated capture followed by
+  command, exact launcher mounts/environment/entrypoint/token isolation,
+  idle-client eviction, failed/reset hello recovery, read-write/read-only path
+  disjointness, framing, correlation, serialization, and non-retry semantics.
+- **Verification:** all 41 focused tests pass; shell syntax and Ruff pass. A
+  fresh wheel installed into an isolated Python 3.14 environment imports the
+  shared protocol and host-safe bridge module and contains `bridge_protocol.py`,
+  `control_bridge.py`, `run_isaacsim60_control_bridge.sh`, and the required
+  passive-linkage JSON data.
+- **Remaining boundary:** these are host-safe, packaging, and loopback proofs.
+  Live Isaac articulation motion and close-up visual capture through this new
+  bridge remain mandatory end-to-end acceptance work after the LeLab runtime
+  and API are connected.
+- **Reusable rule:** keep simulator APIs on the thread that owns the application,
+  mount code/assets read-only, and treat wheel-installed resources as part of
+  the runtime contract rather than relying on the repository checkout.

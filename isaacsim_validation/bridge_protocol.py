@@ -78,12 +78,16 @@ def validate_request(message: Mapping[str, Any], *, expected_token: str) -> dict
     if message.get("schema") != SCHEMA:
         raise ProtocolError("schema_mismatch", f"bridge schema must be {SCHEMA}")
     request_id = _required_text(message, "request_id")
+    if len(request_id) > 128:
+        raise ProtocolError("invalid_request", "bridge request_id exceeds 128 characters")
     token = message.get("token")
-    if not isinstance(token, str) or not hmac.compare_digest(token, expected_token):
+    if not isinstance(token, str) or not hmac.compare_digest(
+        token.encode("utf-8"), expected_token.encode("utf-8")
+    ):
         raise ProtocolError("unauthorized", "bridge request token is invalid")
     op = message.get("op")
     if not isinstance(op, str) or op not in OPERATIONS:
-        raise ProtocolError("unknown_op", f"unsupported bridge operation: {op!r}")
+        raise ProtocolError("unknown_op", "unsupported bridge operation")
 
     allowed = {"schema", "request_id", "token", "op"}
     normalized: dict[str, Any] = {"request_id": request_id, "op": op}
