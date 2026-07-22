@@ -142,3 +142,15 @@ def test_static_snapshot_renderer_uses_one_fixed_camera_for_all_hand_states():
     assert "fixed_hand_pose = None" in renderer
     assert "fixed_pose=fixed_hand_pose" in renderer
     assert '"static_replicator_from_physics_snapshot"' in renderer
+
+
+def test_static_snapshot_renderer_enables_capture_extension_before_rendering():
+    renderer = (
+        Path(__file__).parents[1]
+        / "isaacsim_validation"
+        / "render_physics_snapshots.py"
+    ).read_text()
+
+    extension = 'enable_extension("omni.kit.renderer.capture")'
+    assert extension in renderer
+    assert renderer.index(extension) < renderer.index("def _capture(")

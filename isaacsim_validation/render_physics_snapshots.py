@@ -25,8 +25,12 @@ app = SimulationApp(
 
 import omni.replicator.core as rep  # noqa: E402
 import omni.usd  # noqa: E402
+from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
 from pxr import Usd, UsdGeom, UsdLux  # noqa: E402
 from visuals import image_has_detail, validate_direct_grasp_frames  # noqa: E402
+
+enable_extension("omni.kit.renderer.capture")
+app.update()
 
 
 def _write_json(path: Path, payload: dict) -> None:
