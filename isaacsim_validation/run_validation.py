@@ -32,6 +32,7 @@ import omni.replicator.core as rep  # noqa: E402
 import omni.timeline  # noqa: E402
 import omni.usd  # noqa: E402
 from contracts import ARM_JOINTS, HAND_JOINTS, grasp_to_urdf_targets  # noqa: E402
+from import_config import urdf_import_settings  # noqa: E402
 from isaacsim.core.api import World  # noqa: E402
 from isaacsim.core.experimental.prims import Articulation  # noqa: E402
 from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
@@ -181,13 +182,7 @@ def main() -> int:
         import_config = URDFImporterConfig(
             urdf_path=str(urdf),
             usd_path=str(run_dir),
-            fix_base=True,
-            joint_drive_type="force",
-            joint_target_type="position",
-            override_joint_stiffness=180.0,
-            override_joint_damping=18.0,
-            run_asset_transformer=False,
-            run_multi_physics_conversion=True,
+            **urdf_import_settings(),
         )
         report["phase"] = "importing_urdf"
         _write_json(report_path, report)
