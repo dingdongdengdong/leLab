@@ -5,19 +5,25 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from isaacsim_validation.contracts import (
+    FIXED_GRASP_DEGREES,
+    expand_logical_action,
+    resolve_grasp_code,
+)
+
 from .mapping import ARM_JOINTS, ARM_MAX_RAD, ARM_MIN_RAD, UI_FINGERS
 
 MOTION_FEATURE = "amazinghand_motion.pos"
 CANONICAL_FEATURES = [*[f"{name}.pos" for name in ARM_JOINTS], MOTION_FEATURE]
-MOTION_DEGREES = {0.0: 0.0, 0.5: 55.0, 1.0: 110.0}
+MOTION_DEGREES = FIXED_GRASP_DEGREES
 
 
 def resolve_motion_code(value: float) -> float:
     """Resolve a continuous grasp value to one of the three fixed hand motions."""
-    value = float(value)
-    if not math.isfinite(value):
-        raise ValueError("AmazingHand motion must be finite")
-    return min(MOTION_DEGREES, key=lambda code: abs(code - value))
+    try:
+        return resolve_grasp_code(value)
+    except ValueError as exc:
+        raise ValueError("AmazingHand motion must be finite") from exc
 
 
 def normalize_superarm_action(action: list[float] | dict[str, float]) -> list[float]:
@@ -44,6 +50,12 @@ def action_to_runtime_commands(values: list[float]) -> tuple[dict[str, float], d
     hand_degrees = MOTION_DEGREES[normalized[-1]]
     hand = {finger: [hand_degrees, hand_degrees] for finger in UI_FINGERS}
     return arm, hand
+
+
+def action_to_isaac_targets(values: list[float]) -> dict[str, float]:
+    """Expand the canonical 6D action into 13 positive URDF/Isaac targets."""
+
+    return expand_logical_action(normalize_superarm_action(values))
 
 
 def map_so101_action_to_superarm(

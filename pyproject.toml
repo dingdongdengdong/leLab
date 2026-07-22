@@ -44,11 +44,12 @@ lelab = "lelab.scripts.lelab:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["lelab*", "frontend"]
+include = ["lelab*", "frontend", "isaacsim_validation*"]
 
 [tool.setuptools.package-data]
 frontend = ["dist/**/*"]
 "lelab.superarm" = ["data/*.yaml"]
+"isaacsim_validation" = ["*.sh", "data/*.json"]
 
 [tool.ruff]
 target-version = "py312"

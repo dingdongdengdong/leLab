@@ -413,3 +413,40 @@ Do not write `PASS` until the named evidence exists and has been inspected.
 - **Reusable rule:** publish the smallest reusable robot package, validate it
   after clean extraction, and ship state-dependent visual logic as a checked
   helper rather than confusing diagnostic snapshot stages with the asset.
+
+### 16. The exported ZIP was relocatable but not yet safe to trust as a LeLab runtime input
+
+- **Observed evidence:** the distribution exporter proved a deterministic
+  single-root archive, but LeLab had no consumer-side guard against traversal,
+  links/devices, normalized duplicates, resource-exhaustion archives, modified
+  checksums, renamed joints, or a corrupted extraction cache. LeLab and the
+  Isaac contract also quantized exact grasp boundaries differently.
+- **Cause:** validation existed only on the producer path, and the LeLab action
+  layer duplicated the grasp table/nearest-code rule instead of importing the
+  already-tested Isaac contract.
+- **Repair:** the new host-safe distribution loader validates an optional
+  trusted archive SHA, member type/path/count/size/compression bounds, the
+  manifest schema, the exact five-arm/eight-hand joint-name sets, the complete
+  `SHA256SUMS` inventory, and every extracted cache file before reuse. LeLab now
+  imports the shared grasp degrees and threshold quantizer, and its Isaac action
+  wrapper emits one canonical, finite, exactly named 13-target mapping.
+- **Regression coverage:** 27 focused contract/distribution tests cover the
+  trusted digest, unsafe paths, symlinks/devices, normalized duplicates,
+  checksum mismatch, wrong schema/counts/names, oversized extraction, cache
+  corruption repair, exact 0.25/0.75 boundaries, strict numeric targets, arm
+  clamping, and six-to-13 expansion. The exporter’s three existing tests remain
+  green.
+- **Verification:** the 30-test focused suite passes; Ruff passes on every
+  changed Python file; a built wheel contains the validation package, shell
+  launchers, passive-linkage JSON data, and the new LeLab loader. The accepted
+  ZIP validates with its pinned SHA
+  `a26ba228eee76f815291adef029c7ed510020cd20bdfae9046c6319d7d99c195`
+  and resolves the expected USD entrypoint from a fresh cache.
+- **Result/commit:** this entry is included with the distribution-contract
+  feature slice.
+- **Remaining boundary:** archive checksums prove internal integrity; source
+  authenticity requires the caller to provide the expected archive SHA. This
+  slice does not start Isaac or prove runtime motion.
+- **Reusable rule:** validate release artifacts again at the consumer boundary,
+  pin external inputs when authenticity matters, and keep one action/joint-name
+  contract shared across producer, host, and simulator code.
