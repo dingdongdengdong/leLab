@@ -103,7 +103,7 @@ Accepted archive:
 
 ```text
 artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722.zip
-SHA256: 98fab68292fce974aba37cb86faa1d4bb314a53b503ca7f3affc1052fd6071db
+SHA256: a26ba228eee76f815291adef029c7ed510020cd20bdfae9046c6319d7d99c195
 entry: usd/superarm_amazinghand/superarm_amazinghand.usda
 ```
 

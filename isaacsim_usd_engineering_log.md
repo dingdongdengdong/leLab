@@ -397,8 +397,8 @@ Do not write `PASS` until the named evidence exists and has been inspected.
   rejection, and refusal to publish failed evidence.
 - **Verification:** archive
   `artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722.zip`
-  is 2,987,777 bytes with SHA256
-  `98fab68292fce974aba37cb86faa1d4bb314a53b503ca7f3affc1052fd6071db`.
+  is 2,987,778 bytes with SHA256
+  `a26ba228eee76f815291adef029c7ed510020cd20bdfae9046c6319d7d99c195`.
   `unzip -t` and every packaged `SHA256SUMS` entry pass. A clean extraction
   resolves 457 text USD asset references, the packaged solver returns 88
   follower poses, and Isaac Sim 6.0 strict validation of the extracted
