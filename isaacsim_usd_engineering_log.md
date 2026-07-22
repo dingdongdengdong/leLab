@@ -87,3 +87,131 @@ Append a numbered item and preserve earlier entries. Each item must include:
 7. reusable rule.
 
 Do not write `PASS` until the named evidence exists and has been inspected.
+
+### 3. The supplied hand drives produced too little visible travel
+
+- **Observed evidence:** the first hand-only runtime could numerically change
+  joint values, but the direct frames remained nearly identical and did not
+  demonstrate useful open/close travel.
+- **Cause:** the supplied angular drives had damping but no authored stiffness
+  suitable for this position-control validation.
+- **Repair:** preparation authors stiffness `3.1415927` on exactly the eight
+  expected hand angular drives while retaining the supplied joint limits and
+  damping.
+- **Regression coverage:** the distribution test requires eight drive
+  stiffness opinions and rejects a changed joint contract.
+- **Verification:** the final combined run at
+  `artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/`
+  measures monotonic open, half-close, and close motion with maximum joint
+  errors below `0.000063 rad`. Commit `c94e980` contains the repair.
+- **Remaining boundary:** this is an Isaac position-drive setting, not a claim
+  about real AmazingHand current, torque, or serial-controller gains.
+- **Reusable rule:** numeric movement alone is insufficient; the drive
+  configuration must also produce an inspectable visual range without changing
+  the hardware-facing action contract.
+
+### 4. A hand-only USD could not be nested safely into the combined robot
+
+- **Observed evidence:** the supplied archive already contained an eight-joint
+  hand articulation, while the SuperArm URDF already contained those eight hand
+  joints beneath its five arm joints. Referencing both would create competing
+  physics ownership.
+- **Cause:** the source hand USD was packaged as a standalone robot, not as a
+  visual-only payload for an existing combined articulation.
+- **Repair:** `zip_hand_binding.py` copies only the checked visual payloads and
+  binds 26 wrist/palm parts plus 16 proximal/distal moving parts below the
+  existing combined links. No hand articulation, rigid body, joint, or collider
+  is imported from the archive.
+- **Regression coverage:** `tests/test_zip_hand_binding.py` locks the visual
+  payload allowlist, 26/16 part counts, and distal reference contract.
+- **Verification:** `isaac-report.json` reports 13 physical DOFs and one
+  articulation root; `asset-validator.json` independently reports 13 revolute
+  joints and one articulation root. Commit `c94e980` contains the binding.
+- **Remaining boundary:** detailed closed-loop linkage and backplate pieces are
+  static visual geometry; the moving proximal/distal shells follow the eight
+  simplified physical links.
+- **Reusable rule:** when combining robot assets, choose one physics owner and
+  import appearance separately rather than nesting duplicate articulations.
+
+### 5. Whole-frame or cropped evidence could hide an incorrect hand
+
+- **Observed evidence:** earlier views either showed only a small hand area or
+  used derived crops, making it hard to judge whether all fingers moved and
+  remained attached.
+- **Cause:** the evidence pipeline did not require fixed-camera direct renders
+  for all requested grasp states.
+- **Repair:** the renderer opens each measured physics snapshot and captures
+  direct `open`, `half_close`, and `close` frames with one fixed close-up camera,
+  plus a separate whole-robot frame.
+- **Regression coverage:** visual tests reject blank frames, derived crop
+  evidence, static three-frame sequences, and inconsistent camera setup.
+- **Verification:** reviewed files `hand_open.png`, `hand_half_close.png`,
+  `hand_close.png`, and `whole_robot.png` in the final run are nonblank and show
+  the attached hand; adjacent RMS changes are `26.3583` and `20.8902`. Commit
+  `c94e980` contains the capture contract.
+- **Remaining boundary:** images prove visible kinematic change, not contact
+  force or grasp success.
+- **Reusable rule:** visual robot claims require direct, close, fixed-camera,
+  state-labeled frames in addition to numeric joint readback.
+
+### 6. The whole-robot camera cropped the newly composed hand
+
+- **Observed evidence:** an otherwise successful combined render omitted part
+  of the hand in `20260722T042902Z-combined-zip-usd/whole_robot.png`.
+- **Cause:** the URDF importer authored an extents hint before the ZIP visual
+  overlay was composed, so the stale cached bound did not include later hand
+  references.
+- **Repair:** close-ups may use the hand-link hint, but the whole-robot camera
+  now recomputes the composed render-purpose bound with
+  `useExtentsHint=False`.
+- **Regression coverage:** the camera-bound unit test requires render-purpose
+  payloads and the profile-specific extents-hint behavior.
+- **Verification:** the reviewed final `whole_robot.png` contains the complete
+  arm and hand. Commit `c94e980` contains the repair.
+- **Remaining boundary:** future post-import overlays also need live bounds or
+  a deliberately regenerated root extents hint.
+- **Reusable rule:** an extents hint is only authoritative for the composition
+  state in which it was authored.
+
+### 7. Distal placement opinions violated the clean robot-package rules
+
+- **Observed evidence:** strict validation of the intermediate combined asset
+  reported `NoOverrides` for locally authored distal visual offsets.
+- **Cause:** the binding layer added transforms on prims whose referenced
+  source already defined their content, producing validator-hostile override
+  opinions in the robot root layer.
+- **Repair:** the `-0.058 m` distal offset now lives inside the generated
+  referenced `zip_hand_payloads/distal_visuals.usda`; the robot layer authors
+  only clean reference arcs.
+- **Regression coverage:** the binding test requires the generated distal
+  payload and forbids the previous local translate-op implementation.
+- **Verification:** the final strict validator reports zero blocking rules.
+  Commit `c94e980` contains the repair.
+- **Remaining boundary:** generated visual payloads must stay beside the robot
+  package because the root layer uses relative references.
+- **Reusable rule:** package-local placement belongs in a referenced asset
+  layer when root-layer overrides violate SimReady composition rules.
+
+### 8. Runtime world state contaminated the reusable robot USDA
+
+- **Observed evidence:** one attempted final package contained `/physicsScene`,
+  live body transforms, and velocity opinions; strict validation then failed
+  `NoOverrides` and robot physics source-layer rules.
+- **Cause:** Isaac runtime state was saved into the robot's root edit target,
+  and the supposed pristine byte snapshot was taken only after `World()` had
+  already created `/physicsScene`.
+- **Repair:** the runner saves the clean robot root bytes after visual binding
+  but before constructing `World`, exports measured states only to separate
+  snapshot USDAs, and restores the clean root bytes after simulation.
+- **Regression coverage:** the runtime-order test requires the pristine snapshot
+  to precede `World()` and requires restoration after snapshot export.
+- **Verification:** the final root USDA contains neither `/physicsScene` nor
+  runtime velocity opinions. Isaac Sim 6.0 strict validation passes with zero
+  blocking issues in
+  `20260722T045604Z-combined-zip-usd-clean/zip_learning_isaac/asset-validator.json`.
+  Commit `c94e980` contains the repair.
+- **Remaining boundary:** the measured transforms intentionally remain in
+  `hand_*_snapshot.usda`; those files are evidence stages, not publishable robot
+  packages.
+- **Reusable rule:** keep reusable robot assets and runtime scene state in
+  separate layers, and capture the clean boundary before creating the world.

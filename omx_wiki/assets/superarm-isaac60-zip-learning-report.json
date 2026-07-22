@@ -1,0 +1,355 @@
+{
+  "import": {
+    "dof_count": 13,
+    "dof_names": [
+      "joint_rev_1",
+      "joint_rev_2",
+      "joint_rev_3",
+      "joint_rev_4",
+      "joint_rev_5",
+      "finger1_motor1",
+      "finger2_motor1",
+      "finger3_motor1",
+      "finger4_motor1",
+      "finger1_motor2",
+      "finger2_motor2",
+      "finger3_motor2",
+      "finger4_motor2"
+    ],
+    "expected_movable_joint_count": 13,
+    "prim_path": "/superarm_amazinghand",
+    "status": "PASS"
+  },
+  "input_urdf": "/workspace/project/artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/zip_learning_input/superarm_amazinghand.urdf",
+  "isaac_sim_version": "6.0.0",
+  "motion": {
+    "arm": [
+      {
+        "after": 0.17990654706954956,
+        "before": 3.24079724123294e-06,
+        "delta": 0.17990330627230833,
+        "joint": "joint_rev_1",
+        "passed": true,
+        "target": 0.18
+      },
+      {
+        "after": -0.19491669535636902,
+        "before": -0.0007534002652391791,
+        "delta": -0.19416329509112984,
+        "joint": "joint_rev_2",
+        "passed": true,
+        "target": -0.18
+      },
+      {
+        "after": 0.17909565567970276,
+        "before": -0.00031685890280641615,
+        "delta": 0.17941251458250917,
+        "joint": "joint_rev_3",
+        "passed": true,
+        "target": 0.18
+      },
+      {
+        "after": -0.18765471875667572,
+        "before": -0.004386450629681349,
+        "delta": -0.18326826812699437,
+        "joint": "joint_rev_4",
+        "passed": true,
+        "target": -0.18
+      },
+      {
+        "after": 0.1798989325761795,
+        "before": 2.2564539904124103e-05,
+        "delta": 0.17987636803627538,
+        "joint": "joint_rev_5",
+        "passed": true,
+        "target": 0.18
+      }
+    ],
+    "arm_motion_passed": true,
+    "capture_arm_pose": {
+      "joint_rev_1": 1.0637908417265862e-05,
+      "joint_rev_2": 0.00029309000819921494,
+      "joint_rev_3": 9.27869905353873e-07,
+      "joint_rev_4": 5.4616415582131594e-05,
+      "joint_rev_5": 5.506316256287391e-07
+    },
+    "hand": [
+      {
+        "grasp": 0.0,
+        "max_error": 6.215199828148166e-05,
+        "measured": {
+          "finger1_motor1": 0.049939800053834915,
+          "finger1_motor2": 0.020000824704766273,
+          "finger2_motor1": 0.049938831478357315,
+          "finger2_motor2": 0.020000452175736427,
+          "finger3_motor1": 0.04993784800171852,
+          "finger3_motor2": 0.019999906420707703,
+          "finger4_motor1": 0.04999997094273567,
+          "finger4_motor2": 0.019999928772449493
+        },
+        "name": "open",
+        "targets": {
+          "finger1_motor1": 0.05,
+          "finger1_motor2": 0.02,
+          "finger2_motor1": 0.05,
+          "finger2_motor2": 0.02,
+          "finger3_motor1": 0.05,
+          "finger3_motor2": 0.02,
+          "finger4_motor1": 0.05,
+          "finger4_motor2": 0.02
+        }
+      },
+      {
+        "grasp": 0.5,
+        "max_error": 5.665421485895328e-05,
+        "measured": {
+          "finger1_motor1": 0.4999561905860901,
+          "finger1_motor2": 0.5599918961524963,
+          "finger2_motor1": 0.49995025992393494,
+          "finger2_motor2": 0.5599934458732605,
+          "finger3_motor1": 0.499943345785141,
+          "finger3_motor2": 0.5599976181983948,
+          "finger4_motor1": 0.4999988079071045,
+          "finger4_motor2": 0.5599976778030396
+        },
+        "name": "half_close",
+        "targets": {
+          "finger1_motor1": 0.49999999999999994,
+          "finger1_motor2": 0.56,
+          "finger2_motor1": 0.49999999999999994,
+          "finger2_motor2": 0.56,
+          "finger3_motor1": 0.49999999999999994,
+          "finger3_motor2": 0.56,
+          "finger4_motor1": 0.49999999999999994,
+          "finger4_motor2": 0.56
+        }
+      },
+      {
+        "grasp": 1.0,
+        "max_error": 3.839731216426223e-05,
+        "measured": {
+          "finger1_motor1": 0.949981153011322,
+          "finger1_motor2": 1.099984884262085,
+          "finger2_motor1": 0.9499728679656982,
+          "finger2_motor2": 1.0999889373779297,
+          "finger3_motor1": 0.9499616026878357,
+          "finger3_motor2": 1.0999952554702759,
+          "finger4_motor1": 0.9499971866607666,
+          "finger4_motor2": 1.0999950170516968
+        },
+        "name": "close",
+        "targets": {
+          "finger1_motor1": 0.95,
+          "finger1_motor2": 1.1,
+          "finger2_motor1": 0.95,
+          "finger2_motor2": 1.1,
+          "finger3_motor1": 0.95,
+          "finger3_motor2": 1.1,
+          "finger4_motor1": 0.95,
+          "finger4_motor2": 1.1
+        }
+      }
+    ],
+    "hand_motion_passed": true,
+    "logical_action_width": 6,
+    "physical_movable_joint_count": 13
+  },
+  "output_usd": "/workspace/project/artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/zip_learning_isaac/superarm_amazinghand/superarm_amazinghand.usda",
+  "package_cleanup": {
+    "restored_pristine_root_layer_after_runtime": true,
+    "runtime_state_location": "physics_snapshots_only"
+  },
+  "phase": "complete",
+  "physics_snapshots": {
+    "hand_states": [
+      {
+        "bytes": 30456359,
+        "grasp": 0.0,
+        "method": "usd_stage_export_after_physics_readback",
+        "name": "open",
+        "path": "/workspace/project/artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/zip_learning_isaac/hand_open_snapshot.usda"
+      },
+      {
+        "bytes": 30456375,
+        "grasp": 0.5,
+        "method": "usd_stage_export_after_physics_readback",
+        "name": "half_close",
+        "path": "/workspace/project/artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/zip_learning_isaac/hand_half_close_snapshot.usda"
+      },
+      {
+        "bytes": 30456302,
+        "grasp": 1.0,
+        "method": "usd_stage_export_after_physics_readback",
+        "name": "close",
+        "path": "/workspace/project/artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/zip_learning_isaac/hand_close_snapshot.usda"
+      }
+    ],
+    "method": "flattened USD export after measured PhysX state",
+    "status": "PASS"
+  },
+  "profile": "zip_learning",
+  "schema": {
+    "articulation_root_count": 1,
+    "bounds_max": [
+      0.00805026013404131,
+      0.3487887978553772,
+      0.6147350072860718
+    ],
+    "bounds_min": [
+      -0.0826973244547844,
+      0.2035849243402481,
+      0.009518919512629509
+    ],
+    "collision_prim_count": 13,
+    "dimensions_m": [
+      0.0907475845888257,
+      0.1452038735151291,
+      0.6052160877734423
+    ],
+    "finite_positive_bounds": true,
+    "mesh_prim_count": 0,
+    "prim_count": 153,
+    "prim_path": "/superarm_amazinghand",
+    "rigid_body_prim_count": 28
+  },
+  "screenshots": [
+    {
+      "bytes": 104539,
+      "eye": [
+        1.5249673746851247,
+        -1.2822979491896644,
+        1.071908672447661
+      ],
+      "method": "static_replicator_from_physics_snapshot",
+      "path": "/workspace/project/artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/zip_learning_isaac/whole_robot.png",
+      "target": [
+        -0.033204293112352186,
+        0.2758737186078125,
+        0.36364882344880795
+      ]
+    }
+  ],
+  "status": "PASS",
+  "visual_boundary": "The hand stage comes from the supplied Isaac Sim USD distribution. Its detailed static shell is replaced only in the learning entry by ZIP-sourced wrist, palm, proximal, and distal visuals that are rigidly parented to the eight moving finger links.",
+  "visual_motion": {
+    "adjacent_rms_difference": [
+      26.358311062470833,
+      20.89024250667874
+    ],
+    "frame_names": [
+      "open",
+      "half_close",
+      "close"
+    ],
+    "frames": [
+      {
+        "bytes": 339345,
+        "eye": [
+          0.3111441674481421,
+          -0.0400432746556581,
+          0.797115931877629
+        ],
+        "method": "static_replicator_from_physics_snapshot",
+        "name": "open",
+        "path": "/workspace/project/artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/zip_learning_isaac/hand_open.png",
+        "snapshot": "/workspace/project/artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/zip_learning_isaac/hand_open_snapshot.usda",
+        "target": [
+          -0.028320032973954273,
+          0.2994209257664383,
+          0.6556725150350888
+        ]
+      },
+      {
+        "bytes": 337797,
+        "eye": [
+          0.3111441674481421,
+          -0.0400432746556581,
+          0.797115931877629
+        ],
+        "method": "static_replicator_from_physics_snapshot",
+        "name": "half_close",
+        "path": "/workspace/project/artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/zip_learning_isaac/hand_half_close.png",
+        "snapshot": "/workspace/project/artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/zip_learning_isaac/hand_half_close_snapshot.usda",
+        "target": [
+          -0.028320032973954273,
+          0.2994209257664383,
+          0.6556725150350888
+        ]
+      },
+      {
+        "bytes": 304836,
+        "eye": [
+          0.3111441674481421,
+          -0.0400432746556581,
+          0.797115931877629
+        ],
+        "method": "static_replicator_from_physics_snapshot",
+        "name": "close",
+        "path": "/workspace/project/artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/zip_learning_isaac/hand_close.png",
+        "snapshot": "/workspace/project/artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/zip_learning_isaac/hand_close_snapshot.usda",
+        "target": [
+          -0.028320032973954273,
+          0.2994209257664383,
+          0.6556725150350888
+        ]
+      }
+    ],
+    "minimum_adjacent_rms": 1.0,
+    "passed": true
+  },
+  "zip_hand_binding": {
+    "articulation_imported_from_hand_usd": false,
+    "copied_visual_payloads": [
+      "base.usda",
+      "robot.usda",
+      "instances.usda",
+      "geometries.usd"
+    ],
+    "distal": [
+      "mjcf_045_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_distal_shell_3",
+      "mjcf_044_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_distal_2"
+    ],
+    "finger_count": 4,
+    "generated_visual_payloads": [
+      "distal_visuals.usda"
+    ],
+    "moving_visual_part_count": 16,
+    "physics_source": "combined_superarm_zip_learning_urdf_import",
+    "proximal": [
+      "mjcf_051_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_proximal_shell_4",
+      "mjcf_052_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_proximal_5"
+    ],
+    "source_kind": "supplied_isaac_sim_usd_distribution",
+    "source_zip": "/home/dong/july/superarm_ws/isaacsim_test/artifacts/distributions/amazinghand_isaac_sim_usd_distribution_20260722.zip",
+    "source_zip_sha256": "3230fb5ad2c8e50a843a14553ef17a587f40428abd63a025483c34f1c8e3d377",
+    "static_visual_part_count": 26,
+    "static_wrist_palm": [
+      "mjcf_000_r_wrist_interface_scs0009_0",
+      "mjcf_001_r_wrist_interface_finger_frame_1_1",
+      "mjcf_002_r_wrist_interface_r_hand_plate_2",
+      "mjcf_003_r_wrist_interface_scs0009_3",
+      "mjcf_004_r_wrist_interface_finger_frame_2_4",
+      "mjcf_005_r_wrist_interface_finger_frame_2_5",
+      "mjcf_006_r_wrist_interface_bushing_0608_04_6",
+      "mjcf_007_r_wrist_interface_bushing_0608_04_7",
+      "mjcf_008_r_wrist_interface_bushing_0608_04_8",
+      "mjcf_009_r_wrist_interface_bushing_0608_04_9",
+      "mjcf_010_r_wrist_interface_finger_frame_2_10",
+      "mjcf_011_r_wrist_interface_scs0009_11",
+      "mjcf_012_r_wrist_interface_scs0009_12",
+      "mjcf_013_r_wrist_interface_finger_frame_2_13",
+      "mjcf_014_r_wrist_interface_scs0009_14",
+      "mjcf_015_r_wrist_interface_scs0009_15",
+      "mjcf_016_r_wrist_interface_finger_frame_1_16",
+      "mjcf_017_r_wrist_interface_bushing_0608_04_17",
+      "mjcf_018_r_wrist_interface_scs0009_18",
+      "mjcf_019_r_wrist_interface_r_wrist_interface_19",
+      "mjcf_020_r_wrist_interface_scs0009_20",
+      "mjcf_021_r_wrist_interface_bushing_0608_04_21",
+      "mjcf_022_r_wrist_interface_bushing_0608_04_22",
+      "mjcf_023_r_wrist_interface_bushing_0608_04_23",
+      "mjcf_024_r_wrist_interface_finger_frame_1_24",
+      "mjcf_025_r_wrist_interface_finger_frame_1_25"
+    ]
+  }
+}
