@@ -78,3 +78,27 @@ def test_prepare_package_rejects_unknown_profile(tmp_path: Path):
 
     with pytest.raises(ValueError, match="profile must be"):
         prepare_package(source, tmp_path / "output", source.parent, profile="hybrid")
+
+
+def test_aligned_profile_preserves_hand_visuals_and_rewrites_attachment(tmp_path: Path):
+    source = _write_fixture(tmp_path)
+    tree = ET.parse(source)
+    robot = tree.getroot()
+    attachment = ET.SubElement(
+        robot, "joint", {"name": "wrist_adapter_to_amazinghand", "type": "fixed"}
+    )
+    ET.SubElement(attachment, "parent", {"link": "link_12"})
+    ET.SubElement(attachment, "child", {"link": "link_13"})
+    ET.SubElement(attachment, "origin", {"xyz": "0 0 0.6", "rpy": "0 0 0"})
+    tree.write(source, encoding="utf-8", xml_declaration=True)
+
+    output = tmp_path / "aligned"
+    manifest = prepare_package(source, output, source.parent, profile="aligned")
+    packaged = ET.parse(output / "superarm_amazinghand.urdf").getroot()
+    rewritten = next(
+        joint for joint in packaged.findall("joint") if joint.get("name") == "wrist_adapter_to_amazinghand"
+    )
+
+    assert rewritten.find("origin").get("xyz") == "0 0 0.011753"
+    assert manifest["mesh_reference_count"] == 14
+    assert len(packaged.findall(".//visual")) == 14

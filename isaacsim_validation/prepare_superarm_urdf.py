@@ -50,9 +50,9 @@ def prepare_package(
     root = tree.getroot()
     if root.tag != "robot" or root.get("name") != "superarm_amazinghand":
         raise ValueError("expected robot name 'superarm_amazinghand'")
-    if profile not in {"raw", "served"}:
-        raise ValueError("profile must be 'raw' or 'served'")
-    if profile == "served":
+    if profile not in {"raw", "aligned", "served"}:
+        raise ValueError("profile must be 'raw', 'aligned', or 'served'")
+    if profile in {"aligned", "served"}:
         from lelab.superarm.showroom import (
             align_amazinghand_attachment,
             align_joint5_urdf,
@@ -61,7 +61,8 @@ def prepare_package(
 
         align_joint5_urdf(root)
         align_amazinghand_attachment(root)
-        remove_amazinghand_visuals(root)
+        if profile == "served":
+            remove_amazinghand_visuals(root)
 
     joint_types = {joint.get("name"): joint.get("type") for joint in root.findall("joint")}
     missing_joints = [
@@ -143,7 +144,7 @@ def main() -> int:
     parser.add_argument("--source-urdf", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--source-root", type=Path)
-    parser.add_argument("--profile", choices=("raw", "served"), default="raw")
+    parser.add_argument("--profile", choices=("raw", "aligned", "served"), default="raw")
     args = parser.parse_args()
     manifest = prepare_package(
         args.source_urdf,
