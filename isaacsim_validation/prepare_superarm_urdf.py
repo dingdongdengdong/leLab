@@ -18,6 +18,10 @@ LEARNING_HAND_VISUAL_MESHES = {
     "proximal": frozenset({"proximal.stl", "proximal_shell.stl"}),
     "distal": frozenset({"distal.stl", "distal_shell.stl"}),
 }
+LEARNING_HAND_VISUAL_ORIGINS = {
+    "proximal": ("0 0 0", "0 0 0"),
+    "distal": ("0 -0.058 0", "0 0 0"),
+}
 FINGER_LINK_PATTERN = re.compile(r"finger[1-4]_(proximal|distal)")
 
 
@@ -44,13 +48,21 @@ def retain_learning_hand_visuals(root: ET.Element) -> int:
         match = FINGER_LINK_PATTERN.fullmatch(link.get("name", ""))
         if match is None:
             continue
-        allowed = LEARNING_HAND_VISUAL_MESHES[match.group(1)]
+        segment = match.group(1)
+        allowed = LEARNING_HAND_VISUAL_MESHES[segment]
         for visual in list(link.findall("visual")):
             mesh = visual.find("geometry/mesh")
             filename = Path(mesh.get("filename", "").removeprefix("file://")).name if mesh is not None else ""
             if filename not in allowed:
                 link.remove(visual)
                 removed += 1
+                continue
+            origin = visual.find("origin")
+            if origin is None:
+                origin = ET.SubElement(visual, "origin")
+            xyz, rpy = LEARNING_HAND_VISUAL_ORIGINS[segment]
+            origin.set("xyz", xyz)
+            origin.set("rpy", rpy)
     return removed
 
 

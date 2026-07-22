@@ -108,6 +108,7 @@ def test_learning_hand_visuals_keep_shells_but_remove_unbound_linkages():
         link = ET.SubElement(robot, "link", {"name": name})
         for filename in meshes:
             visual = ET.SubElement(link, "visual")
+            ET.SubElement(visual, "origin", {"xyz": "9 9 9", "rpy": "1 2 3"})
             geometry = ET.SubElement(visual, "geometry")
             ET.SubElement(geometry, "mesh", {"filename": filename})
 
@@ -132,3 +133,14 @@ def test_learning_hand_visuals_keep_shells_but_remove_unbound_linkages():
     assert remaining["finger1_proximal"] == ["proximal_shell.stl", "proximal.stl"]
     assert remaining["finger1_distal"] == ["distal_shell.stl", "distal.stl"]
     assert remaining["arm_link1"] == ["arm_link1.stl"]
+
+    proximal_origins = [
+        visual.find("origin").attrib
+        for visual in robot.find("./link[@name='finger1_proximal']").findall("visual")
+    ]
+    distal_origins = [
+        visual.find("origin").attrib
+        for visual in robot.find("./link[@name='finger1_distal']").findall("visual")
+    ]
+    assert proximal_origins == [{"xyz": "0 0 0", "rpy": "0 0 0"}] * 2
+    assert distal_origins == [{"xyz": "0 -0.058 0", "rpy": "0 0 0"}] * 2
