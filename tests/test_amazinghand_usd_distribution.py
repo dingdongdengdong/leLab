@@ -236,10 +236,14 @@ def test_learning_stage_uses_zip_geometry_on_moving_finger_links(tmp_path: Path)
     learning = (tmp_path / AMAZINGHAND_LEARNING_ENTRY).read_text(encoding="utf-8")
     overlay = (payloads / "learning_visuals.usda").read_text(encoding="utf-8")
     assert result["static_visual_part_count"] == 26
-    assert result["moving_visual_part_count"] == 16
+    assert result["moving_visual_part_count"] == 8
+    assert result["visual_mode"] == "frame_first_no_outer_shells"
+    assert result["excluded_outer_shell_part_count"] == 8
     assert "amazinghand_visual_shell" in overlay and "active = false" in overlay
-    assert overlay.count('def Xform "zip_proximal_') == 8
-    assert overlay.count('def Xform "zip_distal_') == 8
+    assert overlay.count('def Xform "zip_proximal_') == 4
+    assert overlay.count('def Xform "zip_distal_') == 4
+    assert "proximal_shell" not in overlay
+    assert "distal_shell" not in overlay
     assert "double3 xformOp:translate = (0, -0.058, 0)" in overlay
     assert "learning_visuals.usda" in learning
     assert "amazinghand_graspable.usda" in learning

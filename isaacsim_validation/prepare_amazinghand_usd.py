@@ -30,13 +30,15 @@ REQUIRED_PACKAGE_FILES = frozenset(
 )
 VISUAL_SHELL = "amazinghand_visual_shell"
 VISUAL_SHELL_JOINT = "wrist_to_amazinghand_visual_shell"
-PROXIMAL_REFERENCES = (
-    "mjcf_051_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_proximal_shell_4",
+PROXIMAL_FRAME_REFERENCES = (
     "mjcf_052_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_proximal_5",
 )
-DISTAL_REFERENCES = (
-    "mjcf_045_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_distal_shell_3",
+DISTAL_FRAME_REFERENCES = (
     "mjcf_044_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_distal_2",
+)
+EXCLUDED_OUTER_SHELL_REFERENCES = (
+    "mjcf_051_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_proximal_shell_4",
+    "mjcf_045_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_distal_shell_3",
 )
 HAND_DRIVE_STIFFNESS = 3.1415927
 
@@ -158,7 +160,7 @@ def _moving_visual_specs(finger: int) -> str:
 )
 {{
 }}'''
-        for index, reference in enumerate(PROXIMAL_REFERENCES, start=1)
+        for index, reference in enumerate(PROXIMAL_FRAME_REFERENCES, start=1)
     )
     distal = "\n\n".join(
         f'''def Xform "zip_distal_{index}_pose"
@@ -173,7 +175,7 @@ def _moving_visual_specs(finger: int) -> str:
     {{
     }}
 }}'''
-        for index, reference in enumerate(DISTAL_REFERENCES, start=1)
+        for index, reference in enumerate(DISTAL_FRAME_REFERENCES, start=1)
     )
     return f'''over "finger{finger}_proximal"
 {{
@@ -257,8 +259,11 @@ over "amazinghand_graspable"
     (package_dir / AMAZINGHAND_LEARNING_ENTRY).write_text(learning, encoding="utf-8")
     return {
         "entry_stage": AMAZINGHAND_LEARNING_ENTRY.as_posix(),
+        "visual_mode": "frame_first_no_outer_shells",
         "static_visual_part_count": len(static_names),
-        "moving_visual_part_count": 4 * (len(PROXIMAL_REFERENCES) + len(DISTAL_REFERENCES)),
+        "moving_visual_part_count": 4
+        * (len(PROXIMAL_FRAME_REFERENCES) + len(DISTAL_FRAME_REFERENCES)),
+        "excluded_outer_shell_part_count": 4 * len(EXCLUDED_OUTER_SHELL_REFERENCES),
     }
 
 

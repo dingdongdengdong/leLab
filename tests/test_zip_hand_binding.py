@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from isaacsim_validation.zip_hand_binding import (
+    HAND_FRAME_REFERENCE_COMMIT,
     VISUAL_PAYLOAD_FILES,
     static_visual_names,
     visual_reference_contract,
@@ -38,7 +39,13 @@ def test_combined_binding_contract_uses_only_checked_zip_visual_payloads(tmp_pat
 
     assert len(static_visual_names(package)) == 26
     assert contract["static_visual_part_count"] == 26
-    assert contract["moving_visual_part_count"] == 16
+    assert contract["moving_visual_part_count"] == 8
+    assert contract["visual_mode"] == "frame_first_no_outer_shells"
+    assert contract["frame_reference_commit"] == HAND_FRAME_REFERENCE_COMMIT
+    assert contract["frame_reference_model"] == "isaac_open_chain_four_finger_two_link"
+    assert contract["excluded_outer_shell_part_count"] == 8
+    assert all("_shell" not in name for name in contract["proximal"])
+    assert all("_shell" not in name for name in contract["distal"])
     assert contract["finger_count"] == 4
     assert set(VISUAL_PAYLOAD_FILES) == {
         "base.usda",

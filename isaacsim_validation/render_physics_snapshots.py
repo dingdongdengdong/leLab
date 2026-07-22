@@ -121,9 +121,9 @@ def _visual_boundary(profile: str) -> str:
             "Served matches the LeLab showroom URDF tree after hand visuals are removed for its MJCF overlay."
         ),
         "zip_learning": (
-            "The hand stage comes from the supplied Isaac Sim USD distribution. Its detailed static shell is "
-            "replaced only in the learning entry by ZIP-sourced wrist, palm, proximal, and distal visuals that "
-            "are rigidly parented to the eight moving finger links."
+            "The hand stage comes from the supplied Isaac Sim USD distribution. Its complete static presentation "
+            "shell and rounded proximal/distal outer shells are disabled. ZIP-sourced wrist, palm, servo-frame, "
+            "proximal-core, and distal-core visuals are rigidly parented to the eight moving finger links."
         ),
     }[profile]
 
