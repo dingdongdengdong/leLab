@@ -662,3 +662,58 @@ Do not write `PASS` until the named evidence exists and has been inspected.
   keep coordinate conversion, asset capability, and visual-route ownership
   backend-specific; optional diagnostics must fail closed without taking down
   the primary robot list.
+
+### 22. The website needed a truthful Isaac selector, visible URDF hand, and immutable capture response
+
+- **Observed evidence:** the website treated every SuperArm record as MuJoCo,
+  offered only continuous `/api/superarm/video`, and did not propagate Isaac
+  distribution/bridge settings into manual or recording requests. The first
+  Isaac UI draft then disabled the MJCF overlay while still loading the URDF
+  variant that deliberately removes every AmazingHand visual, producing an
+  arm-only showroom despite valid hand telemetry. Its capture image route also
+  rechecked only suffix, existence, and size, so a same-size replacement could
+  be served after validation.
+- **Cause:** backend checks and visualization assumptions were duplicated in
+  frontend pages. The MuJoCo-specific stripped-URDF-plus-MJCF-overlay design
+  was reused for Isaac even though Isaac must not fetch MJCF routes. Capture
+  metadata was treated as a stable file authorization rather than a snapshot
+  whose identity and bytes must be revalidated at response time.
+- **Repair:** shared frontend helpers now recognize both LeLab simulation
+  backends, build only the relevant Isaac session fields, keep continuous
+  video MuJoCo/hybrid-only, and expose Isaac as explicit on-demand whole/hand
+  capture. The dashboard reports measured joint coverage, not a hard-coded
+  13/13, and merges measured five-arm plus eight-hand positions into the URDF
+  viewer. Isaac loads a hand-preserving URDF query variant; MuJoCo keeps its
+  stripped URDF and exact MJCF visual overlay. The server fingerprints each
+  accepted capture by resolved path, device, inode, size, modification time,
+  and SHA-256, rereads it through a stable regular-file descriptor, and returns
+  validated PNG bytes instead of reopening a `FileResponse` path. Capture UI
+  metadata is cleared and its image-version key advanced on connect,
+  disconnect, and websocket-reported disconnect; image responses are marked
+  `Cache-Control: no-store`, so a prior session cannot be labeled current.
+- **Regression coverage:** Vitest locks backend predicates, video/capture
+  capability separation, Isaac payload construction, measured hand merging,
+  measured joint count, cache-busted image URLs, and hand-preserving URDF URL
+  selection. The same helper suite locks capture clear-and-invalidate behavior
+  at session boundaries. Python tests lock the MuJoCo stripped-visual default, the Isaac
+  hand-visual variant, capture/latest API behavior, PNG identity/size/content
+  validation, and rejection of a same-size post-capture replacement. Existing
+  teleoperation, recording, MuJoCo, runtime, and server suites remain gates.
+- **Verification:** leader verification passes 122 focused Python tests, Ruff,
+  frontend ESLint with zero errors, 27 frontend tests, the Vite production
+  build, and `git diff --check`. An independent read-only test engineer first
+  rejected the invisible Isaac URDF hand and mutable capture route, then found
+  and rejected stale cross-session browser capture state. After both repair
+  rounds it reran the focused gates and returned APPROVE with no remaining
+  Task 7 blocker. Final leader verification passes 122 Python tests, Ruff,
+  28 frontend tests, ESLint, and the Vite build.
+- **Result/commit:** this entry is included in the truthful Isaac website
+  control feature commit.
+- **Remaining boundary:** website and fake-runtime behavior are verified, but
+  live Isaac Sim 6.0 motion, nonblank open/half/close close-ups, GIF review,
+  numeric thresholds, and a real recording episode remain unclaimed and are
+  the next acceptance gate.
+- **Reusable rule:** a backend capability must select its own visualization
+  assets and evidence semantics; never hide one renderer without restoring a
+  visible alternative, never display expected joint coverage as measured
+  coverage, and never serve a mutable artifact path after authorization.

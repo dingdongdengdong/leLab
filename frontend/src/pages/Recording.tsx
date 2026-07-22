@@ -26,6 +26,7 @@ import {
   playAutoAdvanceWarning,
 } from "@/lib/recordingAudio";
 import { useApi } from "@/contexts/ApiContext";
+import { isSuperArmBackend } from "@/lib/superarmRuntime";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +58,12 @@ interface RecordingConfig {
   superarm_config?: string;
   superarm_asset_root?: string;
   mujoco_model_path?: string;
+  isaac_distribution_zip?: string;
+  isaac_expected_sha256?: string;
+  isaac_bridge_mode?: "managed" | "external";
+  isaac_host?: string;
+  isaac_port?: number;
+  isaac_external_run_dir?: string;
   input_mode?: "manual" | "so101";
 }
 
@@ -122,7 +129,7 @@ const Recording = () => {
 
   useEffect(() => {
     if (
-      recordingConfig?.robot_backend !== "superarm_mujoco" ||
+      !isSuperArmBackend(recordingConfig?.robot_backend) ||
       recordingConfig.input_mode !== "manual" ||
       !recordingConfig.robot_name
     ) return;

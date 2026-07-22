@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Activity,
   ArrowLeft,
+  Camera,
   CircleStop,
   Hand,
   Pause,
@@ -36,10 +37,21 @@ import {
   reorderSequenceStep,
 } from "@/lib/superarmControl";
 import { extractVisualPose, MjcfVisualPose } from "@/lib/mjcfVisualLayer";
+import {
+  buildIsaacSessionPayload,
+  CaptureUiState,
+  captureImageUrl,
+  clearCaptureUiState,
+  countMeasuredPhysicalJoints,
+  IsaacBridgeMode,
+  mergePhysicalJointPositions,
+  runtimeSupportsCapture,
+  runtimeSupportsContinuousVideo,
+  SuperArmRuntime,
+} from "@/lib/superarmRuntime";
 
 type FingerName = "pointer" | "middle" | "ring" | "thumb";
 type Pair = [number, number];
-type Runtime = "mujoco" | "hybrid_serial";
 
 const ARM_JOINTS = ["joint_rev_1", "joint_rev_2", "joint_rev_3", "joint_rev_4", "joint_rev_5"];
 const FINGERS: FingerName[] = ["pointer", "middle", "ring", "thumb"];
@@ -78,6 +90,8 @@ interface RuntimeTelemetry {
   arm?: Record<string, TelemetryMetric>;
   hand?: Record<string, TelemetryMetric>;
   serial_hand?: Record<string, TelemetryMetric>;
+  physics_step?: number;
+  command_sequence?: number;
 }
 
 interface SavedPose {
@@ -92,7 +106,36 @@ type SequenceStep =
 interface RuntimeStatus {
   connected: boolean;
   emergency_stopped: boolean;
-  runtime: Runtime | null;
+  runtime: SuperArmRuntime | null;
+  supports_video?: boolean;
+  supports_capture?: boolean;
+}
+
+interface IsaacRuntimeCapability {
+  enabled: boolean;
+  distribution_zip?: string | null;
+  archive_sha256?: string | null;
+  bridge_mode?: IsaacBridgeMode;
+  validation_error?: string | null;
+  physical_dof_count?: number;
+  logical_action_width?: number;
+}
+
+interface SuperArmCapabilities {
+  runtimes: {
+    hybrid_serial: { serial_ports: string[]; default_port?: string };
+    isaac_sim: IsaacRuntimeCapability;
+  };
+}
+
+interface CaptureResult {
+  path?: string;
+  bytes?: number;
+  view?: string;
+  name?: string;
+  width?: number;
+  height?: number;
+  physics_step?: number;
 }
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -101,9 +144,15 @@ const SuperArm = () => {
   const navigate = useNavigate();
   const { baseUrl, wsBaseUrl, fetchWithHeaders } = useApi();
   const { toast } = useToast();
-  const [runtime, setRuntime] = useState<Runtime>("mujoco");
+  const [runtime, setRuntime] = useState<SuperArmRuntime>("mujoco");
   const [serialPort, setSerialPort] = useState("/dev/ttyACM0");
   const [availablePorts, setAvailablePorts] = useState<string[]>([]);
+  const [isaacDistributionZip, setIsaacDistributionZip] = useState("");
+  const [isaacExpectedSha256, setIsaacExpectedSha256] = useState("");
+  const [isaacBridgeMode, setIsaacBridgeMode] = useState<IsaacBridgeMode>("managed");
+  const [isaacHost, setIsaacHost] = useState("127.0.0.1");
+  const [isaacPort, setIsaacPort] = useState(8765);
+  const [isaacExternalRunDir, setIsaacExternalRunDir] = useState("");
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [emergencyStopped, setEmergencyStopped] = useState(false);
@@ -119,6 +168,12 @@ const SuperArm = () => {
   const [selectedFinger, setSelectedFinger] = useState<FingerName>("ring");
   const [telemetry, setTelemetry] = useState<RuntimeTelemetry>({});
   const [visualPose, setVisualPose] = useState<MjcfVisualPose | null>(null);
+  const [capabilities, setCapabilities] = useState<SuperArmCapabilities | null>(null);
+  const [captureUi, setCaptureUi] = useState<CaptureUiState<CaptureResult>>({
+    capture: null,
+    version: 0,
+  });
+  const [capturing, setCapturing] = useState(false);
   const [history, setHistory] = useState<TelemetryPoint[]>([]);
   const [chartChannel, setChartChannel] = useState("joint_rev_1");
   const [poses, setPoses] = useState<Record<string, SavedPose>>({});
@@ -154,8 +209,20 @@ const SuperArm = () => {
   }, [request]);
 
   useEffect(() => {
-    request<{ runtimes: { hybrid_serial: { serial_ports: string[] } } }>("/api/superarm/capabilities")
-      .then((data) => setAvailablePorts(data.runtimes.hybrid_serial.serial_ports || []))
+    request<SuperArmCapabilities>("/api/superarm/capabilities")
+      .then((data) => {
+        setCapabilities(data);
+        setAvailablePorts(data.runtimes.hybrid_serial.serial_ports || []);
+        if (data.runtimes.isaac_sim.distribution_zip) {
+          setIsaacDistributionZip(data.runtimes.isaac_sim.distribution_zip);
+        }
+        if (data.runtimes.isaac_sim.archive_sha256) {
+          setIsaacExpectedSha256(data.runtimes.isaac_sim.archive_sha256);
+        }
+        if (data.runtimes.isaac_sim.bridge_mode) {
+          setIsaacBridgeMode(data.runtimes.isaac_sim.bridge_mode);
+        }
+      })
       .catch((error) => setStatusText(error.message));
     request<RuntimeStatus>("/api/superarm/session")
       .then((status) => {
@@ -176,7 +243,10 @@ const SuperArm = () => {
       const message = JSON.parse(event.data);
       const nextVisualPose = extractVisualPose(message);
       if (nextVisualPose) setVisualPose(nextVisualPose);
-      if (typeof message.connected === "boolean") setConnected(message.connected);
+      if (typeof message.connected === "boolean") {
+        setConnected(message.connected);
+        if (!message.connected) setCaptureUi(clearCaptureUiState);
+      }
       if (typeof message.emergency_stopped === "boolean") setEmergencyStopped(message.emergency_stopped);
       if (message.error) setStatusText(message.error);
       if (message.type === "state" && message.state) {
@@ -208,6 +278,7 @@ const SuperArm = () => {
       await request("/api/superarm/session", { method: "DELETE" });
     } finally {
       setConnected(false);
+      setCaptureUi(clearCaptureUiState);
       setStatusText("Disconnected");
     }
   }, [request]);
@@ -325,12 +396,37 @@ const SuperArm = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [hand, selectedFinger, connected, emergencyStopped, request, arm, speeds]);
 
+  const isaacCapability = capabilities?.runtimes.isaac_sim;
+  const isaacReady = Boolean(
+    isaacDistributionZip.trim() && isaacHost.trim() && isaacPort >= 1 && isaacPort <= 65535,
+  );
+  const showContinuousVideo = runtimeSupportsContinuousVideo(runtime);
+  const showIsaacCapture = runtimeSupportsCapture(runtime);
+
+  const sessionPayload = () => {
+    if (runtime === "isaac_sim") {
+      if (!isaacDistributionZip.trim()) {
+        throw new Error("Isaac Sim distribution ZIP is not configured on the server.");
+      }
+      return buildIsaacSessionPayload({
+        distributionZip: isaacDistributionZip,
+        expectedSha256: isaacExpectedSha256 || undefined,
+        bridgeMode: isaacBridgeMode,
+        host: isaacHost,
+        port: isaacPort,
+        externalRunDir: isaacExternalRunDir || undefined,
+      });
+    }
+    return { runtime, serial_port: serialPort };
+  };
+
   const connect = async () => {
+    setCaptureUi(clearCaptureUiState);
     setConnecting(true);
     try {
       const data = await request<RuntimeStatus>("/api/superarm/session", {
         method: "POST",
-        body: JSON.stringify({ runtime, serial_port: serialPort }),
+        body: JSON.stringify(sessionPayload()),
       });
       setConnected(data.connected);
       setEmergencyStopped(data.emergency_stopped);
@@ -352,6 +448,23 @@ const SuperArm = () => {
     });
     setEmergencyStopped(data.emergency_stopped);
     setLiveMode(false);
+  };
+
+  const captureIsaac = async (view: "whole" | "hand", name: string) => {
+    if (!connected || runtime !== "isaac_sim") return;
+    setCapturing(true);
+    try {
+      const next = await request<CaptureResult>("/api/superarm/capture", {
+        method: "POST",
+        body: JSON.stringify({ view, name }),
+      });
+      setCaptureUi((previous) => ({ capture: next, version: previous.version + 1 }));
+      toast({ title: "Isaac capture saved", description: `${view} snapshot · ${next.bytes ?? 0} bytes` });
+    } catch (error: unknown) {
+      toast({ title: "Capture failed", description: errorMessage(error), variant: "destructive" });
+    } finally {
+      setCapturing(false);
+    }
   };
 
   const savePose = async () => {
@@ -376,14 +489,14 @@ const SuperArm = () => {
   }, [telemetry, chartChannel]);
 
   const urdfJointPositions = useMemo(
-    () => Object.fromEntries(
-      ARM_JOINTS.map((joint) => {
-        const measured = telemetry.arm?.[joint]?.position;
-        return [joint, typeof measured === "number" ? measured : arm[joint]];
-      }),
-    ),
-    [arm, telemetry.arm],
+    () => mergePhysicalJointPositions(arm, telemetry.arm, telemetry.hand),
+    [arm, telemetry.arm, telemetry.hand],
   );
+  const measuredJointCount = useMemo(
+    () => countMeasuredPhysicalJoints(telemetry.arm, telemetry.hand),
+    [telemetry.arm, telemetry.hand],
+  );
+  const { capture, version: captureVersion } = captureUi;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -395,10 +508,9 @@ const SuperArm = () => {
             </Button>
             <div>
               <h1 className="text-xl font-semibold">SuperArm + Hand</h1>
-              <p className="text-xs text-cyan-400">Source arm · official closed-loop MJCF · 13 actuators</p>
+              <p className="text-xs text-cyan-400">6 logical controls · 13 physical joints · MuJoCo or Isaac Sim 6.0</p>
             </div>
           </div>
-          <Button variant="outline" onClick={() => navigate("/hardware-setup")} className="border-cyan-700 text-cyan-200 hover:bg-cyan-950">Hardware setup</Button>
           <Button
             onClick={emergencyStop}
             className={`min-w-52 text-base font-bold ${emergencyStopped ? "bg-red-700 animate-pulse" : "bg-red-600 hover:bg-red-500"}`}
@@ -414,9 +526,10 @@ const SuperArm = () => {
             <div className="flex flex-wrap items-end gap-3">
               <label className="grid gap-1 text-sm">
                 Runtime
-                <select value={runtime} onChange={(event) => setRuntime(event.target.value as Runtime)} disabled={connected} className="rounded border border-slate-700 bg-slate-950 p-2">
+                <select value={runtime} onChange={(event) => setRuntime(event.target.value as SuperArmRuntime)} disabled={connected} className="rounded border border-slate-700 bg-slate-950 p-2">
                   <option value="mujoco">MuJoCo (default)</option>
                   <option value="hybrid_serial">Hybrid serial</option>
+                  <option value="isaac_sim">Isaac Sim 6.0 (USD)</option>
                 </select>
               </label>
               {runtime === "hybrid_serial" && (
@@ -426,8 +539,44 @@ const SuperArm = () => {
                   <datalist id="superarm-ports">{availablePorts.map((port) => <option value={port} key={port} />)}</datalist>
                 </label>
               )}
+              {runtime === "isaac_sim" && (
+                <div className="grid min-w-full gap-3 rounded-lg border border-violet-800/70 bg-violet-950/20 p-3 lg:grid-cols-2 2xl:grid-cols-4">
+                  <label className="grid gap-1 text-sm lg:col-span-2 2xl:col-span-4">
+                    Server-local USD distribution ZIP
+                    <Input value={isaacDistributionZip} onChange={(event) => setIsaacDistributionZip(event.target.value)} disabled={connected} className="bg-slate-950" />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Bridge ownership
+                    <select value={isaacBridgeMode} onChange={(event) => setIsaacBridgeMode(event.target.value as IsaacBridgeMode)} disabled={connected} className="rounded border border-slate-700 bg-slate-950 p-2">
+                      <option value="managed">Managed</option>
+                      <option value="external">External</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Host
+                    <Input value={isaacHost} onChange={(event) => setIsaacHost(event.target.value)} disabled={connected} className="bg-slate-950" />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Port
+                    <Input type="number" min={1} max={65535} value={isaacPort} onChange={(event) => setIsaacPort(Number(event.target.value))} disabled={connected} className="bg-slate-950" />
+                  </label>
+                  {isaacBridgeMode === "external" && (
+                    <label className="grid gap-1 text-sm">
+                      Shared capture directory
+                      <Input value={isaacExternalRunDir} onChange={(event) => setIsaacExternalRunDir(event.target.value)} disabled={connected} className="bg-slate-950" />
+                    </label>
+                  )}
+                  <div className="flex flex-wrap items-center gap-3 text-xs lg:col-span-2 2xl:col-span-4">
+                    <span className={`rounded-full px-2 py-1 ${isaacCapability?.enabled ? "bg-emerald-950 text-emerald-300" : "bg-amber-950 text-amber-300"}`}>
+                      {isaacCapability?.enabled ? "Validated server capability" : "Capability not ready"}
+                    </span>
+                    <span className="text-violet-200">6 logical controls → 13 physical Isaac joints</span>
+                    {isaacCapability?.validation_error && <span className="text-red-300">{isaacCapability.validation_error}</span>}
+                  </div>
+                </div>
+              )}
               {!connected ? (
-                <Button onClick={connect} disabled={connecting} className="bg-emerald-600 hover:bg-emerald-500">
+                <Button onClick={connect} disabled={connecting || (runtime === "isaac_sim" && !isaacReady)} className="bg-emerald-600 hover:bg-emerald-500">
                   <Power className="mr-2 h-4 w-4" /> {connecting ? "Starting…" : "Connect"}
                 </Button>
               ) : (
@@ -449,20 +598,41 @@ const SuperArm = () => {
                 <h2 className="font-semibold">LeLab URDF showroom</h2>
                 <p className="text-xs text-slate-400">Browser-side kinematic reference using LeLab’s standard Three.js viewer.</p>
               </div>
-              <SuperArmUrdfViewer jointPositions={urdfJointPositions} visualPose={visualPose} />
+              <SuperArmUrdfViewer jointPositions={urdfJointPositions} visualPose={visualPose} enableMjcfVisuals={runtime !== "isaac_sim"} />
             </div>
             <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
               <div className="border-b border-slate-800 px-4 py-3">
-                <h2 className="font-semibold">MuJoCo physics</h2>
-                <p className="text-xs text-slate-400">Server-rendered closed-loop hand and full arm assembly at 15 FPS.</p>
+                <h2 className="font-semibold">{showContinuousVideo ? "MuJoCo physics" : "Isaac Sim captures"}</h2>
+                <p className="text-xs text-slate-400">
+                  {showContinuousVideo
+                    ? "Server-rendered closed-loop hand and full arm assembly at 15 FPS."
+                    : "On-demand LeLab capture from the Isaac Sim runtime; continuous video remains MuJoCo-only."}
+                </p>
               </div>
               <div className="aspect-[4/3] bg-black">
-                {connected ? (
+                {connected && showContinuousVideo ? (
                   <img src={`${baseUrl}/api/superarm/video`} alt="Live MuJoCo SuperArm and Hand" className="h-full w-full object-contain" />
+                ) : connected && showIsaacCapture && capture ? (
+                  <img src={captureImageUrl(baseUrl, captureVersion)} alt="Latest Isaac Sim SuperArm capture" className="h-full w-full object-contain" />
+                ) : connected && showIsaacCapture ? (
+                  <div className="flex h-full flex-col items-center justify-center px-6 text-center text-slate-500">
+                    <Hand className="mb-3 h-16 w-16" />
+                    Capture a whole-robot or hand close-up frame from Isaac Sim.
+                  </div>
                 ) : (
-                  <div className="flex h-full flex-col items-center justify-center text-slate-500"><Hand className="mb-3 h-16 w-16" />Connect MuJoCo to start the 640×480 stream</div>
+                  <div className="flex h-full flex-col items-center justify-center text-slate-500"><Hand className="mb-3 h-16 w-16" />Connect {runtime === "isaac_sim" ? "Isaac Sim" : "MuJoCo"} to start visualization</div>
                 )}
               </div>
+              {showIsaacCapture && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-slate-800 p-3 text-xs text-slate-400">
+                  <span>{connected ? "Connected" : "Disconnected"}</span>
+                  <span>Physics step: {telemetry.physics_step ?? capture?.physics_step ?? "—"}</span>
+                  <span>Measured joint coverage: {measuredJointCount} / 13</span>
+                  <Button size="sm" variant="outline" disabled={!connected || capturing} onClick={() => captureIsaac("whole", `whole-${Date.now()}`)}><Camera className="mr-2 h-4 w-4" />Capture whole</Button>
+                  <Button size="sm" variant="outline" disabled={!connected || capturing} onClick={() => captureIsaac("hand", `hand-${Date.now()}`)}><Hand className="mr-2 h-4 w-4" />Capture hand</Button>
+                  <span>{capture ? `${capture.bytes ?? 0} bytes${capture.width && capture.height ? ` · ${capture.width}×${capture.height}` : ""}` : "No Isaac capture yet"}</span>
+                </div>
+              )}
             </div>
           </div>
 

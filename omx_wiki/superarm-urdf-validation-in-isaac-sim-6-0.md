@@ -215,3 +215,32 @@ and asset routes remain MuJoCo-only. Independent verification rejected and then
 confirmed the malformed-ZIP repair; the final Task 6 suite passed 91 tests plus
 Ruff and bytecode compilation. Website selection/capture and live Isaac motion,
 screenshots, and GIF evidence remain open gates.
+
+The website now exposes `Isaac Sim 6.0 (USD)` without pretending it is another
+continuous stream. MuJoCo and hybrid serial retain `/api/superarm/video`; Isaac
+shows connection state, measured physics step, measured joint coverage, and
+explicit whole-robot or hand capture controls. Robot records forward the
+server-local distribution, optional pinned SHA, managed/external ownership,
+host, port, and shared external run directory into manual and recording paths
+while keeping the LeRobot action contract five arm values plus one fixed grasp.
+
+Isaac does not fetch the MJCF visual manifest. Instead, its URDF URL requests
+the hand-preserving source variant, then applies all five measured arm and eight
+measured hand joint positions to that geometry. MuJoCo still requests the
+stripped-hand URDF and overlays the exact MJCF hand, preventing duplicate
+geometry. This distinction fixed an independently detected arm-only Isaac
+showroom regression.
+
+The latest Isaac capture image is served only after matching the capture-time
+resolved path, device, inode, byte length, modification time, and SHA-256. The
+server reads and validates PNG bytes through a stable regular-file descriptor
+and returns those bytes directly, so a same-size replacement is rejected with
+409 rather than being reopened through a `FileResponse` race. Connect,
+disconnect, and websocket disconnect also clear browser capture metadata,
+advance the image URL version, and use `Cache-Control: no-store`, preventing a
+session-A image from being presented as session-B evidence. Independent
+verification rejected the invisible hand, mutable-file draft, and stale
+cross-session UI state in sequence, then approved the repairs. Final leader
+verification passed 122 Python tests, Ruff, 28 frontend tests, ESLint, and the
+Vite build. This is still website/fake-runtime proof; live Isaac motion, reviewed
+close-ups, GIF, numeric acceptance, and real episode evidence remain open.

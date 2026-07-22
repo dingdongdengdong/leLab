@@ -392,6 +392,37 @@ def test_source_arm_urdf_is_browser_loadable(tmp_path: Path, monkeypatch: pytest
     assert mesh.is_file()
 
 
+def test_source_arm_urdf_preserves_hand_visuals_for_isaac_telemetry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "assets"
+    workspace.mkdir()
+    arm_mesh = workspace / "motor_1.stl"
+    hand_mesh = workspace / "finger_shell.stl"
+    arm_mesh.write_bytes(b"solid arm\nendsolid arm\n")
+    hand_mesh.write_bytes(b"solid hand\nendsolid hand\n")
+    urdf_path = workspace / "superarm_amazinghand.urdf"
+    urdf_path.write_text(
+        f"<robot name='superarm'><link name='base'><visual><geometry><mesh filename='{arm_mesh}'/></geometry></visual></link>"
+        "<link name='wrist'/><link name='r_wrist_interface'/>"
+        f"<link name='finger1'><visual name='hand-shell'><geometry><mesh filename='{hand_mesh}'/></geometry></visual></link>"
+        "<joint name='wrist_adapter_to_amazinghand' type='fixed'><parent link='wrist'/><child link='r_wrist_interface'/></joint>"
+        "<joint name='finger1_motor1' type='revolute'><parent link='r_wrist_interface'/><child link='finger1'/></joint>"
+        "</robot>",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SUPERARM_URDF_PATH", str(urdf_path))
+    service = SuperArmService(ProgramStore(tmp_path / "programs.yaml"))
+
+    mujoco_xml = service.source_arm_urdf_xml(workspace)
+    isaac_xml = service.source_arm_urdf_xml(workspace, include_hand_visuals=True)
+
+    assert b"hand-shell" not in mujoco_xml
+    assert b"hand-shell" in isaac_xml
+    assert b"/api/superarm/urdf/meshes/finger_shell.stl" in isaac_xml
+
+
 def test_mujoco_camera_frames_the_complete_assembly(tmp_path: Path) -> None:
     workspace = Path(__file__).resolve().parents[3]
     service = SuperArmService(ProgramStore(tmp_path / "programs.yaml"))
@@ -592,6 +623,12 @@ def test_isaac_service_uses_common_atomic_dispatch_and_capture(tmp_path: Path) -
         isaac_bridge_mode="managed",
     )
     runtime = created[0]
+    capture_file = tmp_path / "hand-close.png"
+    capture_file.write_bytes(b"\x89PNG\r\n\x1a\nvalidated-capture")
+    runtime.capture = lambda _view, _name: {
+        "path": str(capture_file),
+        "bytes": capture_file.stat().st_size,
+    }
 
     assert started["runtime"] == "isaac_sim"
     assert started["connected"] is True
@@ -768,6 +805,12 @@ def test_isaac_api_session_logical_capture_and_video_boundary(tmp_path, monkeypa
     from lelab.server import app
 
     runtime = _FakeIsaacRuntime("/server/superarm.zip")
+    capture_file = tmp_path / "hand-close.png"
+    capture_file.write_bytes(b"\x89PNG\r\n\x1a\nvalidated-capture")
+    runtime.capture = lambda _view, _name: {
+        "path": str(capture_file),
+        "bytes": capture_file.stat().st_size,
+    }
 
     def runtime_factory(*_args, **kwargs):
         runtime.kwargs.update(kwargs)
@@ -810,4 +853,44 @@ def test_isaac_api_session_logical_capture_and_video_boundary(tmp_path, monkeypa
     video = client.get("/api/superarm/video")
     assert video.status_code == 409
     assert "Continuous video is only available for MuJoCo" in video.json()["detail"]
+    local_service.disconnect()
+
+
+def test_isaac_api_serves_only_the_validated_latest_capture_file(tmp_path, monkeypatch):
+    import lelab.superarm.api as api_module
+    from lelab.server import app
+
+    capture_file = tmp_path / "hand-close.png"
+    capture_file.write_bytes(b"\x89PNG\r\n\x1a\nvalidated-capture")
+    runtime = _FakeIsaacRuntime("/server/superarm.zip")
+    runtime.capture = lambda _view, _name: {
+        "path": str(capture_file),
+        "bytes": capture_file.stat().st_size,
+    }
+    local_service = SuperArmService(
+        ProgramStore(tmp_path / "programs.yaml"),
+        isaac_runtime_factory=lambda *_args, **_kwargs: runtime,
+    )
+    monkeypatch.setattr(api_module, "service", local_service)
+    client = TestClient(app)
+    client.post(
+        "/api/superarm/session",
+        json={"runtime": "isaac_sim", "isaac_distribution_zip": "/server/superarm.zip"},
+    )
+    client.post("/api/superarm/capture", json={"view": "hand", "name": "close"})
+
+    image = client.get("/api/superarm/capture/latest/image")
+
+    assert image.status_code == 200
+    assert image.headers["content-type"] == "image/png"
+    assert image.headers["cache-control"] == "no-store"
+    assert image.content == capture_file.read_bytes()
+
+    replacement = b"\x89PNG\r\n\x1a\nchanged---capture"
+    assert len(replacement) == capture_file.stat().st_size
+    capture_file.write_bytes(replacement)
+    changed = client.get("/api/superarm/capture/latest/image")
+
+    assert changed.status_code == 409
+    assert "changed" in changed.json()["detail"].lower()
     local_service.disconnect()

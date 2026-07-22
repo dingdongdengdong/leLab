@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import os
 import queue
 import shutil
+import stat
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -69,6 +71,7 @@ class SuperArmService:
         self._session_generation = 0
         self._closing = False
         self._latest_capture: dict[str, Any] | None = None
+        self._latest_capture_fingerprint: tuple[str, int, int, int, int, str] | None = None
 
     def capabilities(self, workspace_root: str | Path | None = None) -> dict[str, Any]:
         errors: list[str] = []
@@ -260,12 +263,15 @@ class SuperArmService:
     def source_arm_urdf_xml(
         self,
         workspace_root: str | Path | None = None,
+        *,
+        include_hand_visuals: bool = False,
     ) -> bytes:
         urdf_path = self._urdf_path(workspace_root)
         root = ET.parse(urdf_path).getroot()
         align_joint5_urdf(root)
         align_amazinghand_attachment(root)
-        remove_amazinghand_visuals(root)
+        if not include_hand_visuals:
+            remove_amazinghand_visuals(root)
         for mesh in root.findall(".//mesh"):
             filename = mesh.get("filename")
             if filename:
@@ -386,6 +392,7 @@ class SuperArmService:
                 self._closing = False
                 self._live_enabled = False
                 self._latest_capture = None
+                self._latest_capture_fingerprint = None
                 self._start_watchdog()
             except Exception:
                 with suppress(Exception):
@@ -420,6 +427,7 @@ class SuperArmService:
                 self.runtime = None
                 self.mode = None
                 self._latest_capture = None
+                self._latest_capture_fingerprint = None
                 self._closing = False
         event = self.status()
         self.publish({"type": "runtime_status", **event})
@@ -572,7 +580,9 @@ class SuperArmService:
             if self.mode != "isaac_sim" or self.runtime is None or self._closing:
                 raise RuntimeError("Isaac capture is available only for isaac_sim sessions")
             capture = self.runtime.capture(view, name)
+            _, _, fingerprint = self._read_capture_file(capture)
             self._latest_capture = dict(capture)
+            self._latest_capture_fingerprint = fingerprint
             return dict(capture)
 
     def latest_capture(self) -> dict[str, Any]:
@@ -582,6 +592,57 @@ class SuperArmService:
             if self._latest_capture is None:
                 raise RuntimeError("No Isaac capture has been created")
             return dict(self._latest_capture)
+
+    @staticmethod
+    def _read_capture_file(
+        capture: dict[str, Any],
+    ) -> tuple[Path, bytes, tuple[str, int, int, int, int, str]]:
+        raw_path = capture.get("path")
+        if not isinstance(raw_path, str):
+            raise RuntimeError("Latest Isaac capture path is unavailable")
+        try:
+            path = Path(raw_path).resolve(strict=True)
+        except OSError as exc:
+            raise RuntimeError("Latest Isaac capture file is unavailable") from exc
+        if path.suffix.lower() != ".png" or not path.is_file() or Path(raw_path).is_symlink():
+            raise RuntimeError("Latest Isaac capture file is invalid")
+        with path.open("rb") as stream:
+            before = os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode) or before.st_size > 32 * 1024 * 1024:
+                raise RuntimeError("Latest Isaac capture file is invalid")
+            content = stream.read(32 * 1024 * 1024 + 1)
+            after = os.fstat(stream.fileno())
+        current = path.stat()
+        stable_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns")
+        if any(getattr(before, field) != getattr(after, field) for field in stable_fields) or any(
+            getattr(after, field) != getattr(current, field) for field in stable_fields
+        ):
+            raise RuntimeError("Latest Isaac capture file changed while reading")
+        if len(content) > 32 * 1024 * 1024 or not content.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise RuntimeError("Latest Isaac capture file is invalid")
+        expected_bytes = capture.get("bytes")
+        if expected_bytes is not None and len(content) != expected_bytes:
+            raise RuntimeError("Latest Isaac capture file size changed")
+        fingerprint = (
+            str(path),
+            int(after.st_dev),
+            int(after.st_ino),
+            int(after.st_size),
+            int(after.st_mtime_ns),
+            hashlib.sha256(content).hexdigest(),
+        )
+        return path, content, fingerprint
+
+    def latest_capture_image(self) -> bytes:
+        with self._control_lock:
+            capture = self.latest_capture()
+            expected = self._latest_capture_fingerprint
+            if expected is None:
+                raise RuntimeError("Latest Isaac capture integrity metadata is unavailable")
+            _, content, current = self._read_capture_file(capture)
+            if current != expected:
+                raise RuntimeError("Latest Isaac capture file changed after validation")
+            return content
 
     def emergency_stop(self, active: bool = True) -> dict[str, Any]:
         self._sequence_stop.set()

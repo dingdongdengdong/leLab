@@ -28,6 +28,7 @@ import {
   isSuperArmLeaderReady,
   SuperArmInputMode,
 } from "@/lib/superarmRecording";
+import { isSuperArmBackend } from "@/lib/superarmRuntime";
 
 interface RecordingModalProps {
   open: boolean;
@@ -86,7 +87,7 @@ const RecordingModal: React.FC<RecordingModalProps> = ({
 }) => {
   const { auth } = useHfAuth();
 
-  const isSuperArm = robot?.robot_backend === "superarm_mujoco";
+  const isSuperArm = isSuperArmBackend(robot?.robot_backend);
   const canStart =
     !!robot &&
     robot.is_clean &&

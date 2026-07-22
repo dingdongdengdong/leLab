@@ -22,6 +22,7 @@ import {
   isSuperArmLeaderReady,
   SuperArmInputMode,
 } from "@/lib/superarmRecording";
+import { isSuperArmBackend } from "@/lib/superarmRuntime";
 
 const ON_SPACE = isHostedSpace();
 
@@ -158,7 +159,7 @@ const Landing = () => {
       return;
     }
 
-    const isSuperArm = robot.robot_backend === "superarm_mujoco";
+    const isSuperArm = isSuperArmBackend(robot.robot_backend);
     if (
       isSuperArm &&
       !isSuperArmLeaderReady(
@@ -256,6 +257,12 @@ const Landing = () => {
       superarm_config: robot.superarm_config || undefined,
       superarm_asset_root: robot.superarm_asset_root || undefined,
       mujoco_model_path: robot.mujoco_model_path || undefined,
+      isaac_distribution_zip: robot.isaac_distribution_zip || undefined,
+      isaac_expected_sha256: robot.isaac_expected_sha256 || undefined,
+      isaac_bridge_mode: robot.isaac_bridge_mode || undefined,
+      isaac_host: robot.isaac_host || undefined,
+      isaac_port: robot.isaac_port || undefined,
+      isaac_external_run_dir: robot.isaac_external_run_dir || undefined,
       input_mode: leaderFields.input_mode,
     };
 

@@ -248,3 +248,28 @@
 ## [2026-07-22T09:53:39.000Z] update
 - **Pages:** superarm-urdf-validation-in-isaac-sim-6-0.md
 - **Summary:** Recorded LeLab teleoperation, manual leader, recording, optional validated Isaac robot record, positive hand mapping, malformed-ZIP fail-closed behavior, independent approval, and the remaining website/live-Isaac gates.
+## [2026-07-22T10:02:05.261Z] ingest
+- **Pages:** lelab-isaac-sim-control-scope.md
+- **Summary:** Created new page "LeLab Isaac Sim Control Scope"
+
+## [2026-07-22T10:02:05.264Z] add
+- **Pages:** lelab-isaac-sim-control-scope.md
+- **Summary:** Created wiki page lelab-isaac-sim-control-scope.md
+
+## [2026-07-22T10:15:57.000Z] update
+- **Pages:** superarm-urdf-validation-in-isaac-sim-6-0.md, lelab-isaac-sim-control-scope.md
+- **Summary:** Recorded the truthful Isaac website selector/capture boundary, hand-preserving URDF telemetry path, measured coverage, immutable capture-byte validation, independent rejection/repair/approval, and remaining live-Isaac evidence gate.
+## [2026-07-22T10:16:36.016Z] add
+- **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-isaac-sim-control-scope.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, so-101-leader-to-superarm-recording-guide.md, superarm-follower-calibration-wizard.md, superarm-real-hardware-motor-protocol-boundary.md, superarm-runtime-joint-status-semantics.md, superarm-urdf-amazinghand-showroom-motion-fix.md, superarm-urdf-validation-in-isaac-sim-6-0.md, superarm-website-real-hardware-readiness-page.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-07-22T10:16:36.313Z] lint
+- **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-isaac-sim-control-scope.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, so-101-leader-to-superarm-recording-guide.md, superarm-follower-calibration-wizard.md, superarm-runtime-joint-status-semantics.md, superarm-urdf-validation-in-isaac-sim-6-0.md, superarm-website-real-hardware-readiness-page.md
+- **Summary:** Lint: 11 issues (10 orphan, 0 stale, 0 broken, 0 contradictions)
+
+## [2026-07-22T10:20:15.000Z] update
+- **Pages:** superarm-urdf-validation-in-isaac-sim-6-0.md, lelab-isaac-sim-control-scope.md
+- **Summary:** Added the capture session-reset and no-store invariant after independent code-quality rejection, plus the final 122-Python/28-frontend/build verification evidence.
+## [2026-07-22T10:21:02.831Z] lint
+- **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-isaac-sim-control-scope.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, so-101-leader-to-superarm-recording-guide.md, superarm-follower-calibration-wizard.md, superarm-runtime-joint-status-semantics.md, superarm-urdf-validation-in-isaac-sim-6-0.md, superarm-website-real-hardware-readiness-page.md
+- **Summary:** Lint: 11 issues (10 orphan, 0 stale, 0 broken, 0 contradictions)

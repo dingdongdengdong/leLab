@@ -53,6 +53,12 @@ const RobotConfigManager: React.FC<RobotConfigManagerProps> = ({
           superarm_config: robot.superarm_config || undefined,
           superarm_asset_root: robot.superarm_asset_root || undefined,
           mujoco_model_path: robot.mujoco_model_path || undefined,
+          isaac_distribution_zip: robot.isaac_distribution_zip || undefined,
+          isaac_expected_sha256: robot.isaac_expected_sha256 || undefined,
+          isaac_bridge_mode: robot.isaac_bridge_mode || undefined,
+          isaac_host: robot.isaac_host || undefined,
+          isaac_port: robot.isaac_port || undefined,
+          isaac_external_run_dir: robot.isaac_external_run_dir || undefined,
         }),
       });
       const data = await res.json();

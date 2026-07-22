@@ -14,6 +14,12 @@ export interface RobotRecord {
   superarm_config?: string;
   superarm_asset_root?: string;
   mujoco_model_path?: string;
+  isaac_distribution_zip?: string;
+  isaac_expected_sha256?: string;
+  isaac_bridge_mode?: "managed" | "external";
+  isaac_host?: string;
+  isaac_port?: number;
+  isaac_external_run_dir?: string;
   urdf_path?: string;
   purpose?: "primary" | "diagnostic";
   physical_joint_names?: string[];

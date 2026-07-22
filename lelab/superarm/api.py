@@ -278,10 +278,16 @@ def stop_superarm_calibration():
 
 
 @router.get("/api/superarm/urdf")
-def source_arm_urdf(workspace_root: str | None = None):
+def source_arm_urdf(
+    workspace_root: str | None = None,
+    include_hand_visuals: bool = False,
+):
     try:
         return Response(
-            content=service.source_arm_urdf_xml(workspace_root),
+            content=service.source_arm_urdf_xml(
+                workspace_root,
+                include_hand_visuals=include_hand_visuals,
+            ),
             media_type="application/xml",
         )
     except Exception as exc:
@@ -378,6 +384,18 @@ def capture(request: CaptureRequest):
 def latest_capture():
     try:
         return service.latest_capture()
+    except Exception as exc:
+        raise api_error(exc) from exc
+
+
+@router.get("/api/superarm/capture/latest/image")
+def latest_capture_image():
+    try:
+        return Response(
+            content=service.latest_capture_image(),
+            media_type="image/png",
+            headers={"Cache-Control": "no-store"},
+        )
     except Exception as exc:
         raise api_error(exc) from exc
 

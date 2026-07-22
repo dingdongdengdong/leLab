@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { RobotRecord } from "@/hooks/useRobots";
+import { isSuperArmBackend } from "@/lib/superarmRuntime";
 import RobotSelector from "./RobotSelector";
 
 interface RobotTileProps {
@@ -45,7 +46,7 @@ const RobotTile: React.FC<RobotTileProps> = ({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const status = robot ? (robot.is_clean ? "Ready" : "Needs configuration") : null;
   const teleopDisabled = !robot || !robot.is_clean;
-  const manualLeaderAvailable = robot?.robot_backend === "superarm_mujoco";
+  const manualLeaderAvailable = isSuperArmBackend(robot?.robot_backend);
 
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-3 flex flex-col gap-2 relative">

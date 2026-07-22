@@ -1,6 +1,6 @@
 # Wiki Index
 
-> 11 pages | Last updated: 2026-07-22T09:01:36.252Z
+> 12 pages | Last updated: 2026-07-22T10:16:36.016Z
 
 ## architecture
 
@@ -16,6 +16,7 @@
 ## decision
 
 - [AmazingHandControl and DM4340P hardware boundary](amazinghandcontrol-and-dm4340p-hardware-boundary.md) — # AmazingHandControl and DM4340P hardware boundary
+- [LeLab Isaac Sim Control Scope](lelab-isaac-sim-control-scope.md) — # LeLab Isaac Sim Control Scope
 - [SuperArm real-hardware motor protocol boundary](superarm-real-hardware-motor-protocol-boundary.md) — # SuperArm real-hardware motor protocol boundary
 - [SuperArm website real-hardware readiness page](superarm-website-real-hardware-readiness-page.md) — # SuperArm website real-hardware readiness page
 

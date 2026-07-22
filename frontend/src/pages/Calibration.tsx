@@ -34,6 +34,7 @@ import Logo from "@/components/Logo";
 import PortDetectionButton from "@/components/ui/PortDetectionButton";
 import PortDetectionModal from "@/components/ui/PortDetectionModal";
 import { useApi } from "@/contexts/ApiContext";
+import { isSuperArmBackend } from "@/lib/superarmRuntime";
 import { isMotorRangeComplete } from "@/lib/calibrationTargets";
 import CameraConfiguration, {
   CameraConfig,
@@ -174,7 +175,7 @@ const Calibration = () => {
       const r = await fetchRobot();
       if (!r || cancelled) return;
       // Default to the first incomplete side in the checklist (leader, then follower).
-      const defaultDevice = r.robot_backend === "superarm_mujoco"
+      const defaultDevice = isSuperArmBackend(r.robot_backend)
         ? "superarm"
         : !r.leader_config
         ? "teleop"

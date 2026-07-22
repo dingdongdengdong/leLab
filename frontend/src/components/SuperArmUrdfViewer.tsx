@@ -11,6 +11,7 @@ import {
 } from "@/lib/urdfViewerHelpers";
 import { useMjcfVisualLayer } from "@/hooks/useMjcfVisualLayer";
 import { filterScalarJoints, MjcfVisualPose } from "@/lib/mjcfVisualLayer";
+import { superArmUrdfUrl } from "@/lib/superarmRuntime";
 
 if (typeof window !== "undefined" && !customElements.get("urdf-viewer")) {
   customElements.define("urdf-viewer", URDFManipulator);
@@ -19,6 +20,7 @@ if (typeof window !== "undefined" && !customElements.get("urdf-viewer")) {
 interface SuperArmUrdfViewerProps {
   jointPositions: Record<string, number>;
   visualPose?: MjcfVisualPose | null;
+  enableMjcfVisuals?: boolean;
 }
 
 const fitRobotToView = (viewer: URDFViewerElement) => {
@@ -40,7 +42,7 @@ const fitRobotToView = (viewer: URDFViewerElement) => {
   viewer.redraw();
 };
 
-const SuperArmUrdfViewer = ({ jointPositions, visualPose }: SuperArmUrdfViewerProps) => {
+const SuperArmUrdfViewer = ({ jointPositions, visualPose, enableMjcfVisuals = true }: SuperArmUrdfViewerProps) => {
   const { baseUrl } = useApi();
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<URDFViewerElement | null>(null);
@@ -48,7 +50,7 @@ const SuperArmUrdfViewer = ({ jointPositions, visualPose }: SuperArmUrdfViewerPr
   const [robotRevision, setRobotRevision] = useState(0);
   const { isActive, handJointNames } = useMjcfVisualLayer({
     viewerRef,
-    manifestUrl: `${baseUrl}/api/superarm/mujoco-visual-manifest`,
+    manifestUrl: enableMjcfVisuals ? `${baseUrl}/api/superarm/mujoco-visual-manifest` : undefined,
     visualPose,
     robotRevision,
   });
@@ -71,14 +73,14 @@ const SuperArmUrdfViewer = ({ jointPositions, visualPose }: SuperArmUrdfViewerPr
     const onProcessed = () => {
       fitRobotToView(viewer);
       setRobotRevision((revision) => revision + 1);
-      setStatus("LeLab URDF reference · loading exact hand…");
+      setStatus(enableMjcfVisuals ? "LeLab URDF reference · loading exact hand…" : "LeLab URDF reference · Isaac joint telemetry");
     };
     const onError = () => setStatus("URDF reference unavailable");
     viewer.addEventListener("urdf-processed", onProcessed);
     viewer.addEventListener("error", onError);
     const cleanupLoading = setupModelLoading(
       viewer,
-      `${baseUrl}/api/superarm/urdf`,
+      superArmUrdfUrl(baseUrl, enableMjcfVisuals),
       "",
       () => undefined,
       [],
@@ -91,7 +93,7 @@ const SuperArmUrdfViewer = ({ jointPositions, visualPose }: SuperArmUrdfViewerPr
       viewer.remove();
       viewerRef.current = null;
     };
-  }, [baseUrl, resolveApiUrl]);
+  }, [baseUrl, enableMjcfVisuals, resolveApiUrl]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -104,9 +106,11 @@ const SuperArmUrdfViewer = ({ jointPositions, visualPose }: SuperArmUrdfViewerPr
 
   useEffect(() => {
     if (robotRevision > 0) {
-      setStatus(isActive ? "LeLab URDF arm · exact MuJoCo hand" : "LeLab URDF reference · hand fallback");
+      setStatus(enableMjcfVisuals
+        ? (isActive ? "LeLab URDF arm · exact MuJoCo hand" : "LeLab URDF reference · hand fallback")
+        : "LeLab URDF reference · Isaac joint telemetry");
     }
-  }, [isActive, robotRevision]);
+  }, [enableMjcfVisuals, isActive, robotRevision]);
 
   return (
     <div className="relative h-full min-h-[360px] overflow-hidden bg-black">
