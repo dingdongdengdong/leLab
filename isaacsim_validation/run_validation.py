@@ -39,7 +39,7 @@ from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
 from isaacsim.core.utils.viewports import set_camera_view  # noqa: E402
 from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport  # noqa: E402
 from pxr import Usd, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
-from visuals import crop_hand_closeup, image_has_detail  # noqa: E402
+from visuals import image_has_detail, validate_direct_grasp_frames  # noqa: E402
 
 enable_extension("isaacsim.asset.importer.urdf")
 enable_extension("omni.kit.renderer.capture")
@@ -84,6 +84,7 @@ def _capture(path: Path, stage: Usd.Stage, prim, *, closeup: bool) -> dict:
     eye, target = _camera_pose(stage, prim, closeup=closeup)
     path.parent.mkdir(parents=True, exist_ok=True)
     errors: list[str] = []
+    method: str | None = None
     try:
         set_camera_view(eye=eye, target=target, camera_prim_path="/OmniverseKit_Persp")
         for _ in range(8):
@@ -97,6 +98,7 @@ def _capture(path: Path, stage: Usd.Stage, prim, *, closeup: bool) -> dict:
             await asyncio.wait_for(result.wait_for_result(), timeout=20.0)
 
         asyncio.get_event_loop().run_until_complete(capture())
+        method = "viewport_camera"
     except Exception as exc:
         errors.append(f"viewport: {type(exc).__name__}: {exc}")
 
@@ -120,6 +122,7 @@ def _capture(path: Path, stage: Usd.Stage, prim, *, closeup: bool) -> dict:
             if not frames:
                 raise RuntimeError("Replicator did not create an RGB frame")
             shutil.copyfile(frames[-1], path)
+            method = "replicator_render_product"
         except Exception as exc:
             errors.append(f"replicator: {type(exc).__name__}: {exc}")
         finally:
@@ -127,7 +130,20 @@ def _capture(path: Path, stage: Usd.Stage, prim, *, closeup: bool) -> dict:
 
     if not image_has_detail(path):
         raise RuntimeError("screenshot capture failed: " + "; ".join(errors))
-    return {"path": str(path), "bytes": path.stat().st_size, "eye": eye, "target": target}
+    return {
+        "path": str(path),
+        "bytes": path.stat().st_size,
+        "eye": eye,
+        "target": target,
+        "method": method,
+    }
+
+
+def _prim_named(stage: Usd.Stage, name: str):
+    matches = [prim for prim in stage.Traverse() if prim.GetName() == name]
+    if len(matches) != 1:
+        raise RuntimeError(f"expected one prim named {name!r}, found {len(matches)}")
+    return matches[0]
 
 
 def _schema_report(stage: Usd.Stage, root_prim, prim_path: str) -> dict:
@@ -253,6 +269,8 @@ def main() -> int:
             )
 
         hand_results = []
+        hand_frames = []
+        hand_root = _prim_named(stage, "r_wrist_interface")
         for name, grasp in (("open", 0.0), ("half_close", 0.5), ("close", 1.0)):
             targets = grasp_to_urdf_targets(grasp)
             _command_targets(art, HAND_JOINTS, targets)
@@ -268,6 +286,8 @@ def main() -> int:
                     "max_error": max(abs(measured[joint] - targets[joint]) for joint in HAND_JOINTS),
                 }
             )
+            frame = _capture(run_dir / f"hand_{name}.png", stage, hand_root, closeup=True)
+            hand_frames.append({"name": name, **frame})
 
         hand_motion_passed = all(
             hand_results[0]["measured"][joint]
@@ -283,12 +303,12 @@ def main() -> int:
             "arm_motion_passed": all(item["passed"] for item in arm_results),
             "hand_motion_passed": hand_motion_passed,
         }
+        report["visual_motion"] = validate_direct_grasp_frames(hand_frames)
+        report["visual_motion"]["frames"] = hand_frames
         report["phase"] = "capturing_visuals"
         _write_json(report_path, report)
         whole_robot = run_dir / "whole_robot.png"
         screenshots = [_capture(whole_robot, stage, root_prim, closeup=False)]
-        if args.profile != "served":
-            screenshots.append(crop_hand_closeup(whole_robot, run_dir / "hand_closeup.png"))
         report["screenshots"] = screenshots
         report["visual_boundary"] = (
             "Raw profile retains the generated full hand visual shell; detailed hand visual geometry "
@@ -306,6 +326,7 @@ def main() -> int:
             and report["schema"]["collision_prim_count"] > 0
             and report["motion"]["arm_motion_passed"]
             and report["motion"]["hand_motion_passed"]
+            and report["visual_motion"]["passed"]
         )
         report["status"] = "PASS" if passed else "FAIL"
         report["phase"] = "complete"
