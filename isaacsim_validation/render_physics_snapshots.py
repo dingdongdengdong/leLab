@@ -34,7 +34,6 @@ from visuals import (  # noqa: E402
     validate_independent_finger_linkage_sequence,
     validate_passive_linkage_motion_sequence,
     validate_passive_linkage_stage_contract,
-    validate_passive_linkage_visual_summary,
     zip_learning_visual_boundary,
 )
 
@@ -64,10 +63,6 @@ def _passive_root(stage: Usd.Stage, robot_root: str):
     if len(matches) != 1:
         raise RuntimeError(f"expected one passive_linkage_visuals group, found {len(matches)}")
     return matches[0]
-
-
-def _validate_passive_linkage_stage(stage: Usd.Stage, robot_root: str) -> dict:
-    return validate_passive_linkage_visual_summary(_passive_linkage_stage_summary(stage, robot_root))
 
 
 def _validate_passive_linkage_stage_contract(stage: Usd.Stage, robot_root: str, contract: dict) -> dict:

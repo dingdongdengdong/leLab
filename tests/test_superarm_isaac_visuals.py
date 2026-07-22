@@ -305,12 +305,16 @@ def test_independent_finger_snapshots_require_only_target_finger_moves():
         validate_independent_finger_linkage_sequence(open_state, [bad_state])
 
 
-def test_static_snapshot_renderer_records_passive_linkage_visuals_before_capture():
+def test_static_snapshot_renderer_records_active_snapshot_contract_before_capture():
     renderer = (Path(__file__).parents[1] / "isaacsim_validation" / "render_physics_snapshots.py").read_text()
 
-    validate = renderer.index("_validate_passive_linkage_stage(")
-    capture = renderer.index("_capture(")
-    assert validate < capture
+    hand_snapshot_loop = renderer.index("for snapshot in snapshots:")
+    contract_call = renderer.index("_validate_passive_linkage_stage_contract(", hand_snapshot_loop)
+    capture = renderer.index("_capture(", contract_call)
+    loop_end = renderer.index('report["visual_motion"]', hand_snapshot_loop)
+
+    assert hand_snapshot_loop < contract_call < capture < loop_end
+    assert "def _validate_passive_linkage_stage(" not in renderer
     assert 'report["passive_linkage_visuals"]' in renderer
     assert "validate_independent_finger_linkage_sequence" in renderer
 
