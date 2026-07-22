@@ -28,13 +28,7 @@ CASES = [
 ]
 ARM_ERROR_LIMIT_RAD = 0.02
 HAND_ERROR_LIMIT_RAD = 0.01
-STATIC_VISUAL_FILES = {
-    "whole": "superarm-isaac60-passive-linkage-whole.png",
-    "open": "superarm-isaac60-passive-linkage-open.png",
-    "half_close": "superarm-isaac60-passive-linkage-half-close.png",
-    "close": "superarm-isaac60-passive-linkage-close.png",
-    "report": "superarm-isaac60-passive-linkage-report.json",
-}
+VISUAL_NAMES = ("whole", "open", "half-close", "close")
 
 
 def utc_now() -> str:
@@ -169,7 +163,7 @@ def write_hand_gif(paths: list[Path], output: Path) -> None:
             frame.close()
 
 
-def distribution_visual_provenance(manifest: dict[str, Any]) -> dict[str, str]:
+def distribution_visual_provenance(manifest: dict[str, Any]) -> dict[str, Any]:
     files = manifest.get("files")
     source = manifest.get("source")
     if not isinstance(files, list) or not isinstance(source, dict):
@@ -184,16 +178,33 @@ def distribution_visual_provenance(manifest: dict[str, Any]) -> dict[str, str]:
     )
     report_sha256 = report.get("sha256") if isinstance(report, dict) else None
     validation_run_id = source.get("validation_run_id")
+    visuals = manifest.get("visual_evidence")
     if (
         not isinstance(report_sha256, str)
         or len(report_sha256) != 64
         or not isinstance(validation_run_id, str)
         or not validation_run_id
+        or not isinstance(visuals, dict)
+        or set(visuals) != set(VISUAL_NAMES)
     ):
         raise RuntimeError("distribution manifest lacks visual provenance")
+    for name in VISUAL_NAMES:
+        item = visuals[name]
+        if (
+            not isinstance(item, dict)
+            or item.get("path") != f"validation/visuals/{name}.png"
+            or not isinstance(item.get("bytes"), int)
+            or isinstance(item.get("bytes"), bool)
+            or item["bytes"] <= 0
+            or not isinstance(item.get("sha256"), str)
+            or len(item["sha256"]) != 64
+            or any(character not in "0123456789abcdef" for character in item["sha256"])
+        ):
+            raise RuntimeError("distribution manifest lacks visual provenance")
     return {
         "report_sha256": report_sha256,
         "validation_run_id": validation_run_id,
+        "visuals": visuals,
     }
 
 
@@ -203,25 +214,39 @@ def collect_static_visual_evidence(
     *,
     expected_report_sha256: str,
     expected_validation_run_id: str,
+    expected_visuals: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     """Copy the separately validated Isaac USD frames without calling them live captures."""
 
     source_dir = source_dir.resolve(strict=True)
     run_dir.mkdir(parents=True, exist_ok=True)
     copied: dict[str, Path] = {}
-    for key, filename in STATIC_VISUAL_FILES.items():
-        source = (source_dir / filename).resolve(strict=True)
+    for key in VISUAL_NAMES:
+        metadata = expected_visuals.get(key)
+        if not isinstance(metadata, dict):
+            raise RuntimeError(f"static Isaac visual evidence is missing metadata: {key}")
+        relative = metadata.get("path")
+        source = (source_dir / str(relative)).resolve(strict=True)
         if not source.is_relative_to(source_dir) or not source.is_file():
-            raise RuntimeError(f"static Isaac visual evidence is unsafe or missing: {filename}")
-        destination = run_dir / filename
+            raise RuntimeError(f"static Isaac visual evidence is unsafe or missing: {relative}")
+        if source.stat().st_size != metadata.get("bytes") or sha256_file(source) != metadata.get(
+            "sha256"
+        ):
+            raise RuntimeError(f"static Isaac visual frame does not match the distribution: {key}")
+        destination = run_dir / f"superarm-isaac60-passive-linkage-{key}.png"
         shutil.copyfile(source, destination)
         copied[key] = destination
-    source_report_sha256 = sha256_file(copied["report"])
+    source_report = (source_dir / "validation" / "isaac-report.json").resolve(strict=True)
+    if not source_report.is_relative_to(source_dir):
+        raise RuntimeError("static Isaac visual report is unsafe")
+    copied_report = run_dir / "superarm-isaac60-passive-linkage-report.json"
+    shutil.copyfile(source_report, copied_report)
+    source_report_sha256 = sha256_file(copied_report)
     if source_report_sha256 != expected_report_sha256:
         raise RuntimeError(
             "static Isaac visual report does not match the controlled distribution"
         )
-    validation = json.loads(copied["report"].read_text(encoding="utf-8"))
+    validation = json.loads(copied_report.read_text(encoding="utf-8"))
     passive_linkages = validation.get("passive_linkage_visuals")
     input_urdf = validation.get("input_urdf")
     if (
@@ -232,13 +257,13 @@ def collect_static_visual_evidence(
         or expected_validation_run_id not in input_urdf
     ):
         raise RuntimeError("static Isaac visual evidence report is not PASS")
-    hand_frames = [copied[key] for key in ("open", "half_close", "close")]
+    hand_frames = [copied[key] for key in ("open", "half-close", "close")]
     return {
         "proof_category": "prevalidated_static_isaac_visuals",
         "is_live_session_capture": False,
         "whole_frame": str(copied["whole"]),
         "hand_frames": [str(path) for path in hand_frames],
-        "source_report": str(copied["report"]),
+        "source_report": str(copied_report),
         "source_report_sha256": source_report_sha256,
         "distribution_validation_report_sha256": expected_report_sha256,
         "validation_run_id": expected_validation_run_id,
@@ -425,10 +450,11 @@ def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
             )
 
         visual_evidence = collect_static_visual_evidence(
-            args.visual_evidence_dir,
+            resolved_distribution.root,
             run_dir,
             expected_report_sha256=visual_provenance["report_sha256"],
             expected_validation_run_id=visual_provenance["validation_run_id"],
+            expected_visuals=visual_provenance["visuals"],
         )
         hand_paths = [Path(path) for path in visual_evidence["hand_frames"]]
         report["static_visual_evidence"] = visual_evidence
@@ -547,11 +573,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--distribution-zip", type=Path, required=True)
     parser.add_argument("--run-dir", type=Path, required=True)
-    parser.add_argument(
-        "--visual-evidence-dir",
-        type=Path,
-        default=Path(__file__).resolve().parents[1] / "omx_wiki" / "assets",
-    )
     parser.add_argument("--bridge-port", type=int, default=8765)
     parser.add_argument("--http-timeout-s", type=float, default=240.0)
     return parser.parse_args()

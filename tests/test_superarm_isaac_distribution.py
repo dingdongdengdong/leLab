@@ -31,6 +31,10 @@ def _valid_distribution(
         entrypoint: b'#usda 1.0\n(defaultPrim = "superarm_amazinghand")\n',
         "usd/superarm_amazinghand/payloads/base.usda": b'#usda 1.0\ndef Xform "robot" {}\n',
         "README.md": b"test distribution\n",
+        **{
+            f"validation/visuals/{name}.png": f"PNG:{name}".encode()
+            for name in ("whole", "open", "half-close", "close")
+        },
     }
     manifest = {
         "schema": schema,
@@ -65,6 +69,14 @@ def _valid_distribution(
             {"path": name, "bytes": len(body), "sha256": _sha256(body)}
             for name, body in sorted(files.items())
         ],
+        "visual_evidence": {
+            name: {
+                "path": f"validation/visuals/{name}.png",
+                "bytes": len(files[f"validation/visuals/{name}.png"]),
+                "sha256": _sha256(files[f"validation/visuals/{name}.png"]),
+            }
+            for name in ("whole", "open", "half-close", "close")
+        },
     }
     files["manifest.json"] = (json.dumps(manifest, sort_keys=True) + "\n").encode()
     files["SHA256SUMS"] = "".join(
@@ -173,6 +185,60 @@ def test_distribution_rejects_checksum_mismatch(tmp_path: Path):
             archive.writestr(info, body)
 
     with pytest.raises(ValueError, match="checksum"):
+        validate_and_extract_distribution(rewritten, cache_root=tmp_path / "cache")
+
+
+def test_distribution_rejects_manifest_inventory_that_disagrees_with_sha256sums(
+    tmp_path: Path,
+):
+    source = _valid_distribution(tmp_path / "distribution.zip")
+    rewritten = tmp_path / "manifest-lies.zip"
+    with zipfile.ZipFile(source) as original:
+        root = original.namelist()[0].split("/", 1)[0]
+        files = {
+            info.filename.removeprefix(f"{root}/"): original.read(info)
+            for info in original.infolist()
+        }
+    manifest = json.loads(files["manifest.json"])
+    manifest["files"][0]["sha256"] = "0" * 64
+    files["manifest.json"] = (json.dumps(manifest, sort_keys=True) + "\n").encode()
+    files["SHA256SUMS"] = "".join(
+        f"{_sha256(body)}  {name}\n"
+        for name, body in sorted(files.items())
+        if name != "SHA256SUMS"
+    ).encode()
+    with zipfile.ZipFile(rewritten, "w") as archive:
+        for name, body in sorted(files.items()):
+            archive.writestr(f"{root}/{name}", body)
+
+    with pytest.raises(ValueError, match="manifest file inventory"):
+        validate_and_extract_distribution(rewritten, cache_root=tmp_path / "cache")
+
+
+def test_distribution_rejects_self_consistent_archive_with_incomplete_visual_contract(
+    tmp_path: Path,
+):
+    source = _valid_distribution(tmp_path / "distribution.zip")
+    rewritten = tmp_path / "missing-visual-role.zip"
+    with zipfile.ZipFile(source) as original:
+        root = original.namelist()[0].split("/", 1)[0]
+        files = {
+            info.filename.removeprefix(f"{root}/"): original.read(info)
+            for info in original.infolist()
+        }
+    manifest = json.loads(files["manifest.json"])
+    del manifest["visual_evidence"]["close"]
+    files["manifest.json"] = (json.dumps(manifest, sort_keys=True) + "\n").encode()
+    files["SHA256SUMS"] = "".join(
+        f"{_sha256(body)}  {name}\n"
+        for name, body in sorted(files.items())
+        if name != "SHA256SUMS"
+    ).encode()
+    with zipfile.ZipFile(rewritten, "w") as archive:
+        for name, body in sorted(files.items()):
+            archive.writestr(f"{root}/{name}", body)
+
+    with pytest.raises(ValueError, match="visual evidence"):
         validate_and_extract_distribution(rewritten, cache_root=tmp_path / "cache")
 
 

@@ -93,6 +93,10 @@ export DIST=superarm_amazinghand_isaac_sim_usd_distribution_20260722
   --runtime-report "$ACCEPTED_RUN/isaac-report.json" \
   --validator-report "$ACCEPTED_RUN/asset-validator.json" \
   --preview-image "$ACCEPTED_RUN/passive_linkage_contact_sheet.png" \
+  --whole-image omx_wiki/assets/superarm-isaac60-passive-linkage-whole.png \
+  --open-image omx_wiki/assets/superarm-isaac60-passive-linkage-open.png \
+  --half-close-image omx_wiki/assets/superarm-isaac60-passive-linkage-half-close.png \
+  --close-image omx_wiki/assets/superarm-isaac60-passive-linkage-close.png \
   --hand-license-file artifacts/amazinghand_distribution_audit/20260722/amazinghand_isaac_sim_usd_distribution_20260722/LICENSE-AmazingHandControl \
   --output-zip "artifacts/distributions/$DIST.zip" \
   --distribution-name "$DIST" \
@@ -103,12 +107,14 @@ Accepted archive:
 
 ```text
 artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722.zip
-SHA256: a26ba228eee76f815291adef029c7ed510020cd20bdfae9046c6319d7d99c195
+SHA256: 9386f054e6d75ee1abfeac0b7a6e7304e7c163440bcd092c38df0610f9314ba2
 entry: usd/superarm_amazinghand/superarm_amazinghand.usda
 ```
 
 After extraction, run `sha256sum -c SHA256SUMS` from the distribution
-directory. The accepted clean-extraction validator result is retained under
+directory. The manifest and checksum inventory also bind the exact whole,
+open, half-close, and close PNG bytes used by the E2E evidence runner. The
+accepted clean-extraction validator result is retained under
 `artifacts/distribution_validation/superarm_amazinghand_isaac_sim_usd_distribution_20260722/`.
 
 ## Managed LeLab control bridge

@@ -62,6 +62,30 @@ class FakeService:
         return {"connected": False}
 
 
+class FakeCamera:
+    height = 8
+    width = 8
+
+    def __init__(self, *, fail_connect: bool = False, fail_disconnect: bool = False):
+        self.fail_connect = fail_connect
+        self.fail_disconnect = fail_disconnect
+        self.is_connected = False
+        self.connect_calls = 0
+        self.disconnect_calls = 0
+
+    def connect(self):
+        self.connect_calls += 1
+        if self.fail_connect:
+            raise RuntimeError("camera unavailable")
+        self.is_connected = True
+
+    def disconnect(self):
+        self.disconnect_calls += 1
+        if self.fail_disconnect:
+            raise RuntimeError("camera cleanup failed")
+        self.is_connected = False
+
+
 def test_isaac_robot_keeps_policy_width_six_and_physical_targets_thirteen():
     from lelab.superarm.isaac_robot import SuperArmIsaacRobot, SuperArmIsaacRobotConfig
 
@@ -142,6 +166,71 @@ def test_isaac_robot_rejects_an_active_non_isaac_session():
         robot.connect()
 
     assert service.start_calls == []
+
+
+def test_isaac_robot_rolls_back_owned_session_when_camera_connect_fails():
+    from lelab.superarm.isaac_robot import SuperArmIsaacRobot, SuperArmIsaacRobotConfig
+
+    service = FakeService()
+    robot = SuperArmIsaacRobot(
+        SuperArmIsaacRobotConfig(distribution_zip="/server/superarm.zip"),
+        runtime_service=service,
+    )
+    first = FakeCamera()
+    second = FakeCamera(fail_connect=True)
+    robot.cameras = {"first": first, "second": second}
+
+    with pytest.raises(RuntimeError, match="camera unavailable"):
+        robot.connect()
+
+    assert first.disconnect_calls == 1
+    assert service.disconnect_calls == 1
+    assert service.runtime is None
+    assert robot.is_connected is False
+
+    second.fail_connect = False
+    robot.connect()
+    assert robot.is_connected is True
+    robot.disconnect()
+    assert service.disconnect_calls == 2
+
+
+def test_isaac_robot_keeps_borrowed_session_when_camera_connect_fails():
+    from lelab.superarm.isaac_robot import SuperArmIsaacRobot, SuperArmIsaacRobotConfig
+
+    service = FakeService(mode="isaac_sim", connected=True)
+    robot = SuperArmIsaacRobot(
+        SuperArmIsaacRobotConfig(distribution_zip="/server/superarm.zip"),
+        runtime_service=service,
+    )
+    first = FakeCamera()
+    robot.cameras = {"first": first, "second": FakeCamera(fail_connect=True)}
+
+    with pytest.raises(RuntimeError, match="camera unavailable"):
+        robot.connect()
+
+    assert first.disconnect_calls == 1
+    assert service.disconnect_calls == 0
+    assert service.runtime.connected is True
+
+
+def test_isaac_robot_preserves_connect_error_when_camera_rollback_fails():
+    from lelab.superarm.isaac_robot import SuperArmIsaacRobot, SuperArmIsaacRobotConfig
+
+    service = FakeService()
+    robot = SuperArmIsaacRobot(
+        SuperArmIsaacRobotConfig(distribution_zip="/server/superarm.zip"),
+        runtime_service=service,
+    )
+    robot.cameras = {
+        "first": FakeCamera(fail_disconnect=True),
+        "second": FakeCamera(fail_connect=True),
+    }
+
+    with pytest.raises(RuntimeError, match="camera unavailable"):
+        robot.connect()
+
+    assert service.disconnect_calls == 1
 
 
 def test_isaac_yaml_keeps_the_canonical_six_and_thirteen_joint_contracts():

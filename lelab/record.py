@@ -666,6 +666,24 @@ def handle_upload_dataset(request: UploadRequest) -> dict[str, Any]:
         return {"success": False, "message": f"Failed to upload dataset: {str(e)}"}
 
 
+def _connect_recording_devices(robot, teleop) -> None:
+    """Connect recording devices transactionally so failed setup releases resources."""
+
+    try:
+        logger.info("🔧 ROBOT CONNECTION: Attempting to connect robot...")
+        robot.connect()
+        logger.info("✅ ROBOT CONNECTION: Robot connected successfully")
+        if teleop is not None:
+            logger.info("🔧 TELEOP CONNECTION: Attempting to connect teleoperator...")
+            teleop.connect()
+            logger.info("✅ TELEOP CONNECTION: Teleoperator connected successfully")
+    except Exception as exc:
+        logger.error("Recording device connection failed: %s", exc)
+        safe_disconnect_device(teleop, logger, context="recording setup rollback")
+        safe_disconnect_device(robot, logger, context="recording setup rollback")
+        raise
+
+
 def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDataset:
     """
     Implement recording with phase tracking - exactly mirrors original record() function behavior
@@ -736,29 +754,7 @@ def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDatase
             encoder_threads=cfg.dataset.encoder_threads,
         )
 
-    # 🔧 ROBOT CONNECTION: Connect with enhanced error handling for camera conflicts
-    try:
-        logger.info("🔧 ROBOT CONNECTION: Attempting to connect robot...")
-        robot.connect()
-        logger.info("✅ ROBOT CONNECTION: Robot connected successfully")
-    except Exception as e:
-        logger.error(f"❌ ROBOT CONNECTION: Failed to connect robot: {e}")
-        # If robot connection fails due to camera conflict, provide clear error
-        if "camera" in str(e).lower() or "device" in str(e).lower() or "busy" in str(e).lower():
-            logger.error("💡 ROBOT CONNECTION: Camera connection failure - likely camera resource conflict")
-            logger.error(
-                "💡 ROBOT CONNECTION: Make sure frontend camera streams are released before recording"
-            )
-        raise
-
-    if teleop is not None:
-        try:
-            logger.info("🔧 TELEOP CONNECTION: Attempting to connect teleoperator...")
-            teleop.connect()
-            logger.info("✅ TELEOP CONNECTION: Teleoperator connected successfully")
-        except Exception as e:
-            logger.error(f"❌ TELEOP CONNECTION: Failed to connect teleoperator: {e}")
-            raise
+    _connect_recording_devices(robot, teleop)
 
     # Ensure calibration is properly loaded and applied to the devices
     logger.info("Applying calibration to devices")

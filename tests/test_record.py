@@ -353,3 +353,63 @@ def test_manual_superarm_teleoperator_quantizes_sixth_action() -> None:
     assert teleop.get_action() == resolved
     assert len(teleop.action_features) == 6
     teleop.disconnect()
+
+
+def test_recording_device_setup_rolls_back_robot_when_teleoperator_connect_fails() -> None:
+    from lelab.record import _connect_recording_devices
+
+    class Device:
+        def __init__(self, *, fail_connect: bool = False) -> None:
+            self.fail_connect = fail_connect
+            self.connected = False
+            self.disconnect_calls = 0
+
+        def connect(self) -> None:
+            if self.fail_connect:
+                raise RuntimeError("leader unavailable")
+            self.connected = True
+
+        def disconnect(self) -> None:
+            self.disconnect_calls += 1
+            self.connected = False
+
+    robot = Device()
+    teleop = Device(fail_connect=True)
+
+    with pytest.raises(RuntimeError, match="leader unavailable"):
+        _connect_recording_devices(robot, teleop)
+
+    assert robot.connected is False
+    assert robot.disconnect_calls == 1
+    assert teleop.disconnect_calls == 1
+
+
+def test_recording_setup_preserves_connect_error_when_teleoperator_cleanup_fails() -> None:
+    from lelab.record import _connect_recording_devices
+
+    class Device:
+        def __init__(self, *, connect_error=None, disconnect_error=None) -> None:
+            self.connect_error = connect_error
+            self.disconnect_error = disconnect_error
+            self.disconnect_calls = 0
+
+        def connect(self) -> None:
+            if self.connect_error:
+                raise self.connect_error
+
+        def disconnect(self) -> None:
+            self.disconnect_calls += 1
+            if self.disconnect_error:
+                raise self.disconnect_error
+
+    robot = Device()
+    teleop = Device(
+        connect_error=RuntimeError("leader unavailable"),
+        disconnect_error=RuntimeError("leader cleanup failed"),
+    )
+
+    with pytest.raises(RuntimeError, match="leader unavailable"):
+        _connect_recording_devices(robot, teleop)
+
+    assert teleop.disconnect_calls == 1
+    assert robot.disconnect_calls == 1

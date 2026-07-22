@@ -21,6 +21,7 @@ EXPECTED_HAND_DOF_COUNT = 8
 EXPECTED_PHYSICAL_DOF_COUNT = 13
 EXPECTED_LOGICAL_ACTION_WIDTH = 6
 EXPECTED_PASSIVE_FOLLOWER_COUNT = 88
+VISUAL_NAMES = ("whole", "open", "half-close", "close")
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -256,6 +257,15 @@ def _manifest(
         {"bytes": len(body), "path": path, "sha256": _sha256_bytes(body)}
         for path, body in sorted(files.items())
     ]
+    visual_evidence = {
+        name: {
+            "bytes": len(files[path]),
+            "path": path,
+            "sha256": _sha256_bytes(files[path]),
+        }
+        for name in VISUAL_NAMES
+        for path in (f"validation/visuals/{name}.png",)
+    }
     return {
         "schema": SCHEMA,
         "name": distribution_name,
@@ -288,6 +298,7 @@ def _manifest(
             "passive_snapshot_helper_included": True,
             "clean_entrypoint_contains_runtime_snapshot_state": False,
         },
+        "visual_evidence": visual_evidence,
         "validation": {
             "runtime_status": runtime_report.get("status"),
             "arm_motion_passed": runtime_report["motion"].get("arm_motion_passed"),
@@ -331,6 +342,7 @@ def export_distribution(
     runtime_report: Path,
     validator_report: Path,
     preview_image: Path,
+    visual_images: dict[str, Path],
     license_file: Path,
     hand_license_file: Path,
     passive_solver: Path,
@@ -349,6 +361,8 @@ def export_distribution(
     if not source_asset_dir.is_dir():
         raise FileNotFoundError(f"SuperArm USD package does not exist: {source_asset_dir}")
     runtime, validator = _validated_reports(runtime_report, validator_report)
+    if set(visual_images) != set(VISUAL_NAMES):
+        raise ValueError(f"visual images must contain exactly {list(VISUAL_NAMES)}")
 
     files = _collect_asset_files(source_asset_dir)
     files.update(
@@ -376,6 +390,12 @@ def export_distribution(
             "validation/passive_linkage_contact_sheet.png": _require_file(
                 preview_image, "reviewed passive-linkage contact sheet"
             ).read_bytes(),
+            **{
+                f"validation/visuals/{name}.png": _require_file(
+                    visual_images[name], f"reviewed {name} visual"
+                ).read_bytes()
+                for name in VISUAL_NAMES
+            },
         }
     )
     files["README.md"] = _readme(
@@ -423,6 +443,10 @@ def main() -> None:
     parser.add_argument("--runtime-report", type=Path, required=True)
     parser.add_argument("--validator-report", type=Path, required=True)
     parser.add_argument("--preview-image", type=Path, required=True)
+    parser.add_argument("--whole-image", type=Path, required=True)
+    parser.add_argument("--open-image", type=Path, required=True)
+    parser.add_argument("--half-close-image", type=Path, required=True)
+    parser.add_argument("--close-image", type=Path, required=True)
     parser.add_argument("--license-file", type=Path, default=Path("LICENSE"))
     parser.add_argument("--hand-license-file", type=Path, required=True)
     parser.add_argument("--passive-solver", type=Path, default=Path(__file__).with_name("passive_linkage.py"))
@@ -447,6 +471,12 @@ def main() -> None:
         runtime_report=args.runtime_report,
         validator_report=args.validator_report,
         preview_image=args.preview_image,
+        visual_images={
+            "whole": args.whole_image,
+            "open": args.open_image,
+            "half-close": args.half_close_image,
+            "close": args.close_image,
+        },
         license_file=args.license_file,
         hand_license_file=args.hand_license_file,
         passive_solver=args.passive_solver,

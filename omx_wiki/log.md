@@ -303,3 +303,10 @@
 ## [2026-07-22T12:16:44.766Z] lint
 - **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, so-101-leader-to-superarm-recording-guide.md, superarm-follower-calibration-wizard.md, superarm-runtime-joint-status-semantics.md, superarm-urdf-validation-in-isaac-sim-6-0.md, superarm-website-real-hardware-readiness-page.md
 - **Summary:** Lint: 9 issues (8 orphan, 0 stale, 0 broken, 0 contradictions)
+## [2026-07-22T12:41:27.818Z] add
+- **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-controlled-superarm-in-isaac-sim-6-0.md, lelab-isaac-sim-control-scope.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, so-101-leader-to-superarm-recording-guide.md, superarm-follower-calibration-wizard.md, superarm-real-hardware-motor-protocol-boundary.md, superarm-runtime-joint-status-semantics.md, superarm-urdf-amazinghand-showroom-motion-fix.md, superarm-urdf-validation-in-isaac-sim-6-0.md, superarm-website-real-hardware-readiness-page.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-07-22T12:41:28.076Z] lint
+- **Pages:** amazinghandcontrol-and-dm4340p-hardware-boundary.md, exact-amazinghand-mjcf-visuals-in-the-lelab-urdf-showroom.md, lelab-remote-http-blank-page-robot-visibility-fix.md, lelab-tailscale-client-proxy.md, so-101-leader-to-superarm-recording-guide.md, superarm-follower-calibration-wizard.md, superarm-runtime-joint-status-semantics.md, superarm-urdf-validation-in-isaac-sim-6-0.md, superarm-website-real-hardware-readiness-page.md
+- **Summary:** Lint: 9 issues (8 orphan, 0 stale, 0 broken, 0 contradictions)

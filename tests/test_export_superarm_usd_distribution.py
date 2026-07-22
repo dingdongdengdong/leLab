@@ -81,6 +81,11 @@ def _write_inputs(root: Path) -> dict[str, Path]:
     )
     preview = root / "preview.png"
     preview.write_bytes(b"PNG")
+    visual_images = {}
+    for name in ("whole", "open", "half-close", "close"):
+        image = root / f"{name}.png"
+        image.write_bytes(f"PNG:{name}".encode())
+        visual_images[name] = image
     license_file = root / "LICENSE"
     license_file.write_text("project license\n", encoding="utf-8")
     hand_license = root / "LICENSE-AmazingHandControl"
@@ -98,6 +103,7 @@ def _write_inputs(root: Path) -> dict[str, Path]:
         "runtime_report": runtime_report,
         "validator_report": validator_report,
         "preview_image": preview,
+        "visual_images": visual_images,
         "license_file": license_file,
         "hand_license_file": hand_license,
         "passive_solver": runtime_solver,
@@ -147,6 +153,10 @@ def test_export_is_relocatable_complete_and_deterministic(tmp_path: Path):
             f"{root}/validation/isaac-report.json",
             f"{root}/validation/asset-validator.json",
             f"{root}/validation/passive_linkage_contact_sheet.png",
+            f"{root}/validation/visuals/whole.png",
+            f"{root}/validation/visuals/open.png",
+            f"{root}/validation/visuals/half-close.png",
+            f"{root}/validation/visuals/close.png",
         }
         assert expected <= set(names)
 
@@ -165,6 +175,13 @@ def test_export_is_relocatable_complete_and_deterministic(tmp_path: Path):
         assert manifest["validation"]["strict_validator_passed"] is True
         assert manifest["visual_contract"]["outer_shells_included"] is False
         assert manifest["visual_contract"]["passive_follower_count"] == 88
+        for name, source in inputs["visual_images"].items():
+            entry = manifest["visual_evidence"][name]
+            assert entry == {
+                "bytes": source.stat().st_size,
+                "path": f"validation/visuals/{name}.png",
+                "sha256": _sha256(source.read_bytes()),
+            }
 
         checksums = archive.read(f"{root}/SHA256SUMS").decode().splitlines()
         checksum_by_name = {line.split("  ", 1)[1]: line.split("  ", 1)[0] for line in checksums}

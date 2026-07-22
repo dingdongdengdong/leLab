@@ -92,9 +92,15 @@ def test_write_hand_gif_preserves_all_three_frames(tmp_path: Path) -> None:
         assert image.size == (16, 16)
 
 
-def test_collect_static_visual_evidence_keeps_visual_and_live_proof_separate(tmp_path: Path) -> None:
+@pytest.mark.parametrize("tampered_name", ["whole", "open", "half-close", "close"])
+def test_collect_static_visual_evidence_keeps_visual_and_live_proof_separate(
+    tmp_path: Path,
+    tampered_name: str,
+) -> None:
     source = tmp_path / "source"
-    source.mkdir()
+    visuals = source / "validation" / "visuals"
+    visuals.mkdir(parents=True)
+    expected_visuals = {}
     for name, color in (
         ("whole", (20, 20, 20)),
         ("open", (30, 20, 20)),
@@ -103,8 +109,14 @@ def test_collect_static_visual_evidence_keeps_visual_and_live_proof_separate(tmp
     ):
         image = Image.new("RGB", (32, 32), color)
         image.putpixel((1, 1), (255, 255, 255))
-        image.save(source / f"superarm-isaac60-passive-linkage-{name}.png")
-    report = source / "superarm-isaac60-passive-linkage-report.json"
+        path = visuals / f"{name}.png"
+        image.save(path)
+        expected_visuals[name] = {
+            "path": f"validation/visuals/{name}.png",
+            "bytes": path.stat().st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+    report = source / "validation" / "isaac-report.json"
     report.write_text(
         '{"status":"PASS","passive_linkage_visuals":{"grasp_sequence":{"passed":true}},'
         '"input_urdf":"/runs/final-passive-linkage/superarm.urdf"}\n',
@@ -117,6 +129,7 @@ def test_collect_static_visual_evidence_keeps_visual_and_live_proof_separate(tmp
         tmp_path / "run",
         expected_report_sha256=report_sha256,
         expected_validation_run_id="final-passive-linkage",
+        expected_visuals=expected_visuals,
     )
 
     assert evidence["proof_category"] == "prevalidated_static_isaac_visuals"
@@ -133,7 +146,49 @@ def test_collect_static_visual_evidence_keeps_visual_and_live_proof_separate(tmp
             tmp_path / "wrong-run",
             expected_report_sha256="0" * 64,
             expected_validation_run_id="final-passive-linkage",
+            expected_visuals=expected_visuals,
         )
+
+    (visuals / f"{tampered_name}.png").write_bytes(b"substituted")
+    with pytest.raises(RuntimeError, match="visual frame does not match"):
+        collect_static_visual_evidence(
+            source,
+            tmp_path / "substituted-run",
+            expected_report_sha256=report_sha256,
+            expected_validation_run_id="final-passive-linkage",
+            expected_visuals=expected_visuals,
+        )
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda visuals: visuals.pop("close"),
+        lambda visuals: visuals.__setitem__("extra", dict(visuals["whole"])),
+        lambda visuals: visuals["close"].__setitem__("path", visuals["open"]["path"]),
+        lambda visuals: visuals["whole"].__setitem__("path", "../whole.png"),
+        lambda visuals: visuals["whole"].__setitem__("sha256", "not-a-digest"),
+        lambda visuals: visuals["whole"].__setitem__("bytes", 0),
+    ],
+)
+def test_distribution_visual_provenance_rejects_invalid_frame_contract(mutate) -> None:
+    visuals = {
+        name: {
+            "path": f"validation/visuals/{name}.png",
+            "bytes": 100 + index,
+            "sha256": str(index) * 64,
+        }
+        for index, name in enumerate(("whole", "open", "half-close", "close"), start=1)
+    }
+    mutate(visuals)
+    manifest = {
+        "files": [{"path": "validation/isaac-report.json", "sha256": "a" * 64}],
+        "source": {"validation_run_id": "final-passive-linkage"},
+        "visual_evidence": visuals,
+    }
+
+    with pytest.raises(RuntimeError, match="lacks visual provenance"):
+        distribution_visual_provenance(manifest)
 
 
 def test_distribution_visual_provenance_requires_bound_validation_report() -> None:
@@ -145,11 +200,20 @@ def test_distribution_visual_provenance_requires_bound_validation_report() -> No
             }
         ],
         "source": {"validation_run_id": "final-passive-linkage"},
+        "visual_evidence": {
+            name: {
+                "path": f"validation/visuals/{name}.png",
+                "bytes": 100 + index,
+                "sha256": str(index) * 64,
+            }
+            for index, name in enumerate(("whole", "open", "half-close", "close"), start=1)
+        },
     }
 
     assert distribution_visual_provenance(manifest) == {
         "report_sha256": "a" * 64,
         "validation_run_id": "final-passive-linkage",
+        "visuals": manifest["visual_evidence"],
     }
     with pytest.raises(RuntimeError, match="lacks visual provenance"):
         distribution_visual_provenance({"files": [], "source": {}})

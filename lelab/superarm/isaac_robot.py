@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -95,8 +96,21 @@ class SuperArmIsaacRobot(Robot):
                 session_args["isaac_expected_sha256"] = self.config.expected_sha256
             self.runtime_service.start_session("isaac_sim", **session_args)
             self._owns_session = True
-        for camera in self.cameras.values():
-            camera.connect()
+        attempted_cameras = []
+        try:
+            for camera in self.cameras.values():
+                attempted_cameras.append(camera)
+                camera.connect()
+        except Exception:
+            for camera in reversed(attempted_cameras):
+                with suppress(Exception):
+                    camera.disconnect()
+            if self._owns_session:
+                with suppress(Exception):
+                    self.runtime_service.disconnect()
+            self._connected = False
+            self._owns_session = False
+            raise
         self._connected = True
 
     def calibrate(self) -> None:

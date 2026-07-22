@@ -2,7 +2,7 @@
 title: "LeLab-controlled SuperArm in Isaac Sim 6.0"
 tags: ["lelab", "isaac-sim", "superarm", "lerobot", "vla", "evidence"]
 created: 2026-07-22T11:38:17.732Z
-updated: 2026-07-22T12:20:00.000Z
+updated: 2026-07-22T12:45:00.000Z
 sources: []
 links: ["lelab-isaac-sim-control-scope.md", "superarm-urdf-validation-in-isaac-sim-6-0.md"]
 category: architecture
@@ -20,7 +20,7 @@ The accepted asset is:
 
 ```text
 artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722.zip
-SHA256 a26ba228eee76f815291adef029c7ed510020cd20bdfae9046c6319d7d99c195
+SHA256 9386f054e6d75ee1abfeac0b7a6e7304e7c163440bcd092c38df0610f9314ba2
 entry usd/superarm_amazinghand/superarm_amazinghand.usda
 ```
 
@@ -82,30 +82,37 @@ For LeRobot, select `superarm_isaac`. Manual web input and an SO-101 leader both
 uv run python -m isaacsim_validation.run_lelab_isaac_e2e \
   --base-url http://127.0.0.1:8000 \
   --distribution-zip "$SUPERARM_ISAAC_DISTRIBUTION_ZIP" \
-  --run-dir isaacsim_test/artifacts/lelab_isaac_e2e_20260722T121339Z \
+  --run-dir isaacsim_test/artifacts/lelab_isaac_e2e_20260722T123815Z \
   --http-timeout-s 400
 ```
 
 Live report:
 
 ```text
-isaacsim_test/artifacts/lelab_isaac_e2e_20260722T121339Z/lelab-isaac-e2e-report.json
+isaacsim_test/artifacts/lelab_isaac_e2e_20260722T123815Z/lelab-isaac-e2e-report.json
 status PASS
+report SHA256 717fa8a968946f8559808c8dce6d2b6ddf8c2abc70535ce6a2b65f4b17fa311f
 Isaac Sim 6.0.0
 one articulation, 13 exact joint names, logical width 6
 distribution validation run 20260722T070208Z-combined-zip-passive-linkage-r3
 embedded validation report SHA256 1785dfe1b790ad42f0ce4798637eab13e3325acf86a9f507289c33b76e84d29b
-maximum settled arm error 0.008436 rad
-maximum settled hand error 0.000995 rad
-emergency hold 211 stable physics steps
-live-timeout hold 137 stable physics steps
-managed disconnect 6.249 s
+maximum settled arm error 0.012761 rad
+maximum settled hand error 0.004891 rad
+emergency hold 210 stable physics steps
+live-timeout hold 134 stable physics steps
+managed disconnect 1.490 s
 reconnect PASS
 ```
 
 The runner requires a strictly newer command sequence and the exact requested 13-target map before it accepts a settled sample. This prevents cached telemetry from passing a new command.
 
-Static visual evidence copied into that directory includes the whole robot, open, half-close, close, and `lelab-isaac-open-half-close.gif`. The report labels it `proof_category=prevalidated_static_isaac_visuals` and `is_live_session_capture=false`. The source report SHA and validation run ID must match the controlled ZIP manifest. The three final passive-linkage frames are nonblank; adjacent mean absolute differences are `3.0509` and `3.5683`.
+Static visual evidence copied into that directory includes the whole robot, open, half-close, close, and `lelab-isaac-open-half-close.gif`. The report labels it `proof_category=prevalidated_static_isaac_visuals` and `is_live_session_capture=false`. The source report SHA, validation run ID, and all four PNG paths, byte lengths, and SHA-256 values must match the controlled ZIP manifest, `SHA256SUMS`, and archive bytes. The three final passive-linkage frames are nonblank; adjacent mean absolute differences are `3.0509` and `3.5683`.
+
+Robot/camera setup is transactional at both the LeRobot robot boundary and the
+recording-device boundary. A failed camera or teleoperator connection releases
+every attempted camera/device and disconnects only an Isaac session owned by
+that setup attempt; a borrowed website session remains connected. Cleanup
+errors never replace the original setup exception.
 
 Closed-hand passive-linkage physics can occasionally make an Isaac step take hundreds of milliseconds. The localhost bridge therefore uses a bounded five-second response deadline, while the hold verifier allows up to 30 seconds to accumulate 120 actual physics steps. It never substitutes wall time for physics progress and never retries a state-changing request.
 

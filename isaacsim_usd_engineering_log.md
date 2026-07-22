@@ -819,3 +819,46 @@ Do not write `PASS` until the named evidence exists and has been inspected.
 - **Reusable rule:** bind every copied proof artifact to the exact tested
   distribution digest, and express simulator stability as a physics-step
   condition with a bounded but hardware-realistic wall-clock allowance.
+
+### 25. Distribution visuals and failed setup cleanup are now cryptographically closed
+
+- **Observed evidence:** architect review found two remaining trust-boundary
+  gaps. The E2E runner checked the embedded validation report but copied the
+  four accepted pose PNGs from a repository directory rather than from the
+  tested ZIP, and the distribution validator did not compare the manifest file
+  inventory against `SHA256SUMS`. Separately, a camera or teleoperator setup
+  exception could leave an owned Isaac session or already-open devices alive.
+- **Cause:** visual provenance stopped one layer before the bytes consumed by
+  acceptance, while connection setup was implemented as a sequence rather than
+  a transaction with ownership-aware rollback.
+- **Repair:** the exporter packages whole/open/half-close/close under
+  `validation/visuals/` and records each path, byte length, and SHA-256 in the
+  manifest. Validation requires exactly those four roles, crosschecks manifest
+  metadata against `SHA256SUMS`, and verifies archive member sizes. The E2E
+  runner copies only the extracted ZIP frames and rechecks their bytes. Camera
+  and recording-device setup now roll back attempted resources in reverse/safe
+  order, disconnect only owned Isaac sessions, preserve borrowed sessions, and
+  retain the original setup exception even when cleanup also fails.
+- **Regression coverage:** focused tests cover substitution of each of the four
+  frames; missing, extra, duplicate, unsafe, malformed-digest, and zero-byte
+  visual declarations; manifest/checksum disagreement; owned versus borrowed
+  session rollback; retry after rollback; and cleanup-failure isolation.
+- **Verification:** the rebuilt 30-file distribution is `3,831,780` bytes with
+  SHA-256
+  `9386f054e6d75ee1abfeac0b7a6e7304e7c163440bcd092c38df0610f9314ba2`.
+  Focused Ruff and 60 Python tests pass. Fresh live acceptance report
+  `isaacsim_test/artifacts/lelab_isaac_e2e_20260722T123815Z/lelab-isaac-e2e-report.json`
+  is `PASS` with report SHA-256
+  `717fa8a968946f8559808c8dce6d2b6ddf8c2abc70535ce6a2b65f4b17fa311f`;
+  all numeric, safety, lifecycle, reconnect, and separately labeled static
+  visual gates are true. One immediately preceding run recorded a bounded
+  five-second read timeout during an intermittent Isaac `World.step()` stall;
+  owned-session cleanup still removed its container, and no state-changing
+  request was retried.
+- **Remaining boundary:** the accepted PNGs/GIF are distribution-bound static
+  Isaac evidence, not live viewport capture. This still does not prove a real
+  LeRobot episode, a trained policy, contact/grasp retention, ROS 2, or physical
+  motor control.
+- **Reusable rule:** an evidence chain is complete only when the tested archive,
+  manifest, checksum inventory, extracted bytes, and reported artifact hashes
+  all agree; setup rollback must follow explicit resource ownership.

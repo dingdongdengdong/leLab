@@ -27,6 +27,7 @@ DEFAULT_MAX_MEMBERS = 2_048
 DEFAULT_MAX_UNCOMPRESSED_BYTES = 1_073_741_824
 DEFAULT_MAX_MEMBER_BYTES = 536_870_912
 DEFAULT_MAX_COMPRESSION_RATIO = 500.0
+VISUAL_NAMES = ("whole", "open", "half-close", "close")
 
 
 @dataclass(frozen=True)
@@ -125,7 +126,59 @@ def _checksum_map(body: bytes) -> dict[str, str]:
     return checksums
 
 
-def _validate_manifest(manifest: dict[str, Any]) -> tuple[str, dict[str, int]]:
+def _manifest_file_inventory(manifest: dict[str, Any]) -> dict[str, tuple[str, int]]:
+    files = manifest.get("files")
+    if not isinstance(files, list):
+        raise ValueError("distribution manifest is missing its file inventory")
+    inventory: dict[str, tuple[str, int]] = {}
+    for item in files:
+        if not isinstance(item, dict):
+            raise ValueError("distribution manifest file inventory is invalid")
+        relative = item.get("path")
+        digest = item.get("sha256")
+        size = item.get("bytes")
+        path = PurePosixPath(relative) if isinstance(relative, str) else None
+        if (
+            path is None
+            or path.is_absolute()
+            or ".." in path.parts
+            or relative in inventory
+            or not isinstance(digest, str)
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+            or not isinstance(size, int)
+            or isinstance(size, bool)
+            or size < 0
+        ):
+            raise ValueError("distribution manifest file inventory is invalid")
+        inventory[relative] = (digest, size)
+    return inventory
+
+
+def _validate_visual_evidence(
+    manifest: dict[str, Any], inventory: dict[str, tuple[str, int]]
+) -> None:
+    visuals = manifest.get("visual_evidence")
+    if not isinstance(visuals, dict) or set(visuals) != set(VISUAL_NAMES):
+        raise ValueError("distribution manifest visual evidence must define four roles")
+    paths: set[str] = set()
+    for name in VISUAL_NAMES:
+        item = visuals[name]
+        expected_path = f"validation/visuals/{name}.png"
+        if (
+            not isinstance(item, dict)
+            or item.get("path") != expected_path
+            or item.get("bytes") != inventory.get(expected_path, (None, None))[1]
+            or item.get("sha256") != inventory.get(expected_path, (None, None))[0]
+            or expected_path in paths
+        ):
+            raise ValueError("distribution manifest visual evidence is invalid")
+        paths.add(expected_path)
+
+
+def _validate_manifest(
+    manifest: dict[str, Any],
+) -> tuple[str, dict[str, int], dict[str, tuple[str, int]]]:
     if manifest.get("schema") != DISTRIBUTION_SCHEMA:
         raise ValueError(f"distribution schema must be {DISTRIBUTION_SCHEMA}")
     contract = manifest.get("robot_contract")
@@ -151,7 +204,9 @@ def _validate_manifest(manifest: dict[str, Any]) -> tuple[str, dict[str, int]]:
     path = PurePosixPath(entrypoint)
     if path.is_absolute() or ".." in path.parts:
         raise ValueError("distribution manifest entrypoint is unsafe")
-    return path.as_posix(), dict(contract)
+    inventory = _manifest_file_inventory(manifest)
+    _validate_visual_evidence(manifest, inventory)
+    return path.as_posix(), dict(contract), inventory
 
 
 def _verify_extracted(root: Path, checksums: dict[str, str]) -> bool:
@@ -196,7 +251,7 @@ def validate_and_extract_distribution(
         if manifest_name not in members or sums_name not in members:
             raise ValueError("distribution must contain manifest.json and SHA256SUMS")
         manifest = _read_json_member(archive, members[manifest_name], "manifest")
-        entrypoint_relative, robot_contract = _validate_manifest(manifest)
+        entrypoint_relative, robot_contract, manifest_inventory = _validate_manifest(manifest)
         checksums = _checksum_map(archive.read(members[sums_name]))
         relative_members = {
             name.removeprefix(f"{root_name}/")
@@ -205,6 +260,16 @@ def validate_and_extract_distribution(
         }
         if set(checksums) != relative_members:
             raise ValueError("distribution checksum inventory does not match archive members")
+        expected_manifest_names = set(checksums) - {"manifest.json"}
+        if set(manifest_inventory) != expected_manifest_names:
+            raise ValueError(
+                "distribution manifest file inventory checksum does not match SHA256SUMS"
+            )
+        for relative, (digest, size) in manifest_inventory.items():
+            if checksums[relative] != digest or members[f"{root_name}/{relative}"].file_size != size:
+                raise ValueError(
+                    "distribution manifest file inventory checksum does not match SHA256SUMS"
+                )
         for relative, expected in checksums.items():
             actual = _sha256_bytes(archive.read(members[f"{root_name}/{relative}"]))
             if actual != expected:
