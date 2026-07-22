@@ -1,0 +1,207 @@
+{
+  "import": {
+    "dof_count": 13,
+    "dof_names": [
+      "joint_rev_1",
+      "joint_rev_2",
+      "joint_rev_3",
+      "joint_rev_4",
+      "joint_rev_5",
+      "finger1_motor1",
+      "finger2_motor1",
+      "finger3_motor1",
+      "finger4_motor1",
+      "finger1_motor2",
+      "finger2_motor2",
+      "finger3_motor2",
+      "finger4_motor2"
+    ],
+    "expected_movable_joint_count": 13,
+    "prim_path": "/superarm_amazinghand",
+    "status": "PASS"
+  },
+  "input_urdf": "/workspace/project/artifacts/isaacsim_superarm/20260722T002134Z/aligned_input/superarm_amazinghand.urdf",
+  "isaac_sim_version": "6.0.0",
+  "motion": {
+    "arm": [
+      {
+        "after": 0.17990654706954956,
+        "before": 3.24079724123294e-06,
+        "delta": 0.17990330627230833,
+        "joint": "joint_rev_1",
+        "passed": true,
+        "target": 0.18
+      },
+      {
+        "after": -0.19491669535636902,
+        "before": -0.0007534002652391791,
+        "delta": -0.19416329509112984,
+        "joint": "joint_rev_2",
+        "passed": true,
+        "target": -0.18
+      },
+      {
+        "after": 0.17909565567970276,
+        "before": -0.00031685890280641615,
+        "delta": 0.17941251458250917,
+        "joint": "joint_rev_3",
+        "passed": true,
+        "target": 0.18
+      },
+      {
+        "after": -0.18765471875667572,
+        "before": -0.004386450629681349,
+        "delta": -0.18326826812699437,
+        "joint": "joint_rev_4",
+        "passed": true,
+        "target": -0.18
+      },
+      {
+        "after": 0.1798989325761795,
+        "before": 2.2564539904124103e-05,
+        "delta": 0.17987636803627538,
+        "joint": "joint_rev_5",
+        "passed": true,
+        "target": 0.18
+      }
+    ],
+    "arm_motion_passed": true,
+    "hand": [
+      {
+        "grasp": 0.0,
+        "max_error": 6.089657545089999e-05,
+        "measured": {
+          "finger1_motor1": 0.0499391034245491,
+          "finger1_motor2": 0.020000243559479713,
+          "finger2_motor1": 0.04993962123990059,
+          "finger2_motor2": 0.019999884068965912,
+          "finger3_motor1": 0.0499395988881588,
+          "finger3_motor2": 0.019999688491225243,
+          "finger4_motor1": 0.05000000074505806,
+          "finger4_motor2": 0.019999928772449493
+        },
+        "name": "open",
+        "targets": {
+          "finger1_motor1": 0.05,
+          "finger1_motor2": 0.02,
+          "finger2_motor1": 0.05,
+          "finger2_motor2": 0.02,
+          "finger3_motor1": 0.05,
+          "finger3_motor2": 0.02,
+          "finger4_motor1": 0.05,
+          "finger4_motor2": 0.02
+        }
+      },
+      {
+        "grasp": 0.5,
+        "max_error": 5.5909156799260895e-05,
+        "measured": {
+          "finger1_motor1": 0.4999499022960663,
+          "finger1_motor2": 0.5599942803382874,
+          "finger2_motor1": 0.49994751811027527,
+          "finger2_motor2": 0.5599949359893799,
+          "finger3_motor1": 0.4999440908432007,
+          "finger3_motor2": 0.5599976181983948,
+          "finger4_motor1": 0.4999984800815582,
+          "finger4_motor2": 0.5599976778030396
+        },
+        "name": "half_close",
+        "targets": {
+          "finger1_motor1": 0.49999999999999994,
+          "finger1_motor2": 0.56,
+          "finger2_motor1": 0.49999999999999994,
+          "finger2_motor2": 0.56,
+          "finger3_motor1": 0.49999999999999994,
+          "finger3_motor2": 0.56,
+          "finger4_motor1": 0.49999999999999994,
+          "finger4_motor2": 0.56
+        }
+      },
+      {
+        "grasp": 1.0,
+        "max_error": 4.0721893310502466e-05,
+        "measured": {
+          "finger1_motor1": 0.9499606490135193,
+          "finger1_motor2": 1.0999972820281982,
+          "finger2_motor1": 0.9499602913856506,
+          "finger2_motor2": 1.0999970436096191,
+          "finger3_motor1": 0.9499592781066895,
+          "finger3_motor2": 1.0999960899353027,
+          "finger4_motor1": 0.9499966502189636,
+          "finger4_motor2": 1.0999950170516968
+        },
+        "name": "close",
+        "targets": {
+          "finger1_motor1": 0.95,
+          "finger1_motor2": 1.1,
+          "finger2_motor1": 0.95,
+          "finger2_motor2": 1.1,
+          "finger3_motor1": 0.95,
+          "finger3_motor2": 1.1,
+          "finger4_motor1": 0.95,
+          "finger4_motor2": 1.1
+        }
+      }
+    ],
+    "hand_motion_passed": true,
+    "logical_action_width": 6,
+    "physical_movable_joint_count": 13
+  },
+  "output_usd": "/workspace/project/artifacts/isaacsim_superarm/20260722T002134Z/aligned_isaac/superarm_amazinghand/superarm_amazinghand.usda",
+  "phase": "complete",
+  "profile": "aligned",
+  "schema": {
+    "articulation_root_count": 1,
+    "bounds_max": [
+      0.06764712427829436,
+      0.34878883421069773,
+      0.7875168278842123
+    ],
+    "bounds_min": [
+      -0.08269623532387174,
+      0.2035105776133376,
+      0.009518898954116617
+    ],
+    "collision_prim_count": 31,
+    "dimensions_m": [
+      0.1503433596021661,
+      0.14527825659736013,
+      0.7779979289300957
+    ],
+    "finite_positive_bounds": true,
+    "mesh_prim_count": 198,
+    "prim_count": 285,
+    "prim_path": "/superarm_amazinghand",
+    "rigid_body_prim_count": 28
+  },
+  "screenshots": [
+    {
+      "bytes": 125360,
+      "eye": [
+        1.5019685743494817,
+        -1.3653491611545119,
+        0.8431588808818822
+      ],
+      "path": "/workspace/project/artifacts/isaacsim_superarm/20260722T002134Z/aligned_isaac/whole_robot.png",
+      "target": [
+        -0.026371392518088635,
+        0.16299080571305855,
+        0.35686889142401895
+      ]
+    },
+    {
+      "bytes": 55849,
+      "crop_box_pixels": [
+        384,
+        0,
+        896,
+        346
+      ],
+      "method": "crop_from_whole_robot_isaac_frame",
+      "path": "/workspace/project/artifacts/isaacsim_superarm/20260722T002134Z/aligned_isaac/hand_closeup.png",
+      "source": "/workspace/project/artifacts/isaacsim_superarm/20260722T002134Z/aligned_isaac/whole_robot.png"
+    }
+  ],
+  "status": "PASS",
+  "visual_boundary": "Aligned profile applies LeLab's wrist and joint-5 transforms while preserving the generated hand visuals."
+}

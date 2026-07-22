@@ -109,3 +109,12 @@ MuJoCo, browser control, URDF rendering, and state-only LeRobot recording can
 be validated without hardware. Physical source-arm motion, the eight-servo
 hand transport, real cameras, and a trained ACT/VLA rollout remain unverified
 until the corresponding devices and policy are present.
+
+## Isaac Sim validation branch
+
+Isaac validation is isolated from the MuJoCo website runtime. See
+[`isaacsim_validation/README.md`](isaacsim_validation/README.md) for the
+self-contained URDF packager, the Isaac Sim 6.0 container runner, and the
+served/aligned/raw evidence boundary. The recommended `aligned` profile reuses
+LeLab's existing joint-5 and AmazingHand attachment transforms while retaining
+the detailed hand visuals that the browser-served URDF intentionally removes.
