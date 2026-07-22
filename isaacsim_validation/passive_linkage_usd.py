@@ -183,8 +183,7 @@ def validate_no_source_path_leaks(snapshot_text: str, instances_usda: Path) -> N
         raise RuntimeError("external source asset path leak in flattened snapshot: /tmp/")
 
     for asset_path in ASSET_PATH_PATTERN.findall(snapshot_text):
-        if asset_path.startswith(("/", "file:/")):
-            raise RuntimeError(f"external source asset path leak in flattened snapshot: {asset_path}")
+        raise RuntimeError(f"external source asset path leak in flattened snapshot: {asset_path}")
 
 
 def _deactivate_frame_first_core_refs(stage, robot_root: str) -> int:

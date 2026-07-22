@@ -126,6 +126,8 @@ def Xform "part_026" (
     bad_snippets = [
         f"prepend references = @{instances}@</Instances/mjcf_026>",
         f"asset inputs:file = @{instances.parent / 'geometries.usd'}@",
+        "prepend references = @./geometries.usd@</Geometry>",
+        "prepend references = @../payload.usd@</Payload>",
         "prepend references = @/tmp/leaked.usd@</Root>",
         "prepend references = @/home/dong/source-root/leaked.usd@</Root>",
     ]
