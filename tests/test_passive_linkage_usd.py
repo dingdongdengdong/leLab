@@ -114,6 +114,8 @@ def test_source_path_leak_validation_rejects_absolute_assets_but_allows_flattene
     instances.parent.mkdir()
     instances.touch()
     clean_flattened_text = """
+# Provenance from a temporary export layer is diagnostic text, not an asset dependency.
+custom string passive_debug_provenance = "/tmp/pytest/export-session/layer.usda"
 def Xform "part_026" (
     instanceable = true
     prepend references = </__Prototype_1>

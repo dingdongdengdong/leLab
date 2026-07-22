@@ -184,9 +184,6 @@ def validate_no_source_path_leaks(snapshot_text: str, instances_usda: Path) -> N
     for denied_path in denied_plain_paths:
         if denied_path and denied_path in snapshot_text:
             raise RuntimeError(f"external source asset path leak in flattened snapshot: {denied_path}")
-    if "/tmp/" in snapshot_text:
-        raise RuntimeError("external source asset path leak in flattened snapshot: /tmp/")
-
     for asset_path in ASSET_PATH_PATTERN.findall(snapshot_text):
         raise RuntimeError(f"external source asset path leak in flattened snapshot: {asset_path}")
 
