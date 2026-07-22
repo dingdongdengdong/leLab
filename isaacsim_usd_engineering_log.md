@@ -839,10 +839,18 @@ Do not write `PASS` until the named evidence exists and has been inspected.
   and recording-device setup now roll back attempted resources in reverse/safe
   order, disconnect only owned Isaac sessions, preserve borrowed sessions, and
   retain the original setup exception even when cleanup also fails.
+- **Architect follow-up:** a second review reproduced one deeper rollback leak:
+  `SuperArmIsaacRobot.disconnect()` stopped at the first camera cleanup error,
+  so recording rollback could still skip teardown of its owned Isaac session.
+  Disconnect now collects camera cleanup failures, always attempts the owned
+  runtime teardown, clears local ownership state, and only then re-raises the
+  first cleanup error. A dedicated regression proves the runtime is gone even
+  when an attached camera raises during disconnect.
 - **Regression coverage:** focused tests cover substitution of each of the four
   frames; missing, extra, duplicate, unsafe, malformed-digest, and zero-byte
   visual declarations; manifest/checksum disagreement; owned versus borrowed
-  session rollback; retry after rollback; and cleanup-failure isolation.
+  session rollback; retry after rollback; camera failure during final owned
+  session teardown; and cleanup-failure isolation.
 - **Verification:** the rebuilt 30-file distribution is `3,831,780` bytes with
   SHA-256
   `9386f054e6d75ee1abfeac0b7a6e7304e7c163440bcd092c38df0610f9314ba2`.

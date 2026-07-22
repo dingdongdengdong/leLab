@@ -112,7 +112,9 @@ Robot/camera setup is transactional at both the LeRobot robot boundary and the
 recording-device boundary. A failed camera or teleoperator connection releases
 every attempted camera/device and disconnects only an Isaac session owned by
 that setup attempt; a borrowed website session remains connected. Cleanup
-errors never replace the original setup exception.
+errors never replace the original setup exception. Final robot disconnect also
+attempts owned-session teardown even when an attached camera raises during its
+own cleanup, then reports the first cleanup error.
 
 Closed-hand passive-linkage physics can occasionally make an Isaac step take hundreds of milliseconds. The localhost bridge therefore uses a bounded five-second response deadline, while the hold verifier allows up to 30 seconds to accumulate 120 actual physics steps. It never substitutes wall time for physics progress and never retries a state-changing request.
 

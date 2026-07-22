@@ -173,10 +173,19 @@ class SuperArmIsaacRobot(Robot):
         return None
 
     def disconnect(self) -> None:
+        cleanup_errors: list[Exception] = []
         for camera in self.cameras.values():
             if camera.is_connected:
-                camera.disconnect()
+                try:
+                    camera.disconnect()
+                except Exception as exc:
+                    cleanup_errors.append(exc)
         if self._owns_session:
-            self.runtime_service.disconnect()
+            try:
+                self.runtime_service.disconnect()
+            except Exception as exc:
+                cleanup_errors.append(exc)
         self._connected = False
         self._owns_session = False
+        if cleanup_errors:
+            raise cleanup_errors[0]

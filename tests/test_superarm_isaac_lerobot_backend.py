@@ -233,6 +233,27 @@ def test_isaac_robot_preserves_connect_error_when_camera_rollback_fails():
     assert service.disconnect_calls == 1
 
 
+def test_isaac_robot_disconnects_owned_session_when_camera_cleanup_fails():
+    from lelab.superarm.isaac_robot import SuperArmIsaacRobot, SuperArmIsaacRobotConfig
+
+    service = FakeService()
+    robot = SuperArmIsaacRobot(
+        SuperArmIsaacRobotConfig(distribution_zip="/server/superarm.zip"),
+        runtime_service=service,
+    )
+    camera = FakeCamera(fail_disconnect=True)
+    robot.cameras = {"camera": camera}
+    robot.connect()
+
+    with pytest.raises(RuntimeError, match="camera cleanup failed"):
+        robot.disconnect()
+
+    assert camera.disconnect_calls == 1
+    assert service.disconnect_calls == 1
+    assert service.runtime is None
+    assert robot.is_connected is False
+
+
 def test_isaac_yaml_keeps_the_canonical_six_and_thirteen_joint_contracts():
     config_path = (
         Path(__file__).resolve().parents[1] / "lelab" / "superarm" / "data" / "superarm_isaac.yaml"
