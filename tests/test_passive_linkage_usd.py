@@ -138,9 +138,48 @@ def Xform "part_026" (
             validate_no_source_path_leaks(bad_text, instances)
 
 
+def test_passive_metadata_authoring_requires_create_attribute_and_set_success() -> None:
+    from isaacsim_validation.passive_linkage_usd import _set_custom_attr
+
+    with pytest.raises(RuntimeError, match="required custom attribute passive_source_index"):
+        _set_custom_attr(object(), "passive_source_index", "Int", 3)
+
+    prim = _FakePrim("/Robot/passive_linkage_visuals/finger1/part_003")
+    prim.fail_attribute_set = True
+    with pytest.raises(RuntimeError, match="could not set required custom attribute passive_source_index"):
+        _set_custom_attr(prim, "passive_source_index", "Int", 3)
+
+
+def test_author_snapshot_uses_mandatory_sdf_value_type_names_directly() -> None:
+    source = (Path(__file__).parents[1] / "isaacsim_validation" / "passive_linkage_usd.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "_sdf_value_type" not in source
+    assert "Sdf.ValueTypeNames.Int" in source
+    assert "Sdf.ValueTypeNames.String" in source
+    assert 'hasattr(prim, "CreateAttribute")' not in source
+
+
 class _FakePath(str):
     def AppendChild(self, child: str) -> _FakePath:  # noqa: N802 - mimics pxr API
         return _FakePath(f"{self.rstrip('/')}/{child}")
+
+
+class _FakeAttribute:
+    def __init__(self, prim: _FakePrim, name: str, value_type, custom: bool):
+        self.prim = prim
+        self.name = name
+        self.value_type = value_type
+        self.custom = custom
+        self.value = None
+
+    def Set(self, value) -> bool:  # noqa: N802 - mimics pxr API
+        if self.prim.fail_attribute_set:
+            return False
+        self.value = value
+        self.prim.attributes[self.name] = self
+        return True
 
 
 class _FakePrim:
@@ -149,7 +188,9 @@ class _FakePrim:
         self.type_name = type_name
         self.active = True
         self.instanceable = False
+        self.fail_attribute_set = False
         self.references: list[tuple[str, str]] = []
+        self.attributes: dict[str, _FakeAttribute] = {}
 
     def GetName(self) -> str:  # noqa: N802 - mimics pxr API
         return str(self.path).rsplit("/", 1)[-1]
@@ -174,6 +215,9 @@ class _FakePrim:
 
     def SetInstanceable(self, instanceable: bool) -> None:  # noqa: N802 - mimics pxr API
         self.instanceable = instanceable
+
+    def CreateAttribute(self, name: str, value_type, custom: bool = False):  # noqa: N802 - mimics pxr API
+        return _FakeAttribute(self, name, value_type, custom)
 
 
 class _FakeRootLayer:
@@ -267,7 +311,10 @@ def _install_fake_pxr(monkeypatch: pytest.MonkeyPatch) -> None:
         Vec3d=lambda *values: values,
         Quatd=lambda real, imaginary: (real, imaginary),
     )
-    pxr.Sdf = types.SimpleNamespace(Path=lambda value: value)
+    pxr.Sdf = types.SimpleNamespace(
+        Path=lambda value: value,
+        ValueTypeNames=types.SimpleNamespace(Int="Int", String="String"),
+    )
     pxr.Usd = types.SimpleNamespace(Stage=types.SimpleNamespace(Open=lambda _path: None))
     pxr.UsdGeom = types.SimpleNamespace(
         Xform=_FakeXform,

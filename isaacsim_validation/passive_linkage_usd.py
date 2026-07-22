@@ -136,11 +136,9 @@ def author_passive_linkage_snapshot(
         xformable.AddTranslateOp(precision=UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(*pose.translate))
         w, x, y, z = pose.orient
         xformable.AddOrientOp(precision=UsdGeom.XformOp.PrecisionDouble).Set(Gf.Quatd(w, Gf.Vec3d(x, y, z)))
-        _set_custom_attr(prim, "passive_source_index", _sdf_value_type(Sdf, "Int"), pose.source_index)
-        _set_custom_attr(prim, "passive_source_prim", _sdf_value_type(Sdf, "String"), pose.source_prim)
-        _set_custom_attr(
-            prim, "passive_reference_prim", _sdf_value_type(Sdf, "String"), part["reference_prim"]
-        )
+        _set_custom_attr(prim, "passive_source_index", Sdf.ValueTypeNames.Int, pose.source_index)
+        _set_custom_attr(prim, "passive_source_prim", Sdf.ValueTypeNames.String, pose.source_prim)
+        _set_custom_attr(prim, "passive_reference_prim", Sdf.ValueTypeNames.String, part["reference_prim"])
         prim.GetReferences().AddReference(
             str(instances_usda),
             Sdf.Path(part["reference_prim"]),
@@ -189,14 +187,15 @@ def validate_no_source_path_leaks(snapshot_text: str, instances_usda: Path) -> N
 
 
 def _set_custom_attr(prim, name: str, value_type, value) -> None:
-    if not hasattr(prim, "CreateAttribute"):
-        return
-    prim.CreateAttribute(name, value_type, custom=True).Set(value)
-
-
-def _sdf_value_type(sdf_module, name: str):
-    value_types = getattr(sdf_module, "ValueTypeNames", None)
-    return getattr(value_types, name, None) if value_types is not None else None
+    create_attribute = getattr(prim, "CreateAttribute", None)
+    prim_path = prim.GetPath() if hasattr(prim, "GetPath") else "<unknown>"
+    if create_attribute is None:
+        raise RuntimeError(f"USD prim {prim_path} cannot author required custom attribute {name}")
+    attribute = create_attribute(name, value_type, custom=True)
+    if attribute is None:
+        raise RuntimeError(f"USD prim {prim_path} did not create required custom attribute {name}")
+    if not attribute.Set(value):
+        raise RuntimeError(f"could not set required custom attribute {name} on {prim_path}")
 
 
 def _deactivate_frame_first_core_refs(stage, robot_root: str) -> int:
