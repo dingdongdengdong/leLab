@@ -450,3 +450,32 @@ Do not write `PASS` until the named evidence exists and has been inspected.
 - **Reusable rule:** validate release artifacts again at the consumer boundary,
   pin external inputs when authenticity matters, and keep one action/joint-name
   contract shared across producer, host, and simulator code.
+
+### 17. A local Isaac control socket needed a bounded, authenticated, non-retrying contract
+
+- **Observed evidence:** LeLab had no versioned way to exchange commands with an
+  Isaac process, and a naïve stream client could accept oversized or
+  uncorrelated frames, leak its token in diagnostics, interleave concurrent
+  calls, or replay a state-changing command after a truncated response.
+- **Cause:** the host and simulator process boundary had no shared schema,
+  framing, validation, or failure semantics.
+- **Repair:** a pure-stdlib shared JSON Lines contract now authenticates each
+  request, bounds every frame, validates exact operation fields and all 13
+  physical targets, correlates responses by schema and request ID, restricts
+  capture names, and prevents payloads from overriding reserved response
+  fields. The LeLab client serializes access, reconstructs fragmented frames,
+  redacts credentials, invalidates uncertain connections, and never retries a
+  state-changing operation implicitly.
+- **Regression coverage:** 27 focused tests cover malformed/oversized frames,
+  stable request error codes, exact numeric targets, unsafe capture paths,
+  reserved response fields, fragmented and mismatched responses, token
+  redaction, pre-send validation, truncated state changes, timeouts, and
+  concurrent request serialization.
+- **Verification:** `tests/test_superarm_isaac_protocol.py` passes all 27 tests
+  with only the repository's existing Starlette deprecation warning, and Ruff
+  passes the shared contract, LeLab client, and protocol tests.
+- **Remaining boundary:** this slice defines and verifies the host-safe wire
+  contract only; the Isaac main-thread server and container launcher are the
+  next committed slice.
+- **Reusable rule:** once delivery of a state change becomes uncertain, close
+  the transport and require explicit recovery instead of guessing or replaying.
