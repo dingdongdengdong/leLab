@@ -120,7 +120,16 @@ def test_capture_camera_is_initialized_before_the_simulation_timeline():
     runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
 
     initialized = runner.index("capture_camera.initialize()")
-    timeline_play = runner.index("timeline.play()")
+    timeline_play = runner.index("timeline.play()", initialized)
     first_capture = runner.index('run_dir / f"hand_{name}.png"')
     assert initialized < timeline_play < first_capture
     assert "camera.set_world_pose(" in runner
+
+
+def test_direct_capture_pauses_physics_and_steps_the_render_product():
+    runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
+
+    pause = runner.index("timeline.pause()")
+    render = runner.index("rep.orchestrator.step(rt_subframes=8)")
+    resume = runner.index("timeline.play()", render)
+    assert pause < render < resume

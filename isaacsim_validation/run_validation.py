@@ -25,6 +25,7 @@ app = SimulationApp(
 )
 
 import numpy as np  # noqa: E402
+import omni.replicator.core as rep  # noqa: E402
 import omni.timeline  # noqa: E402
 import omni.usd  # noqa: E402
 from contracts import ARM_JOINTS, HAND_JOINTS, grasp_to_urdf_targets  # noqa: E402
@@ -106,7 +107,6 @@ def _capture(
     path: Path,
     stage: Usd.Stage,
     prim,
-    world: World,
     camera: Camera,
     *,
     closeup: bool,
@@ -116,12 +116,20 @@ def _capture(
     camera.set_world_pose(
         position=np.asarray(eye), orientation=_look_at_world_quat(eye, target)
     )
+    timeline = omni.timeline.get_timeline_interface()
+    was_playing = timeline.is_playing()
+    if was_playing:
+        timeline.pause()
     rgba = None
-    for _ in range(60):
-        world.step(render=True)
-        rgba = camera.get_rgba()
-        if rgba is not None and np.asarray(rgba).size:
-            break
+    try:
+        for _ in range(8):
+            rep.orchestrator.step(rt_subframes=8)
+            rgba = camera.get_rgba()
+            if rgba is not None and np.asarray(rgba).size:
+                break
+    finally:
+        if was_playing:
+            timeline.play()
     if rgba is None or not np.asarray(rgba).size:
         raise RuntimeError("Isaac Camera.get_rgba did not create a frame")
     _save_rgba(path, rgba)
@@ -315,7 +323,6 @@ def main() -> int:
                 run_dir / f"hand_{name}.png",
                 stage,
                 hand_root,
-                world,
                 capture_camera,
                 closeup=True,
             )
@@ -342,7 +349,7 @@ def main() -> int:
         _write_json(report_path, report)
         whole_robot = run_dir / "whole_robot.png"
         screenshots = [
-            _capture(whole_robot, stage, root_prim, world, capture_camera, closeup=False)
+            _capture(whole_robot, stage, root_prim, capture_camera, closeup=False)
         ]
         report["screenshots"] = screenshots
         report["visual_boundary"] = (
