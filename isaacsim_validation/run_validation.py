@@ -37,6 +37,8 @@ from import_config import urdf_import_settings  # noqa: E402
 from isaacsim.core.api import World  # noqa: E402
 from isaacsim.core.experimental.prims import Articulation  # noqa: E402
 from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
+from passive_linkage import solve_passive_linkage  # noqa: E402
+from passive_linkage_usd import author_passive_linkage_snapshot  # noqa: E402
 from pxr import Usd, UsdGeom, UsdPhysics  # noqa: E402
 from zip_hand_binding import bind_zip_hand_visuals  # noqa: E402
 
@@ -126,6 +128,9 @@ def main() -> int:
         "input_urdf": str(urdf),
         "phase": "initializing_importer",
     }
+    usd_path: Path | None = None
+    pristine_package: bytes | None = None
+    package_cleanup_written = False
     _write_json(report_path, report)
 
     try:
@@ -152,6 +157,7 @@ def main() -> int:
         prim_path = f"/{urdf.stem}"
 
         stage = omni.usd.get_context().get_stage()
+        passive_linkage_instances: Path | None = None
         if args.profile == "zip_learning":
             if args.hand_usd_package is None:
                 raise RuntimeError("zip_learning requires --hand-usd-package")
@@ -160,6 +166,7 @@ def main() -> int:
                 prim_path,
                 args.hand_usd_package,
             )
+            passive_linkage_instances = usd_path.parent / "zip_hand_payloads" / "instances.usda"
             report["phase"] = "bound_supplied_hand_usd_visuals"
             _write_json(report_path, report)
         # World creates the runtime /physicsScene in the current edit target.
@@ -219,11 +226,11 @@ def main() -> int:
         _command_targets(art, ARM_JOINTS, neutral_arm)
         _step(world, 2)
         neutral_positions = _flat(art.get_dof_positions())
-        capture_arm_pose = {
-            joint: neutral_positions[dof_names.index(joint)] for joint in ARM_JOINTS
-        }
+        capture_arm_pose = {joint: neutral_positions[dof_names.index(joint)] for joint in ARM_JOINTS}
         if max(abs(value) for value in capture_arm_pose.values()) > 0.005:
-            raise RuntimeError(f"could not restore neutral arm pose for direct hand captures: {capture_arm_pose}")
+            raise RuntimeError(
+                f"could not restore neutral arm pose for direct hand captures: {capture_arm_pose}"
+            )
 
         hand_results = []
         hand_snapshots = []
@@ -244,6 +251,17 @@ def main() -> int:
             )
             snapshot = run_dir / f"hand_{name}_snapshot.usda"
             stage.Export(str(snapshot))
+            passive_linkage_contract = None
+            if passive_linkage_instances is not None:
+                snapshot_stage = Usd.Stage.Open(str(snapshot))
+                if snapshot_stage is None:
+                    raise RuntimeError(f"could not reopen measured hand snapshot: {snapshot}")
+                passive_linkage_contract = author_passive_linkage_snapshot(
+                    snapshot_stage,
+                    prim_path,
+                    solve_passive_linkage(measured),
+                    passive_linkage_instances,
+                )
             hand_snapshots.append(
                 {
                     "name": name,
@@ -251,6 +269,7 @@ def main() -> int:
                     "path": str(snapshot),
                     "bytes": snapshot.stat().st_size,
                     "method": "usd_stage_export_after_physics_readback",
+                    "passive_linkage_contract": passive_linkage_contract,
                 }
             )
 
@@ -284,18 +303,30 @@ def main() -> int:
         report["status"] = "NUMERIC_PASS" if numeric_passed else "FAIL"
         report["phase"] = "awaiting_static_visual_render" if numeric_passed else "complete"
         timeline.stop()
-        usd_path.write_bytes(pristine_package)
-        report["package_cleanup"] = {
-            "restored_pristine_root_layer_after_runtime": True,
-            "runtime_state_location": "physics_snapshots_only",
-        }
-        _write_json(report_path, report)
         return 0 if numeric_passed else 2
     except Exception as exc:
         report["error"] = f"{type(exc).__name__}: {exc}"
         _write_json(report_path, report)
         raise
     finally:
+        if usd_path is not None and pristine_package is not None:
+            try:
+                usd_path.write_bytes(pristine_package)
+            except Exception as cleanup_exc:
+                report["package_cleanup"] = {
+                    "restored_pristine_root_layer_after_runtime": False,
+                    "runtime_state_location": "physics_snapshots_only",
+                    "package_cleanup_written": package_cleanup_written,
+                    "error": f"{type(cleanup_exc).__name__}: {cleanup_exc}",
+                }
+            else:
+                package_cleanup_written = True
+                report["package_cleanup"] = {
+                    "restored_pristine_root_layer_after_runtime": True,
+                    "runtime_state_location": "physics_snapshots_only",
+                    "package_cleanup_written": package_cleanup_written,
+                }
+            _write_json(report_path, report)
         app.close()
 
 

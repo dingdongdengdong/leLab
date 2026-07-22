@@ -91,11 +91,7 @@ def test_direct_grasp_sequence_rejects_static_visuals(tmp_path: Path):
 
 
 def test_isaac_camera_bounds_include_render_purpose_payloads():
-    renderer = (
-        Path(__file__).parents[1]
-        / "isaacsim_validation"
-        / "render_physics_snapshots.py"
-    ).read_text()
+    renderer = (Path(__file__).parents[1] / "isaacsim_validation" / "render_physics_snapshots.py").read_text()
 
     assert "[UsdGeom.Tokens.default_, UsdGeom.Tokens.render]" in renderer
     assert "useExtentsHint=closeup" in renderer
@@ -112,9 +108,7 @@ def test_direct_hand_capture_restores_a_deterministic_neutral_arm_pose():
 
 
 def test_runtime_wrapper_rejects_a_non_pass_report():
-    wrapper = (
-        Path(__file__).parents[1] / "isaacsim_validation" / "run_isaacsim60_validation.sh"
-    ).read_text()
+    wrapper = (Path(__file__).parents[1] / "isaacsim_validation" / "run_isaacsim60_validation.sh").read_text()
 
     assert 'report.get("status") != "PASS"' in wrapper
     assert "Isaac validation report is not PASS" in wrapper
@@ -127,9 +121,12 @@ def test_numeric_runner_exports_each_measured_hand_state_before_visual_render():
     runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
 
     readback = runner.index("positions = _flat(art.get_dof_positions())")
-    snapshot = runner.index('stage.Export(str(snapshot))')
+    snapshot = runner.index("stage.Export(str(snapshot))")
+    reopen_author = runner.index("author_passive_linkage_snapshot(")
     awaiting_render = runner.index('"awaiting_static_visual_render"')
-    assert readback < snapshot < awaiting_render
+    assert readback < snapshot < reopen_author < awaiting_render
+    assert "passive_linkage_contract" in runner
+    assert "solve_passive_linkage(measured)" in runner
 
 
 def test_numeric_runner_restores_pristine_package_after_runtime_snapshots():
@@ -137,19 +134,17 @@ def test_numeric_runner_restores_pristine_package_after_runtime_snapshots():
 
     pristine = runner.index("pristine_package = usd_path.read_bytes()")
     world = runner.index("world = World(")
-    snapshot = runner.index('stage.Export(str(snapshot))')
+    snapshot = runner.index("stage.Export(str(snapshot))")
     restore = runner.index("usd_path.write_bytes(pristine_package)")
-    assert pristine < world < snapshot < restore
+    finally_restore = runner.index("finally:")
+    assert pristine < world < snapshot < finally_restore < restore
     assert '"restored_pristine_root_layer_after_runtime"' in runner
     assert '"physics_snapshots_only"' in runner
+    assert "package_cleanup_written" in runner
 
 
 def test_static_snapshot_renderer_uses_one_fixed_camera_for_all_hand_states():
-    renderer = (
-        Path(__file__).parents[1]
-        / "isaacsim_validation"
-        / "render_physics_snapshots.py"
-    ).read_text()
+    renderer = (Path(__file__).parents[1] / "isaacsim_validation" / "render_physics_snapshots.py").read_text()
 
     assert "fixed_hand_pose = None" in renderer
     assert "fixed_pose=fixed_hand_pose" in renderer
@@ -157,11 +152,7 @@ def test_static_snapshot_renderer_uses_one_fixed_camera_for_all_hand_states():
 
 
 def test_static_snapshot_renderer_enables_capture_extension_before_rendering():
-    renderer = (
-        Path(__file__).parents[1]
-        / "isaacsim_validation"
-        / "render_physics_snapshots.py"
-    ).read_text()
+    renderer = (Path(__file__).parents[1] / "isaacsim_validation" / "render_physics_snapshots.py").read_text()
 
     extension = 'enable_extension("omni.kit.renderer.capture")'
     assert extension in renderer
@@ -169,11 +160,7 @@ def test_static_snapshot_renderer_enables_capture_extension_before_rendering():
 
 
 def test_static_snapshot_renderer_uses_close_range_camera_clipping():
-    renderer = (
-        Path(__file__).parents[1]
-        / "isaacsim_validation"
-        / "render_physics_snapshots.py"
-    ).read_text()
+    renderer = (Path(__file__).parents[1] / "isaacsim_validation" / "render_physics_snapshots.py").read_text()
 
     assert "clipping_range=(0.001, 100.0)" in renderer
     assert "rep.orchestrator.step(rt_subframes=8)" in renderer
