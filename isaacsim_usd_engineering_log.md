@@ -374,3 +374,42 @@ Do not write `PASS` until the named evidence exists and has been inspected.
 - **Reusable rule:** evidence metadata and package restoration are acceptance
   requirements, not optional compatibility features; fail explicitly when
   either cannot be authored.
+
+### 15. A validated working directory was not yet a relocatable distribution
+
+- **Observed evidence:** the accepted reusable USDA loaded from its original
+  run directory, but there was no single archive contract proving that all USD
+  dependencies, licenses, control metadata, and checked passive-linkage support
+  would survive extraction elsewhere.
+- **Cause:** the runtime pipeline produced validation evidence and a clean robot
+  package, not a bounded release artifact. Copying only the root USDA would
+  omit its payload layers; copying the complete run would add roughly 490 MB of
+  measured-state snapshot stages and runtime world state.
+- **Repair:** commit `721cd60` adds a deterministic exporter that accepts only
+  the approved runtime/validator contracts, rejects external or unresolved text
+  USD references, and packages the clean asset, licenses, manifest,
+  `SHA256SUMS`, reviewed contact sheet, validation reports, and the checked
+  88-part passive follower helper under one archive root. Large snapshot stages
+  remain excluded.
+- **Regression coverage:** three exporter tests prove byte-for-byte repeatable
+  ZIP output, safe single-root members, complete checksum coverage, the
+  13-DOF/6-action contract, passive-visual boundaries, external-reference
+  rejection, and refusal to publish failed evidence.
+- **Verification:** archive
+  `artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722.zip`
+  is 2,987,777 bytes with SHA256
+  `98fab68292fce974aba37cb86faa1d4bb314a53b503ca7f3affc1052fd6071db`.
+  `unzip -t` and every packaged `SHA256SUMS` entry pass. A clean extraction
+  resolves 457 text USD asset references, the packaged solver returns 88
+  follower poses, and Isaac Sim 6.0 strict validation of the extracted
+  entrypoint reports one articulation root, 13 revolute joints, and zero
+  blocking issues in
+  `artifacts/distribution_validation/superarm_amazinghand_isaac_sim_usd_distribution_20260722/extracted-asset-validator.json`.
+- **Remaining boundary:** the clean entrypoint contains the moving frame-first
+  hand, not baked measured-state passive followers. The included runtime helper
+  authors the 88 structural members into file-backed measured-state snapshots;
+  it does not add closed-loop PhysX constraints, contact proof, hardware proof,
+  or a trained policy.
+- **Reusable rule:** publish the smallest reusable robot package, validate it
+  after clean extraction, and ship state-dependent visual logic as a checked
+  helper rather than confusing diagnostic snapshot stages with the asset.
