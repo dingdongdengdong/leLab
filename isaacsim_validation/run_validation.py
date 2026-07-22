@@ -317,7 +317,7 @@ def main() -> int:
         _write_json(report_path, report)
         timeline.stop()
         return 0 if passed else 2
-    except BaseException as exc:
+    except Exception as exc:
         report["error"] = f"{type(exc).__name__}: {exc}"
         _write_json(report_path, report)
         raise
@@ -325,5 +325,4 @@ def main() -> int:
         app.close()
 
 
-print(f"[superarm-isaac] runner loaded as {__name__}", flush=True)
 raise SystemExit(main())
