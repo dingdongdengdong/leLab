@@ -367,3 +367,63 @@ def test_manifest_validation_requires_unique_integer_source_indices() -> None:
     duplicate["parts"][1]["source_index"] = duplicate["parts"][0]["source_index"]
     with pytest.raises(ValueError, match="Duplicate source_index"):
         validate_passive_linkage_manifest(duplicate)
+
+
+def test_manifest_validation_rejects_bool_finger_values() -> None:
+    from copy import deepcopy
+
+    from isaacsim_validation.passive_linkage import validate_passive_linkage_manifest
+
+    manifest = load_manifest(MANIFEST)
+    tampered = deepcopy(manifest)
+    tampered["parts"][0]["finger"] = True
+
+    with pytest.raises(ValueError, match="finger must be an integer"):
+        validate_passive_linkage_manifest(tampered)
+
+
+def test_solver_rejects_bool_measured_joint_values() -> None:
+    from isaacsim_validation.passive_linkage import solve_passive_linkage
+
+    with pytest.raises(ValueError, match="Non-finite measured joint: finger1_motor1"):
+        solve_passive_linkage({**OPEN_MEASURED, "finger1_motor1": True})
+
+
+def test_manifest_validation_rejects_empty_or_nonmapping_raw_xml_geom_local() -> None:
+    from copy import deepcopy
+
+    from isaacsim_validation.passive_linkage import validate_passive_linkage_manifest
+
+    manifest = load_manifest(MANIFEST)
+
+    empty_raw = deepcopy(manifest)
+    empty_raw["parts"][0]["raw_xml_geom_local"] = {}
+    with pytest.raises(ValueError, match="raw_xml_geom_local"):
+        validate_passive_linkage_manifest(empty_raw)
+
+    nonmapping_raw = deepcopy(manifest)
+    nonmapping_raw["parts"][0]["raw_xml_geom_local"] = "not-a-transform"
+    with pytest.raises(ValueError, match="raw_xml_geom_local"):
+        validate_passive_linkage_manifest(nonmapping_raw)
+
+
+def test_slerp_uses_shortest_arc_for_negative_dot_quaternions() -> None:
+    from isaacsim_validation.passive_linkage import _slerp
+
+    result = _slerp((1.0, 0.0, 0.0, 0.0), (-0.7071067811865476, -0.7071067811865476, 0.0, 0.0), 0.5)
+
+    assert result[0] > 0.9
+    assert result[1] > 0.0
+    assert abs(sum(value * value for value in result) - 1.0) < 1e-12
+
+
+def test_slerp_normalizes_near_identical_quaternion_fallback() -> None:
+    import math
+
+    from isaacsim_validation.passive_linkage import _slerp
+
+    result = _slerp((1.0, 0.0, 0.0, 0.0), (0.99999999, 0.0001, 0.0, 0.0), 0.5)
+
+    assert math.isclose(sum(value * value for value in result), 1.0, abs_tol=1e-12)
+    assert result[0] > 0.999999
+    assert result[1] > 0.0

@@ -296,7 +296,7 @@ def validate_passive_linkage_manifest(manifest: Mapping[str, Any]) -> None:
     per_finger = dict.fromkeys(range(1, EXPECTED_FINGER_COUNT + 1), 0)
     for index, raw_part in enumerate(parts):
         part = _mapping(raw_part, f"parts[{index}]")
-        finger = part.get("finger")
+        finger = _integer(part.get("finger"), f"parts[{index}].finger", noun="finger")
         if finger not in per_finger:
             raise ValueError(f"parts[{index}].finger must be one of 1..4")
         per_finger[finger] += 1
@@ -320,9 +320,8 @@ def validate_passive_linkage_manifest(manifest: Mapping[str, Any]) -> None:
         _validate_visual_role(part, "role", index)
 
         _validate_optional_transform(part, "source_usd_rest_transform", f"parts[{index}]")
-        _validate_optional_transform(
-            part.get("raw_xml_geom_local", {}), None, f"parts[{index}].raw_xml_geom_local"
-        )
+        raw_xml_geom_local = _mapping(part.get("raw_xml_geom_local"), f"parts[{index}].raw_xml_geom_local")
+        _validate_optional_transform(raw_xml_geom_local, None, f"parts[{index}].raw_xml_geom_local")
 
         transforms = _mapping(part.get("transforms"), f"parts[{index}].transforms")
         if set(transforms) != set(KEYFRAME_NAMES):
@@ -407,7 +406,7 @@ def _measured_joint(measured: Mapping[str, float], name: str) -> float:
     if name not in measured:
         raise ValueError(f"Missing measured joint: {name}")
     value = measured[name]
-    if not isinstance(value, int | float) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
         raise ValueError(f"Non-finite measured joint: {name}")
     return float(value)
 
@@ -450,8 +449,7 @@ def _normalized(values: tuple[float, ...]) -> tuple[float, ...]:
 
 def _validate_optional_transform(container: Mapping[str, Any], key: str | None, label: str) -> None:
     if key is None:
-        if container:
-            _validate_transform(container, label)
+        _validate_transform(_mapping(container, label), label)
         return
     value = container.get(key)
     if value is not None:
