@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -25,6 +26,8 @@ REQUIRED_PACKAGE_FILES = frozenset(
         "manifest.json",
     }
 )
+VISUAL_SHELL = "amazinghand_visual_shell"
+VISUAL_SHELL_JOINT = "wrist_to_amazinghand_visual_shell"
 
 
 def _sha256(path: Path) -> str:
@@ -40,6 +43,72 @@ def _safe_member_path(name: str) -> PurePosixPath:
     if path.is_absolute() or ".." in path.parts:
         raise ValueError(f"unsafe ZIP member: {name}")
     return path
+
+
+def _remove_prim_block(text: str, name: str) -> str:
+    match = re.search(
+        rf'(?m)^[ \t]*(?:def|over)(?: [A-Za-z0-9_:]+)? "{re.escape(name)}"(?:[ \t]*\([^{{]*?\))?[ \t]*\n?[ \t]*\{{',
+        text,
+    )
+    if match is None:
+        raise ValueError(f"USD layer is missing expected prim block: {name}")
+    brace_start = text.find("{", match.start())
+    depth = 0
+    for index in range(brace_start, len(text)):
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                end = index + 1
+                while end < len(text) and text[end] in " \t":
+                    end += 1
+                if end < len(text) and text[end] == "\n":
+                    end += 1
+                if end < len(text) and text[end] == "\n":
+                    end += 1
+                return text[: match.start()] + text[end:]
+    raise ValueError(f"USD prim block has unbalanced braces: {name}")
+
+
+def _remove_relationship_target(text: str, target: str) -> str:
+    pattern = rf"(?m)^[ \t]*</{re.escape(target)}>,?[ \t]*\n"
+    updated, count = re.subn(pattern, "", text)
+    if count != 1:
+        raise ValueError(f"expected one USD relationship target {target}, found {count}")
+    return updated
+
+
+def repair_hand_only_binding(package_dir: Path) -> dict[str, bool]:
+    """Keep the detailed shell visual-only and remove its invalid rigid-body binding."""
+    payloads = package_dir / "usd" / "amazinghand_graspable" / "payloads"
+    physics_path = payloads / "Physics" / "physics.usda"
+    robot_path = payloads / "robot.usda"
+    physics = physics_path.read_text(encoding="utf-8")
+    robot = robot_path.read_text(encoding="utf-8")
+
+    physics = _remove_prim_block(physics, VISUAL_SHELL)
+    physics = _remove_prim_block(physics, VISUAL_SHELL_JOINT)
+    robot = _remove_relationship_target(
+        robot,
+        f"amazinghand_graspable/Geometry/r_wrist_interface/{VISUAL_SHELL}",
+    )
+    robot = _remove_relationship_target(
+        robot,
+        f"amazinghand_graspable/Physics/{VISUAL_SHELL_JOINT}",
+    )
+    robot = _remove_prim_block(robot, VISUAL_SHELL)
+    robot = _remove_prim_block(robot, VISUAL_SHELL_JOINT)
+
+    physics_path.write_text(physics, encoding="utf-8")
+    robot_path.write_text(robot, encoding="utf-8")
+    return {
+        "removed_visual_shell_rigid_body": True,
+        "removed_visual_shell_fixed_joint": True,
+        "removed_visual_shell_robot_link": True,
+        "removed_visual_shell_robot_joint": True,
+    }
 
 
 def prepare_amazinghand_usd(
@@ -99,17 +168,21 @@ def prepare_amazinghand_usd(
                 shutil.copyfileobj(source, destination)
             extracted_files.append(relative.as_posix())
 
+    repair = repair_hand_only_binding(output_dir)
     prepared_manifest = {
         "schema_version": 1,
         "source_kind": "isaac_sim_usd_distribution",
         "source_zip": str(source_zip),
         "source_zip_sha256": actual_sha256,
         "source_binding_status": source_manifest.get("simready_articulation_binding"),
+        "prepared_binding_status": "hand_only_articulation_repaired",
+        "combined_superarm_binding_status": "pending",
         "source_visual_validation": source_manifest.get("visual_validation"),
         "entry_stage": AMAZINGHAND_USD_ENTRY.as_posix(),
         "hand_joint_names": joint_names,
         "preview_stage_excluded_from_asset_folder": True,
         "extracted_files": sorted(extracted_files),
+        "repairs": repair,
     }
     (output_dir / "prepared-manifest.json").write_text(
         json.dumps(prepared_manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"

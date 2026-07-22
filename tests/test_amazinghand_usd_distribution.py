@@ -10,6 +10,7 @@ import pytest
 from isaacsim_validation.prepare_amazinghand_usd import (
     AMAZINGHAND_USD_ENTRY,
     prepare_amazinghand_usd,
+    repair_hand_only_binding,
 )
 
 
@@ -24,8 +25,44 @@ def _write_distribution(path: Path, *, unsafe: bool = False) -> str:
         ),
         f"{root}/usd/amazinghand_graspable/amazinghand_graspable.usda": "#usda 1.0\n",
         f"{root}/usd/amazinghand_graspable/payloads/base.usda": "#usda 1.0\n",
-        f"{root}/usd/amazinghand_graspable/payloads/robot.usda": "#usda 1.0\n",
-        f"{root}/usd/amazinghand_graspable/payloads/Physics/physics.usda": "#usda 1.0\n",
+        f"{root}/usd/amazinghand_graspable/payloads/robot.usda": '''#usda 1.0
+over "amazinghand_graspable"
+{
+    prepend rel isaac:physics:robotJoints = [
+        </amazinghand_graspable/Physics/wrist_to_amazinghand_visual_shell>,
+    ]
+    prepend rel isaac:physics:robotLinks = [
+        </amazinghand_graspable/Geometry/r_wrist_interface/amazinghand_visual_shell>,
+    ]
+    over "Geometry"
+    {
+        over "r_wrist_interface"
+        {
+            over "amazinghand_visual_shell" { }
+        }
+    }
+    over "Physics"
+    {
+        over "wrist_to_amazinghand_visual_shell" { }
+    }
+}
+''',
+        f"{root}/usd/amazinghand_graspable/payloads/Physics/physics.usda": '''#usda 1.0
+over "amazinghand_graspable"
+{
+    over "Geometry"
+    {
+        over "r_wrist_interface"
+        {
+            over "amazinghand_visual_shell" { }
+        }
+    }
+    over "Physics"
+    {
+        def PhysicsFixedJoint "wrist_to_amazinghand_visual_shell" { }
+    }
+}
+''',
         f"{root}/usd/amazinghand_graspable/payloads/Physics/physx.usda": "#usda 1.0\n",
         f"{root}/usd/amazinghand_graspable/payloads/geometries.usd": "usd",
         f"{root}/usd/amazinghand_graspable/payloads/instances.usda": "#usda 1.0\n",
@@ -70,3 +107,81 @@ def test_prepare_rejects_unsafe_archive_paths(tmp_path: Path):
 
     with pytest.raises(ValueError, match="unsafe ZIP member"):
         prepare_amazinghand_usd(archive, tmp_path / "prepared", expected_sha256=digest)
+
+
+def test_repair_removes_static_visual_shell_from_hand_physics(tmp_path: Path):
+    payloads = tmp_path / "usd" / "amazinghand_graspable" / "payloads"
+    physics = payloads / "Physics" / "physics.usda"
+    robot = payloads / "robot.usda"
+    physics.parent.mkdir(parents=True)
+    physics.write_text(
+        '''#usda 1.0
+over "amazinghand_graspable"
+{
+    over "Geometry"
+    {
+        over "r_wrist_interface"
+        {
+            over "amazinghand_visual_shell" (
+                prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+            )
+            {
+                float physics:mass = 0.001
+            }
+        }
+    }
+    over "Physics"
+    {
+        def PhysicsFixedJoint "wrist_to_amazinghand_visual_shell"
+        {
+            rel physics:body1 = </amazinghand_graspable/Geometry/r_wrist_interface/amazinghand_visual_shell>
+        }
+    }
+}
+''',
+        encoding="utf-8",
+    )
+    robot.write_text(
+        '''#usda 1.0
+over "amazinghand_graspable"
+{
+    prepend rel isaac:physics:robotJoints = [
+        </amazinghand_graspable/Physics/wrist_to_amazinghand_visual_shell>,
+    ]
+    prepend rel isaac:physics:robotLinks = [
+        </amazinghand_graspable/Geometry/r_wrist_interface/amazinghand_visual_shell>,
+    ]
+    over "Geometry"
+    {
+        over "r_wrist_interface"
+        {
+            over "amazinghand_visual_shell" (
+                prepend apiSchemas = ["IsaacLinkAPI"]
+            )
+            {
+            }
+        }
+    }
+    over "Physics"
+    {
+        over "wrist_to_amazinghand_visual_shell" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+    }
+}
+''',
+        encoding="utf-8",
+    )
+
+    repair = repair_hand_only_binding(tmp_path)
+
+    assert repair == {
+        "removed_visual_shell_rigid_body": True,
+        "removed_visual_shell_fixed_joint": True,
+        "removed_visual_shell_robot_link": True,
+        "removed_visual_shell_robot_joint": True,
+    }
+    assert "amazinghand_visual_shell" not in physics.read_text(encoding="utf-8")
+    assert "amazinghand_visual_shell" not in robot.read_text(encoding="utf-8")
