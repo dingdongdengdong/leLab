@@ -114,3 +114,13 @@ def test_runtime_wrapper_rejects_a_non_pass_report():
 
     assert 'report.get("status") != "PASS"' in wrapper
     assert "Isaac validation report is not PASS" in wrapper
+
+
+def test_capture_camera_is_initialized_before_the_simulation_timeline():
+    runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
+
+    initialized = runner.index("capture_camera.initialize()")
+    timeline_play = runner.index("timeline.play()")
+    first_capture = runner.index('run_dir / f"hand_{name}.png"')
+    assert initialized < timeline_play < first_capture
+    assert "camera.set_world_pose(" in runner

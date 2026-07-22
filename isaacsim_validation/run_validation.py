@@ -102,17 +102,20 @@ def _save_rgba(path: Path, rgba) -> None:
     Image.fromarray(pixels[:, :, :4]).save(path)
 
 
-def _capture(path: Path, stage: Usd.Stage, prim, world: World, *, closeup: bool) -> dict:
+def _capture(
+    path: Path,
+    stage: Usd.Stage,
+    prim,
+    world: World,
+    camera: Camera,
+    *,
+    closeup: bool,
+) -> dict:
     eye, target = _camera_pose(stage, prim, closeup=closeup)
     path.parent.mkdir(parents=True, exist_ok=True)
-    camera = Camera(
-        prim_path=f"/World/SuperArmValidationCamera_{path.stem}",
-        position=np.asarray(eye),
-        orientation=_look_at_world_quat(eye, target),
-        resolution=(1280, 720),
+    camera.set_world_pose(
+        position=np.asarray(eye), orientation=_look_at_world_quat(eye, target)
     )
-    camera.initialize()
-    camera.set_focal_length(35.0)
     rgba = None
     for _ in range(60):
         world.step(render=True)
@@ -222,6 +225,16 @@ def main() -> int:
         stage = omni.usd.get_context().get_stage()
         if not stage.GetPrimAtPath("/World/SuperArmValidationLight").IsValid():
             UsdLux.DomeLight.Define(stage, "/World/SuperArmValidationLight").CreateIntensityAttr(700.0)
+        capture_camera = Camera(
+            prim_path="/World/SuperArmValidationCamera",
+            position=np.array([1.0, -1.0, 1.0]),
+            orientation=np.array([1.0, 0.0, 0.0, 0.0]),
+            resolution=(1280, 720),
+        )
+        capture_camera.initialize()
+        capture_camera.set_focal_length(35.0)
+        for _ in range(4):
+            app.update()
         timeline = omni.timeline.get_timeline_interface()
         timeline.play()
         art = Articulation(prim_path)
@@ -298,7 +311,14 @@ def main() -> int:
                     "max_error": max(abs(measured[joint] - targets[joint]) for joint in HAND_JOINTS),
                 }
             )
-            frame = _capture(run_dir / f"hand_{name}.png", stage, hand_root, world, closeup=True)
+            frame = _capture(
+                run_dir / f"hand_{name}.png",
+                stage,
+                hand_root,
+                world,
+                capture_camera,
+                closeup=True,
+            )
             hand_frames.append({"name": name, **frame})
 
         hand_motion_passed = all(
@@ -321,7 +341,9 @@ def main() -> int:
         report["phase"] = "capturing_visuals"
         _write_json(report_path, report)
         whole_robot = run_dir / "whole_robot.png"
-        screenshots = [_capture(whole_robot, stage, root_prim, world, closeup=False)]
+        screenshots = [
+            _capture(whole_robot, stage, root_prim, world, capture_camera, closeup=False)
+        ]
         report["screenshots"] = screenshots
         report["visual_boundary"] = (
             "Raw profile retains the generated full hand visual shell; detailed hand visual geometry "
