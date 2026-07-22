@@ -85,8 +85,8 @@ shell-free passive-linkage helper, and bounded validation evidence. Measured
 70 MB snapshot stages and runtime world state are deliberately excluded.
 
 ```bash
-export ACCEPTED_RUN=artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/zip_learning_isaac
-export DIST=superarm_amazinghand_isaac_sim_usd_distribution_20260722
+export ACCEPTED_RUN=artifacts/isaacsim_superarm/20260722T163556Z-motor2-flexion-fix/zip_learning_isaac
+export DIST=superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2
 
 .venv/bin/python -m isaacsim_validation.export_superarm_usd_distribution \
   --source-asset-dir "$ACCEPTED_RUN/superarm_amazinghand" \
@@ -100,14 +100,14 @@ export DIST=superarm_amazinghand_isaac_sim_usd_distribution_20260722
   --hand-license-file artifacts/amazinghand_distribution_audit/20260722/amazinghand_isaac_sim_usd_distribution_20260722/LICENSE-AmazingHandControl \
   --output-zip "artifacts/distributions/$DIST.zip" \
   --distribution-name "$DIST" \
-  --validation-run-id 20260722T070208Z-combined-zip-passive-linkage-r3
+  --validation-run-id 20260722T163556Z-motor2-flexion-fix
 ```
 
 Accepted archive:
 
 ```text
-artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722.zip
-SHA256: 9386f054e6d75ee1abfeac0b7a6e7304e7c163440bcd092c38df0610f9314ba2
+artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip
+SHA256: 3bd316090d17f9903562139983a6c66731717f7246045ebdaf90610bf3e596d3
 entry: usd/superarm_amazinghand/superarm_amazinghand.usda
 ```
 
@@ -115,7 +115,7 @@ After extraction, run `sha256sum -c SHA256SUMS` from the distribution
 directory. The manifest and checksum inventory also bind the exact whole,
 open, half-close, and close PNG bytes used by the E2E evidence runner. The
 accepted clean-extraction validator result is retained under
-`artifacts/distribution_validation/superarm_amazinghand_isaac_sim_usd_distribution_20260722/`.
+`artifacts/distribution_validation/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2/`.
 
 ## Managed LeLab control bridge
 
@@ -161,7 +161,7 @@ teleoperation and future ACT/VLA policy code; the Isaac bridge expands those
 values to the exact 13 named joints.
 
 ```bash
-export SUPERARM_ISAAC_DISTRIBUTION_ZIP="$PWD/artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722.zip"
+export SUPERARM_ISAAC_DISTRIBUTION_ZIP="$PWD/artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip"
 export ISAAC_SIM_STARTUP_TIMEOUT_S=240
 uv run lelab --no-open
 
@@ -192,7 +192,7 @@ capture remains unavailable.
 ## Evidence and proof boundaries
 
 The accepted passive-linkage run is
-`artifacts/isaacsim_superarm/20260722T070208Z-combined-zip-passive-linkage-r3/`:
+`artifacts/isaacsim_superarm/20260722T163556Z-motor2-flexion-fix/`:
 
 - `zip_learning_isaac/isaac-report.json`: runtime `PASS`, 13 DOFs, one
   articulation, six-value logical action, arm motion PASS, hand motion PASS,
@@ -203,7 +203,7 @@ The accepted passive-linkage run is
 - `zip_learning_isaac/whole_robot.png`: reviewed full robot with attached hand;
 - `zip_learning_isaac/hand_open.png`, `hand_half_close.png`, and
   `hand_close.png`: reviewed, nonblank direct frames from measured physics
-  snapshots, with adjacent RMS differences `14.7731` and `16.5492`;
+  snapshots, with adjacent RMS differences `25.1546` and `23.0963`;
 - `zip_learning_isaac/hand_finger1_close.png` through
   `hand_finger4_close.png`: reviewed independent-finger evidence after each
   case resets to the measured open baseline;

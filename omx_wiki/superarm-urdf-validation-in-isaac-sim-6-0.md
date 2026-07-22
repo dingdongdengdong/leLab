@@ -98,9 +98,9 @@ one articulation root, 13 revolute joints, and zero blocking issues.
 The current relocatable distribution is:
 
 ```text
-artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722.zip
-SHA256: 9386f054e6d75ee1abfeac0b7a6e7304e7c163440bcd092c38df0610f9314ba2
-size: 3,831,780 bytes
+artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip
+SHA256: 3bd316090d17f9903562139983a6c66731717f7246045ebdaf90610bf3e596d3
+size: 4,026,676 bytes
 entry: usd/superarm_amazinghand/superarm_amazinghand.usda
 ```
 
@@ -118,6 +118,8 @@ solver. Strict Isaac Sim 6.0 validation of the extracted entrypoint passed with
 one articulation root, 13 revolute joints, and zero blocking issues. The fresh
 report is retained at
 `artifacts/distribution_validation/superarm_amazinghand_isaac_sim_usd_distribution_20260722/extracted-asset-validator.json`.
+The motor-direction-corrected v2 clean-extraction report is at
+`artifacts/distribution_validation/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2/extracted-asset-validator.json`.
 
 The clean entrypoint itself contains the eight moving frame-first hand visuals.
 The 88 detailed linkage pieces remain measured-state visual followers and are

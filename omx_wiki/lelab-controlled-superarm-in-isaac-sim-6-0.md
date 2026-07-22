@@ -2,7 +2,7 @@
 title: "LeLab-controlled SuperArm in Isaac Sim 6.0"
 tags: ["lelab", "isaac-sim", "superarm", "lerobot", "vla", "evidence"]
 created: 2026-07-22T11:38:17.732Z
-updated: 2026-07-22T15:00:00.000Z
+updated: 2026-07-22T16:55:00.000Z
 sources: []
 links: ["lelab-isaac-sim-control-scope.md", "superarm-urdf-validation-in-isaac-sim-6-0.md"]
 category: architecture
@@ -19,8 +19,8 @@ LeLab is the control owner for the SuperArm + AmazingHand Isaac Sim backend. Thi
 The accepted asset is:
 
 ```text
-artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722.zip
-SHA256 9386f054e6d75ee1abfeac0b7a6e7304e7c163440bcd092c38df0610f9314ba2
+artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip
+SHA256 3bd316090d17f9903562139983a6c66731717f7246045ebdaf90610bf3e596d3
 entry usd/superarm_amazinghand/superarm_amazinghand.usda
 ```
 
@@ -67,7 +67,7 @@ The physical names are `joint_rev_1` through `joint_rev_5` and `finger1_motor1`,
 ## Launch and website workflow
 
 ```bash
-export SUPERARM_ISAAC_DISTRIBUTION_ZIP="$PWD/artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722.zip"
+export SUPERARM_ISAAC_DISTRIBUTION_ZIP="$PWD/artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip"
 export ISAAC_SIM_STARTUP_TIMEOUT_S=240
 uv run lelab --no-open
 ```

@@ -910,6 +910,22 @@ Do not write `PASS` until the named evidence exists and has been inspected.
   endpoint sheet and a GIF made only from the actual open/half/close renders.
   A separate nine-step numeric sweep reaches 110 degrees, reverses
   monotonically, and returns to zero.
+- **Distribution:** the corrected 30-file archive is
+  `artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip`,
+  `4,026,676` bytes, SHA-256
+  `3bd316090d17f9903562139983a6c66731717f7246045ebdaf90610bf3e596d3`.
+  `unzip -t`, all packaged checksums, host safe extraction with the pinned
+  digest, and strict Isaac validation of the short-path clean extraction pass.
+  A first strict-validator attempt from the much longer digest-cache path
+  exited without a report; the same checked bytes passed from the bounded
+  release-validation path, so no asset PASS is inferred from the missing run.
+- **LeLab follow-up:** two v2 API acceptance attempts each completed all three
+  open/half/close control cases and copied the new nonblank static frames; the
+  visual difference gate passed with mean absolute differences `7.0229` and
+  `6.0831`. Both full reports remain `FAIL` because a later emergency-hold
+  telemetry request hit the known bounded five-second Isaac bridge timeout.
+  The v2 archive is therefore accepted for the corrected asset/motion/visual
+  categories, not newly promoted as a full lifecycle E2E PASS.
 - **Result/commit:** this entry accompanies the motor-2 passive visual flexion
   correction commit.
 - **Remaining boundary:** this proves Isaac numeric motion and reviewed static
