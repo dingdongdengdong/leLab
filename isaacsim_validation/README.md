@@ -37,7 +37,7 @@ wrist, proximal, and distal links. This avoids two competing articulations.
 
 | Profile | Purpose | Hand appearance |
 | --- | --- | --- |
-| `zip_learning` | Recommended Isaac/VLA/RL asset | Supplied Isaac USD wrist, palm, proximal, and distal visuals bound to the combined 13-DOF physics tree |
+| `zip_learning` | Recommended Isaac/VLA/RL asset | Supplied Isaac USD wrist/palm/servo frame plus shell-free proximal/distal cores bound to the combined 13-DOF physics tree |
 | `learning` | Diagnostic serial-URDF learning asset | Selected local URDF shell meshes |
 | `aligned` | LeLab transforms with original URDF visuals | All generated URDF visuals retained |
 | `served` | Browser/showroom-compatible tree | Hand visuals removed for the website overlay |
@@ -76,8 +76,8 @@ isaacsim_validation/run_asset_validator.sh \
 
 ## Evidence and proof boundaries
 
-The accepted run is
-`artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/`:
+The accepted frame-first run is
+`artifacts/isaacsim_superarm/20260722T051559Z-combined-zip-frame-first/`:
 
 - `zip_learning_isaac/isaac-report.json`: runtime `PASS`, 13 DOFs, one
   articulation, arm motion PASS, hand motion PASS;
@@ -86,14 +86,17 @@ The accepted run is
 - `zip_learning_isaac/whole_robot.png`: reviewed full robot with attached hand;
 - `zip_learning_isaac/hand_open.png`, `hand_half_close.png`, and
   `hand_close.png`: reviewed, nonblank direct frames from measured physics
-  snapshots, with adjacent RMS differences 26.36 and 20.89.
+  snapshots, with adjacent RMS differences 22.06 and 19.63.
 
 This proves source integrity, USD composition, Isaac articulation response, and
 visible open/close motion. It does not prove real DM4340P CAN transport,
 AmazingHand serial transport, contact/grasp quality, or a trained policy
-rollout. The detailed closed-loop linkage/backplate pieces remain static visual
-geometry; the proximal and distal outer shells are the visual parts rigidly
-bound to the eight moving physics links.
+rollout. The stable wrist/palm/servo-frame assembly remains visual-only. The
+rounded `proximal_shell` and `distal_shell` parts are excluded; one supplied
+proximal core and one supplied distal core are rigidly bound to each finger's
+two moving links. This follows the open-chain Isaac frame lineage in source
+commit `0e53b0dfadaae3234d14fb5830108ae931734d0c`, but does not claim to recreate
+the original closed-loop passive linkage.
 
 ## Required engineering record
 

@@ -38,24 +38,24 @@ reference only its visual payloads beneath the existing wrist and finger links.
 
 ## Accepted evidence
 
-Run ID: `20260722T045604Z-combined-zip-usd-clean`.
+Run ID: `20260722T051559Z-combined-zip-frame-first`.
 
-- [Runtime report](assets/superarm-isaac60-zip-learning-report.json): PASS,
+- [Runtime report](assets/superarm-isaac60-zip-frame-first-report.json): PASS,
   13 DOFs, one articulation, five arm joints moved independently, and all eight
   hand joints moved monotonically with maximum error below `0.000063 rad`.
-- [Strict validator](assets/superarm-isaac60-zip-learning-validator.json): PASS,
+- [Strict validator](assets/superarm-isaac60-zip-frame-first-validator.json): PASS,
   zero blocking issues, one articulation root, 13 revolute joints, 28 rigid
   bodies, and 13 collisions.
-- [Whole robot](assets/superarm-isaac60-zip-learning-whole.png): reviewed full
+- [Whole robot](assets/superarm-isaac60-zip-frame-first-whole.png): reviewed full
   SuperArm with the AmazingHand attached.
-- [Open](assets/superarm-isaac60-zip-learning-open.png),
-  [half close](assets/superarm-isaac60-zip-learning-half-close.png), and
-  [close](assets/superarm-isaac60-zip-learning-close.png): reviewed direct
+- [Open](assets/superarm-isaac60-zip-frame-first-open.png),
+  [half close](assets/superarm-isaac60-zip-frame-first-half-close.png), and
+  [close](assets/superarm-isaac60-zip-frame-first-close.png): reviewed direct
   fixed-camera frames from measured Isaac physics snapshots. Adjacent RMS
-  differences are `26.3583` and `20.8902`.
+  differences are `22.0600` and `19.6275`.
 
 The full ignored runtime artifact is under
-`artifacts/isaacsim_superarm/20260722T045604Z-combined-zip-usd-clean/`.
+`artifacts/isaacsim_superarm/20260722T051559Z-combined-zip-frame-first/`.
 Reproduction instructions are in `isaacsim_validation/README.md`.
 
 ## Proof boundaries
@@ -63,9 +63,22 @@ Reproduction instructions are in `isaacsim_validation/README.md`.
 This proves archive provenance, USD composition, one-articulation ownership,
 Isaac joint response, clean-package validation, and visible grasp-state change.
 It does not prove hardware transport, torque/current tuning, contact-quality
-simulation, grasp success, or a trained ACT/VLA policy. The detailed
-closed-loop linkage/backplate pieces remain static visual geometry; the
-proximal and distal outer shells are bound to the moving physical links.
+simulation, grasp success, or a trained ACT/VLA policy. The stable
+wrist/palm/servo-frame assembly remains visual-only. Rounded proximal/distal
+outer shells are deliberately excluded, while the supplied proximal/distal
+cores follow the eight moving links.
+
+## Historical Isaac frame lineage
+
+Reference commit `0e53b0dfadaae3234d14fb5830108ae931734d0c` introduced the
+Isaac-friendly four-finger open-chain model used by this project: two revolute
+joints per finger, a `0.058 m` distal offset, and the same per-finger joint
+origins and axes used by the current combined URDF. Its original 162-part
+default visual shell was fixed to the wrist, and its CAD SimReady asset was a
+validated prop rather than the controlled hand articulation. Therefore the
+current asset follows that commit's frame/control topology and visual-versus-
+physics separation, but uses the supplied Isaac USD distribution for the
+shell-free moving visuals and retains one combined articulation owner.
 
 ## Engineering-log rule
 

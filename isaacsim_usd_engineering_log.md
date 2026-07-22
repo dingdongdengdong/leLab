@@ -215,3 +215,38 @@ Do not write `PASS` until the named evidence exists and has been inspected.
   packages.
 - **Reusable rule:** keep reusable robot assets and runtime scene state in
   separate layers, and capture the clean boundary before creating the world.
+
+### 9. Rounded outer shells obscured the real moving-frame attachment
+
+- **Observed evidence:** the earlier combined hand visibly opened and closed,
+  but its rounded proximal/distal shells covered the smaller structural cores,
+  making it difficult to judge whether the visual links were attached to the
+  intended Isaac pivots.
+- **Cause:** the visual binding selected both `proximal_shell`/`distal_shell`
+  and their underlying proximal/distal core parts for every finger.
+- **Repair:** `frame_first_no_outer_shells` keeps the 26 supplied
+  wrist/palm/servo-frame parts, disables the full static presentation shell,
+  excludes all eight rounded outer-shell instances, and binds one supplied
+  proximal core plus one supplied distal core to each two-link finger.
+- **Historical reference:** commit
+  `0e53b0dfadaae3234d14fb5830108ae931734d0c` defines the same Isaac-friendly
+  four-finger, two-link open-chain topology, including the `0.058 m` distal
+  offset and current joint origins/axes. Its fixed 162-part visual shell and
+  prop-oriented SimReady CAD output are not used as articulated-runtime proof.
+- **Regression coverage:** 28 targeted tests pass and require the frame-first
+  mode, eight moving core visuals, eight excluded outer-shell instances, no
+  moving `_shell` references, the historical reference hash, and the existing
+  clean distal payload composition.
+- **Verification:** commit `e4100fc` contains the repair. The reviewed direct
+  Isaac frames in
+  `artifacts/isaacsim_superarm/20260722T051559Z-combined-zip-frame-first/`
+  show attached proximal/distal cores moving through open, half-close, and
+  close states. Adjacent RMS differences are `22.0600` and `19.6275`. Runtime
+  reports 13 physical DOFs and a six-value logical action; strict validation
+  passes with zero blocking issues.
+- **Remaining boundary:** this is a truthful open-chain frame visualization,
+  not a reconstruction of the original AmazingHand closed-loop passive
+  linkage, contact quality, or lift-retain success.
+- **Reusable rule:** validate the moving kinematic frame without cosmetic
+  shells first; add appearance only after each visual part's pivot ownership is
+  proven.
