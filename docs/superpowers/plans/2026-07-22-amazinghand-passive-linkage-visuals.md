@@ -37,16 +37,17 @@ def test_manifest_uses_checked_original_mjcf_and_zip_geometry():
     assert manifest["source_mjcf_sha256"] == "d21366e7c9a1f5debe04b8abb5ea1ade7fade42e493e09d003f5db196548b098"
     assert manifest["source_hand_zip_sha256"] == "3230fb5ad2c8e50a843a14553ef17a587f40428abd63a025483c34f1c8e3d377"
     assert manifest["finger_count"] == 4
-    assert manifest["passive_visual_part_count"] == 120
+    assert manifest["structural_visual_part_count"] == 88
 
 
-def test_manifest_excludes_shells_and_existing_frame_cores():
+def test_manifest_excludes_shells_and_decorative_fasteners():
     manifest = load_manifest(MANIFEST)
     names = [part["source_prim"] for part in manifest["parts"]]
     assert all("proximal_shell" not in name for name in names)
     assert all("distal_shell" not in name for name in names)
     assert set(manifest["excluded_shell_indices"]) == {45, 51, 78, 85, 114, 115, 144, 152}
-    assert set(manifest["existing_core_indices"]) == {44, 52, 76, 84, 113, 117, 147, 153}
+    assert manifest["parts_per_finger"] == 22
+    assert all(part["mesh_role"] not in {"screw", "washer", "std_fastener"} for part in manifest["parts"])
 ```
 
 - [ ] **Step 2: Run `.venv/bin/python -m pytest -q tests/test_passive_linkage.py` and confirm failure for the missing module/manifest.**
@@ -56,7 +57,7 @@ def test_manifest_excludes_shells_and_existing_frame_cores():
 ```python
 FINGER_BLOCKS = {1: range(26, 60), 2: range(60, 94), 3: range(94, 128), 4: range(128, 162)}
 EXCLUDED_SHELL_INDICES = frozenset({45, 51, 78, 85, 114, 115, 144, 152})
-EXISTING_CORE_INDICES = frozenset({44, 52, 76, 84, 113, 117, 147, 153})
+SOURCE_CORE_INDICES = frozenset({44, 52, 76, 84, 113, 117, 147, 153})
 KEYFRAMES = {
     "open": {"motor1": 0.05, "motor2": 0.02},
     "half_close": {"motor1": 0.50, "motor2": 0.56},
@@ -64,7 +65,7 @@ KEYFRAMES = {
 }
 ```
 
-The generator must verify both source ZIP checksums, extract the historical MJCF/assets, parse each `base.usda` source prim and exact `/Instances/...` target, load MuJoCo, reset the `zero` keyframe, set all eight named actuators, and step until equality residual is below `1e-6`. It must compose solved body `xpos/xquat` with raw XML geom-local `pos/quat`; do not use `geom_xpos/xmat`, because MuJoCo mesh recentering does not match the ZIP prim-frame convention. Emit the four finger blocks minus eight shells and eight already-bound cores: exactly 120 parts, each with finger, role, source prim, instance prim, source index, and open/half-close/close wrist-local transforms.
+The generator must verify both source ZIP checksums, extract the historical MJCF/assets, parse each `base.usda` source prim and exact `/Instances/...` target, load MuJoCo, reset the `zero` keyframe, set all eight named actuators, and step 5000 times at `0.002 s` and require maximum equality-site-pair separation below `1e-6 m` and motor target error below `1e-4 rad`. It must compose solved body `xpos/xquat` with raw XML geom-local `pos/quat`; do not use `geom_xpos/xmat`, because MuJoCo mesh recentering does not match the ZIP prim-frame convention. Emit the four finger blocks using the 22-part-per-finger structural allowlist: exactly 88 parts. Exclude shells and decorative screws, washers, and standard fasteners; include the source-specific proximal/distal cores, each with finger, role, source prim, instance prim, source index, and open/half-close/close wrist-local transforms.
 
 Run:
 
@@ -89,7 +90,7 @@ Run:
 ```python
 def test_solver_returns_normalized_finite_pose_for_every_part():
     poses = solve_passive_linkage(HALF_CLOSE_MEASURED)
-    assert len(poses) == 120
+    assert len(poses) == 88
     assert {pose.finger for pose in poses} == {1, 2, 3, 4}
     assert all(all(math.isfinite(v) for v in pose.translate) for pose in poses)
     assert all(math.isclose(sum(v * v for v in pose.orient), 1.0, abs_tol=1e-6) for pose in poses)
@@ -115,7 +116,7 @@ def solve_passive_linkage(measured: Mapping[str, float]) -> tuple[PassiveVisualP
     """Interpolate checked closed-loop visual keyframes from measured Isaac angles."""
 ```
 
-Interpolate open-to-half over `[0, 0.5]` and half-to-close over `(0.5, 1]`. Reject missing/non-finite joint values, duplicate source prims, non-normalized source quaternions, bad part counts, or source equality residual above `1e-6`.
+Interpolate open-to-half over `[0, 0.5]` and half-to-close over `(0.5, 1]`. Reject missing/non-finite joint values, duplicate source prims, non-normalized source quaternions, bad part counts, source equality-site separation above `1e-6 m`, or source motor error above `1e-4 rad`.
 
 - [ ] **Step 4: Run targeted pytest and changed-file Ruff.**
 - [ ] **Step 5: Commit `feat(isaac): solve passive linkage follower poses`.**
@@ -142,9 +143,9 @@ def author_passive_linkage_snapshot(
     """Add visual-only follower refs, flatten the snapshot, and return its contract."""
 ```
 
-For each pose, define only `UsdGeom.Xform` prims under `r_wrist_interface/passive_linkage_visuals/fingerN/part_NNN`, author translate/orient, and add an instanceable child reference to the exact manifest `/Instances/...` prim. Add no `UsdPhysics` API, joint, rigid-body, mass, or collision schema. Flatten and atomically replace the snapshot so absolute source paths are not published.
+First deactivate the eight approximate frame-first `zip_proximal_1`/`zip_distal_1` core refs in the snapshot. For each solved source pose, define only `UsdGeom.Xform` prims under `r_wrist_interface/passive_linkage_visuals/fingerN/part_NNN`, author translate/orient, and add an instanceable child reference to the exact manifest `/Instances/...` prim. Add no `UsdPhysics` API, joint, rigid-body, mass, or collision schema. Flatten and atomically replace the snapshot so absolute source paths are not published.
 
-Return a contract with mode `frame_plus_passive_linkage_no_shells`, 120 parts, 30 parts per finger, zero shell visuals, and zero added rigid bodies/colliders/joints.
+Return a contract with mode `frame_plus_passive_linkage_no_shells`, 88 structural parts, 22 parts per finger, eight deactivated frame-first core refs, zero shell visuals, and zero added rigid bodies/colliders/joints.
 
 - [ ] **Step 4: After every measured snapshot export, reopen it, solve from `measured`, author/flatten followers, validate, and store the contract in the snapshot report.**
 - [ ] **Step 5: Move reusable-root byte restoration into a guarded `finally` path.**
@@ -158,7 +159,7 @@ Return a contract with mode `frame_plus_passive_linkage_no_shells`, 120 parts, 3
 - Modify: `tests/test_superarm_isaac_visuals.py`
 
 - [ ] **Step 1: Add failing tests that reject wrong part counts, any `_shell` source, follower physics schemas, unchanged finger followers, blank frames, or static three-state sequences.**
-- [ ] **Step 2: Before capture, traverse the follower group and require 120 total parts, 30 per finger, no shell names, and zero physics/collision/joint APIs. Record the result under `report["passive_linkage_visuals"]`.**
+- [ ] **Step 2: Before capture, traverse the follower group and require 88 total parts, 22 per finger, no shell names, and zero physics/collision/joint APIs. Record the result under `report["passive_linkage_visuals"]`.**
 - [ ] **Step 3: Keep the fixed-camera open/half-close/close sequence and add four independent per-finger close-up snapshot renders.**
 - [ ] **Step 4: Update proof text: frame cores and passive shell-free visuals move; outer shells remain disabled; no closed-loop PhysX claim.**
 - [ ] **Step 5: Run targeted pytest/Ruff and commit `test(isaac): require shell-free linkage visual proof`.**
@@ -172,7 +173,7 @@ Return a contract with mode `frame_plus_passive_linkage_no_shells`, 120 parts, 3
 - Create: `omx_wiki/assets/superarm-isaac60-passive-linkage-*`
 
 - [ ] **Step 1: Prepare a fresh run ID ending in `combined-zip-passive-linkage` with the documented source URDF, authoritative hand ZIP, and `zip_learning` profile.**
-- [ ] **Step 2: Run `isaacsim_validation/run_isaacsim60_validation.sh zip_learning "$RUN_ID" "$RUN_ROOT/zip_hand_source"`. Require PASS, 13 DOFs, one articulation root, action width 6, 120 follower visuals, zero shells, and visibly changed frames.**
+- [ ] **Step 2: Run `isaacsim_validation/run_isaacsim60_validation.sh zip_learning "$RUN_ID" "$RUN_ROOT/zip_hand_source"`. Require PASS, 13 DOFs, one articulation root, action width 6, 88 source-structural follower visuals, eight deactivated approximate core refs, zero shells, and visibly changed frames.**
 - [ ] **Step 3: Run strict Asset Validator on the clean reusable root. Require zero blocking issues. Validate the close snapshot separately with the follower structural validator.**
 - [ ] **Step 4: Review whole/open/half/close and four per-finger images with `view_image`; reject detached parts, wrong pivots, severe intersections, missing fingers, static followers, blank output, or visible shells.**
 - [ ] **Step 5: Append the engineering log, copy reviewed artifacts into `omx_wiki/assets`, update wiki/README, and commit `docs(isaac): record passive linkage validation`.**
