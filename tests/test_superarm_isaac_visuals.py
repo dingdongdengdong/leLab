@@ -394,3 +394,22 @@ def test_static_snapshot_renderer_uses_sdf_path_for_final_root_lookup():
 
     assert "from pxr import Sdf" in renderer
     assert 'last_stage.GetPrimAtPath(Sdf.Path(report["import"]["prim_path"]))' in renderer
+
+
+def test_static_snapshot_renderer_retains_independent_stage_for_whole_robot_render():
+    renderer = (Path(__file__).parents[1] / "isaacsim_validation" / "render_physics_snapshots.py").read_text()
+
+    independent_loop = renderer.index("for snapshot in independent_snapshots:")
+    open_success = renderer.index(
+        'raise RuntimeError(f"Isaac could not open independent finger snapshot: {snapshot_path}")',
+        independent_loop,
+    )
+    get_stage = renderer.index("stage = omni.usd.get_context().get_stage()", open_success)
+    final_root_lookup = renderer.index(
+        'root_prim = last_stage.GetPrimAtPath(Sdf.Path(report["import"]["prim_path"]))', get_stage
+    )
+    light_define = renderer.index("UsdLux.DomeLight.Define(stage, ", get_stage)
+    last_stage_update = renderer.find("last_stage = stage", get_stage, light_define)
+
+    assert last_stage_update != -1
+    assert get_stage < last_stage_update < light_define < final_root_lookup

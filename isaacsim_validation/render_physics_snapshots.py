@@ -334,6 +334,7 @@ def main() -> int:
             for _ in range(8):
                 app.update()
             stage = omni.usd.get_context().get_stage()
+            last_stage = stage
             UsdLux.DomeLight.Define(stage, "/World/SuperArmIndependentFingerLight").CreateIntensityAttr(700.0)
             if passive_visual_report is not None:
                 passive_visual_report["snapshot_stage_summaries"].append(
