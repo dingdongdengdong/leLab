@@ -34,6 +34,8 @@ OPEN_MOTOR_TARGETS = (0.05, 0.02)
 CLOSE_MOTOR_TARGETS = (0.95, 1.10)
 MOTOR_STATE_TOLERANCE = 0.08
 TRANSFORM_EPSILON = 1e-7
+TRANSLATE_TOLERANCE_M = 1e-6
+ORIENT_TOLERANCE = 1e-6
 
 
 def zip_learning_visual_boundary() -> str:
@@ -203,6 +205,32 @@ def validate_passive_linkage_motion_sequence(states: Sequence[Mapping]) -> dict:
     }
 
 
+def validate_passive_linkage_stage_contract(stage_summary: Mapping, contract: Mapping) -> dict:
+    """Require reopened USD follower prims to match the snapshot contract exactly."""
+
+    validate_passive_linkage_visual_summary(stage_summary)
+    validate_passive_linkage_visual_summary(contract)
+    stage_parts = _indexed_parts(stage_summary)
+    contract_parts = _indexed_parts(contract)
+    if stage_parts.keys() != contract_parts.keys():
+        raise RuntimeError("reopened passive linkage stage source_index set differs from contract")
+
+    for key, stage_part in stage_parts.items():
+        contract_part = contract_parts[key]
+        _require_equal_metadata(stage_part, contract_part, "source_index")
+        _require_equal_metadata(stage_part, contract_part, "source_prim")
+        _require_equal_metadata(stage_part, contract_part, "reference_prim")
+        _compare_translate(stage_part, contract_part)
+        _compare_orient(stage_part, contract_part)
+
+    return {
+        "passed": True,
+        "validated_stage_contract_part_count": EXPECTED_PASSIVE_LINKAGE_PART_COUNT,
+        "translate_tolerance_m": TRANSLATE_TOLERANCE_M,
+        "orient_tolerance": ORIENT_TOLERANCE,
+    }
+
+
 def validate_independent_finger_linkage_sequence(open_state: Mapping, states: Sequence[Mapping]) -> dict:
     """Require each independent snapshot to close only its target finger.
 
@@ -278,6 +306,42 @@ def _require_zero(summary: Mapping, key: str, description: str) -> None:
     value = int(summary.get(key, 0) or 0)
     if value != 0:
         raise RuntimeError(f"passive linkage followers contain {description}: {value}")
+
+
+def _indexed_parts(summary: Mapping) -> dict[tuple[int, int], Mapping]:
+    parts = {}
+    for part in summary.get("parts", ()):
+        key = (int(part["finger"]), int(part["source_index"]))
+        if key in parts:
+            raise RuntimeError(f"duplicate passive linkage stage part key: {key}")
+        parts[key] = part
+    return parts
+
+
+def _require_equal_metadata(stage_part: Mapping, contract_part: Mapping, field: str) -> None:
+    actual = stage_part.get(f"metadata_{field}", stage_part.get(field))
+    expected = contract_part[field]
+    if actual != expected:
+        raise RuntimeError(f"passive linkage reopened stage {field} mismatch: {actual!r} != {expected!r}")
+
+
+def _compare_translate(stage_part: Mapping, contract_part: Mapping) -> None:
+    actual = _finite_vector(stage_part.get("translate"), 3)
+    expected = _finite_vector(contract_part.get("translate"), 3)
+    error = max(abs(a - b) for a, b in zip(actual, expected, strict=True))
+    if error > TRANSLATE_TOLERANCE_M:
+        raise RuntimeError(f"passive linkage reopened stage translate mismatch: {error:g} m")
+
+
+def _compare_orient(stage_part: Mapping, contract_part: Mapping) -> None:
+    actual = _finite_vector(stage_part.get("orient"), 4)
+    expected = _finite_vector(contract_part.get("orient"), 4)
+    same_error = max(abs(a - b) for a, b in zip(actual, expected, strict=True))
+    negated_error = max(abs(a + b) for a, b in zip(actual, expected, strict=True))
+    if min(same_error, negated_error) > ORIENT_TOLERANCE:
+        raise RuntimeError(
+            f"passive linkage reopened stage orient mismatch: {min(same_error, negated_error):g}"
+        )
 
 
 def _normalize_parts_per_finger(value) -> dict[int, int]:

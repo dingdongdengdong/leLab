@@ -9,6 +9,7 @@ from isaacsim_validation.visuals import (
     validate_direct_grasp_frames,
     validate_independent_finger_linkage_sequence,
     validate_passive_linkage_motion_sequence,
+    validate_passive_linkage_stage_contract,
     validate_passive_linkage_visual_summary,
     zip_learning_visual_boundary,
 )
@@ -312,3 +313,65 @@ def test_passive_linkage_visual_summary_rejects_wrong_declared_parts_per_finger_
 
     with pytest.raises(RuntimeError, match="22 parts per finger"):
         validate_passive_linkage_visual_summary(contract)
+
+
+def test_non_zip_profiles_keep_generic_snapshot_rendering_without_passive_report_gate():
+    renderer = (Path(__file__).parents[1] / "isaacsim_validation" / "render_physics_snapshots.py").read_text()
+
+    profile_gate = renderer.index('if report.get("profile") == "zip_learning":')
+    passive_report = renderer.index('report["passive_linkage_visuals"]')
+    generic_capture = renderer.index("frame = _capture(")
+    assert profile_gate < passive_report < generic_capture
+    assert "else:\n            independent_snapshots = []" in renderer
+    independent_report = renderer.index('report["independent_finger_visuals"]')
+    assert renderer.rfind('if report.get("profile") == "zip_learning":', 0, independent_report) > profile_gate
+
+
+def test_passive_linkage_stage_contract_rejects_transform_and_source_mismatch_but_accepts_negated_quat():
+    contract = _fake_passive_contract()
+    matching_stage = {
+        "parts": [
+            {
+                **part,
+                "orient": tuple(-value for value in part["orient"]),
+                "metadata_source_index": part["source_index"],
+                "metadata_source_prim": part["source_prim"],
+                "metadata_reference_prim": part["reference_prim"],
+            }
+            for part in contract["parts"]
+        ],
+        "visual_part_count": 88,
+        "parts_per_finger": {1: 22, 2: 22, 3: 22, 4: 22},
+        "shell_visual_count": 0,
+        "physics_schema_count": 0,
+    }
+
+    assert validate_passive_linkage_stage_contract(matching_stage, contract)["passed"] is True
+
+    bad_source = {**matching_stage, "parts": [dict(part) for part in matching_stage["parts"]]}
+    bad_source["parts"][0]["metadata_source_prim"] = "wrong_source"
+    with pytest.raises(RuntimeError, match="source_prim"):
+        validate_passive_linkage_stage_contract(bad_source, contract)
+
+    bad_transform = {**matching_stage, "parts": [dict(part) for part in matching_stage["parts"]]}
+    bad_transform["parts"][0]["translate"] = (99.0, 0.0, 0.0)
+    with pytest.raises(RuntimeError, match="translate"):
+        validate_passive_linkage_stage_contract(bad_transform, contract)
+
+
+def test_usd_authoring_records_passive_linkage_contract_metadata_for_reopened_stage_validation():
+    source = (Path(__file__).parents[1] / "isaacsim_validation" / "passive_linkage_usd.py").read_text()
+
+    assert "passive_source_index" in source
+    assert "passive_source_prim" in source
+    assert "passive_reference_prim" in source
+
+
+def test_independent_finger_runner_resets_to_open_before_each_target_close():
+    runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
+
+    loop = runner.index("for target_finger in range(1, 5):")
+    reset_positions = runner.index("_set_positions(art, HAND_JOINTS, open_targets)", loop)
+    reset_targets = runner.index("_command_targets(art, HAND_JOINTS, open_targets)", reset_positions)
+    close_targets = runner.index("targets = dict(open_targets)", reset_targets)
+    assert loop < reset_positions < reset_targets < close_targets

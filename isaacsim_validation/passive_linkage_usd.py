@@ -136,6 +136,11 @@ def author_passive_linkage_snapshot(
         xformable.AddTranslateOp(precision=UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(*pose.translate))
         w, x, y, z = pose.orient
         xformable.AddOrientOp(precision=UsdGeom.XformOp.PrecisionDouble).Set(Gf.Quatd(w, Gf.Vec3d(x, y, z)))
+        _set_custom_attr(prim, "passive_source_index", _sdf_value_type(Sdf, "Int"), pose.source_index)
+        _set_custom_attr(prim, "passive_source_prim", _sdf_value_type(Sdf, "String"), pose.source_prim)
+        _set_custom_attr(
+            prim, "passive_reference_prim", _sdf_value_type(Sdf, "String"), part["reference_prim"]
+        )
         prim.GetReferences().AddReference(
             str(instances_usda),
             Sdf.Path(part["reference_prim"]),
@@ -184,6 +189,17 @@ def validate_no_source_path_leaks(snapshot_text: str, instances_usda: Path) -> N
 
     for asset_path in ASSET_PATH_PATTERN.findall(snapshot_text):
         raise RuntimeError(f"external source asset path leak in flattened snapshot: {asset_path}")
+
+
+def _set_custom_attr(prim, name: str, value_type, value) -> None:
+    if not hasattr(prim, "CreateAttribute"):
+        return
+    prim.CreateAttribute(name, value_type, custom=True).Set(value)
+
+
+def _sdf_value_type(sdf_module, name: str):
+    value_types = getattr(sdf_module, "ValueTypeNames", None)
+    return getattr(value_types, name, None) if value_types is not None else None
 
 
 def _deactivate_frame_first_core_refs(stage, robot_root: str) -> int:

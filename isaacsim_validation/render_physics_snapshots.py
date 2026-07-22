@@ -33,6 +33,7 @@ from visuals import (  # noqa: E402
     validate_direct_grasp_frames,
     validate_independent_finger_linkage_sequence,
     validate_passive_linkage_motion_sequence,
+    validate_passive_linkage_stage_contract,
     validate_passive_linkage_visual_summary,
     zip_learning_visual_boundary,
 )
@@ -66,6 +67,17 @@ def _passive_root(stage: Usd.Stage, robot_root: str):
 
 
 def _validate_passive_linkage_stage(stage: Usd.Stage, robot_root: str) -> dict:
+    return validate_passive_linkage_visual_summary(_passive_linkage_stage_summary(stage, robot_root))
+
+
+def _validate_passive_linkage_stage_contract(stage: Usd.Stage, robot_root: str, contract: dict) -> dict:
+    return validate_passive_linkage_stage_contract(
+        _passive_linkage_stage_summary(stage, robot_root),
+        contract,
+    )
+
+
+def _passive_linkage_stage_summary(stage: Usd.Stage, robot_root: str) -> dict:
     passive_root = _passive_root(stage, robot_root)
     passive_path = str(passive_root.GetPath())
     prefix = passive_path.rstrip("/") + "/"
@@ -82,13 +94,22 @@ def _validate_passive_linkage_stage(stage: Usd.Stage, robot_root: str) -> dict:
             finger = int(path.split("/passive_linkage_visuals/finger", 1)[1].split("/", 1)[0])
         except (IndexError, ValueError) as exc:
             raise RuntimeError(f"passive visual part is not under a finger group: {path}") from exc
+        source_index = _required_attr(prim, "passive_source_index")
+        source_prim = _required_attr(prim, "passive_source_prim")
+        reference_prim = _required_attr(prim, "passive_reference_prim")
+        translate, orient = _local_transform(prim)
         parts.append(
             {
                 "finger": finger,
-                "source_index": int(prim.GetName().removeprefix("part_")),
-                "source_prim": prim.GetName(),
-                "reference_prim": path,
+                "source_index": int(source_index),
+                "source_prim": source_prim,
+                "reference_prim": reference_prim,
                 "xform_path": path,
+                "translate": translate,
+                "orient": orient,
+                "metadata_source_index": int(source_index),
+                "metadata_source_prim": source_prim,
+                "metadata_reference_prim": reference_prim,
                 "type_name": str(prim.GetTypeName()),
                 "applied_schemas": [str(schema) for schema in prim.GetAppliedSchemas()],
             }
@@ -111,7 +132,35 @@ def _validate_passive_linkage_stage(stage: Usd.Stage, robot_root: str) -> dict:
         "shell_visual_count": shell_visual_count,
         "physics_schema_count": physics_schema_count,
     }
-    return validate_passive_linkage_visual_summary(summary)
+    return summary
+
+
+def _required_attr(prim, name: str):
+    attr = prim.GetAttribute(name)
+    if not attr or not attr.HasAuthoredValue():
+        raise RuntimeError(f"passive visual part missing {name} metadata: {prim.GetPath()}")
+    return attr.Get()
+
+
+def _local_transform(prim) -> tuple[tuple[float, float, float], tuple[float, float, float, float]]:
+    translate = None
+    orient = None
+    for op in UsdGeom.Xformable(prim).GetOrderedXformOps():
+        op_name = op.GetOpName()
+        value = op.Get()
+        if op_name == "xformOp:translate":
+            translate = tuple(float(item) for item in value)
+        elif op_name == "xformOp:orient":
+            imaginary = value.GetImaginary()
+            orient = (
+                float(value.GetReal()),
+                float(imaginary[0]),
+                float(imaginary[1]),
+                float(imaginary[2]),
+            )
+    if translate is None or orient is None:
+        raise RuntimeError(f"passive visual part missing local translate/orient xforms: {prim.GetPath()}")
+    return translate, orient
 
 
 def _passive_finger_root(stage: Usd.Stage, robot_root: str, target_finger: int):
@@ -213,16 +262,20 @@ def main() -> int:
         snapshots = report.get("physics_snapshots", {}).get("hand_states", [])
         if [item.get("name") for item in snapshots] != ["open", "half_close", "close"]:
             raise RuntimeError("numeric report does not contain open, half-close, and close snapshots")
-        independent_snapshots = report.get("physics_snapshots", {}).get("independent_finger_states", [])
-        passive_visual_report = {
-            "grasp_sequence": validate_passive_linkage_motion_sequence(snapshots),
-            "independent_fingers": validate_independent_finger_linkage_sequence(
-                snapshots[0],
-                independent_snapshots,
-            ),
-            "snapshot_stage_summaries": [],
-        }
-        report["passive_linkage_visuals"] = passive_visual_report
+        passive_visual_report = None
+        if report.get("profile") == "zip_learning":
+            independent_snapshots = report.get("physics_snapshots", {}).get("independent_finger_states", [])
+            passive_visual_report = {
+                "grasp_sequence": validate_passive_linkage_motion_sequence(snapshots),
+                "independent_fingers": validate_independent_finger_linkage_sequence(
+                    snapshots[0],
+                    independent_snapshots,
+                ),
+                "snapshot_stage_summaries": [],
+            }
+            report["passive_linkage_visuals"] = passive_visual_report
+        else:
+            independent_snapshots = []
 
         hand_frames = []
         fixed_hand_pose = None
@@ -237,13 +290,18 @@ def main() -> int:
                 app.update()
             stage = omni.usd.get_context().get_stage()
             UsdLux.DomeLight.Define(stage, "/World/SuperArmSnapshotLight").CreateIntensityAttr(700.0)
-            passive_visual_report["snapshot_stage_summaries"].append(
-                {
-                    "name": snapshot["name"],
-                    "snapshot": str(snapshot_path),
-                    **_validate_passive_linkage_stage(stage, report["import"]["prim_path"]),
-                }
-            )
+            if passive_visual_report is not None:
+                passive_visual_report["snapshot_stage_summaries"].append(
+                    {
+                        "name": snapshot["name"],
+                        "snapshot": str(snapshot_path),
+                        **_validate_passive_linkage_stage_contract(
+                            stage,
+                            report["import"]["prim_path"],
+                            snapshot["passive_linkage_contract"],
+                        ),
+                    }
+                )
             hand_root = _prim_named(stage, "r_wrist_interface")
             if fixed_hand_pose is None:
                 fixed_hand_pose = _camera_pose(stage, hand_root, closeup=True)
@@ -277,13 +335,18 @@ def main() -> int:
                 app.update()
             stage = omni.usd.get_context().get_stage()
             UsdLux.DomeLight.Define(stage, "/World/SuperArmIndependentFingerLight").CreateIntensityAttr(700.0)
-            passive_visual_report["snapshot_stage_summaries"].append(
-                {
-                    "name": snapshot["name"],
-                    "snapshot": str(snapshot_path),
-                    **_validate_passive_linkage_stage(stage, report["import"]["prim_path"]),
-                }
-            )
+            if passive_visual_report is not None:
+                passive_visual_report["snapshot_stage_summaries"].append(
+                    {
+                        "name": snapshot["name"],
+                        "snapshot": str(snapshot_path),
+                        **_validate_passive_linkage_stage_contract(
+                            stage,
+                            report["import"]["prim_path"],
+                            snapshot["passive_linkage_contract"],
+                        ),
+                    }
+                )
             frame = _capture(
                 run_dir / f"hand_finger{target_finger}_close.png",
                 stage,
@@ -298,10 +361,11 @@ def main() -> int:
                     **frame,
                 }
             )
-        report["independent_finger_visuals"] = {
-            "passed": True,
-            "frames": independent_frames,
-        }
+        if report.get("profile") == "zip_learning":
+            report["independent_finger_visuals"] = {
+                "passed": True,
+                "frames": independent_frames,
+            }
         if last_stage is None:
             raise RuntimeError("no snapshot stage was opened")
         root_prim = last_stage.GetPrimAtPath(report["import"]["prim_path"])
