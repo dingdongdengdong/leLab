@@ -18,10 +18,10 @@ describe("SuperArm runtime helpers", () => {
     expect(isSuperArmBackend("so101")).toBe(false);
   });
 
-  it("keeps continuous video MuJoCo-only and capture Isaac-only", () => {
+  it("keeps continuous video MuJoCo-only and does not advertise live Isaac capture", () => {
     expect(runtimeSupportsContinuousVideo("mujoco")).toBe(true);
     expect(runtimeSupportsContinuousVideo("isaac_sim")).toBe(false);
-    expect(runtimeSupportsCapture("isaac_sim")).toBe(true);
+    expect(runtimeSupportsCapture("isaac_sim")).toBe(false);
     expect(runtimeSupportsCapture("mujoco")).toBe(false);
   });
 

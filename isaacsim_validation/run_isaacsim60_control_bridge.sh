@@ -73,7 +73,12 @@ metadata="$run_dir/container-metadata.json"
 cleanup() {
   docker rm -f "$container_name" >/dev/null 2>&1 || true
 }
-trap cleanup EXIT INT TERM
+terminate() {
+  cleanup
+  exit 143
+}
+trap cleanup EXIT
+trap terminate INT TERM
 
 python3 - "$metadata" "$container_name" "$image" "$host" "$port" <<'PY'
 import json
@@ -90,7 +95,12 @@ path.write_text(json.dumps({
 }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
 
-docker run --name "$container_name" --gpus all --network host \
+# The bridge token is a host-owned 0600 file.  Isaac Sim's image user (1234)
+# cannot read that bind mount, while the image entrypoint also cannot run as
+# the host user, so use root only inside this isolated control container. Keep
+# the host group so completed capture files remain readable by the LeLab host.
+container_gid=$(id -g)
+docker run --name "$container_name" --gpus all --network host --user "0:$container_gid" \
   --entrypoint /isaac-sim/python.sh \
   -e ACCEPT_EULA=Y \
   -e NVIDIA_VISIBLE_DEVICES=all \
@@ -109,4 +119,6 @@ docker run --name "$container_name" --gpus all --network host \
   --run-dir /workspace/run \
   --host "$host" --port "$port" \
   --token-file /run/secrets/isaac_bridge_token \
-  >"$run_dir/container.log" 2>&1
+  >"$run_dir/container.log" 2>&1 &
+docker_pid=$!
+wait "$docker_pid"

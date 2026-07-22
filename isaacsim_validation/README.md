@@ -136,12 +136,52 @@ isaacsim_validation/run_isaacsim60_control_bridge.sh \
 ```
 
 The bridge owns Isaac APIs on its main thread and supports `hello`, atomic
-13-joint `command`, `observe`, `hold`, on-demand `capture`, and `shutdown`.
-Commands are named by the exact five-arm/eight-hand joint contract; articulation
-array order is never trusted. Capture creates and destroys a temporary
-Replicator camera/render product for each request and returns a path relative to
-the mounted run directory. It deliberately provides no continuous video loop,
-ROS 2 transport, external AmazingHand runtime, or real-hardware control.
+13-joint `command`, `observe`, `hold`, and `shutdown`. Commands are named by the
+exact five-arm/eight-hand joint contract; articulation array order is never
+trusted. The protocol retains a fail-closed `capture` operation for version
+compatibility, but the Isaac Sim 6.0 runtime advertises
+`supports_capture=false` and rejects it immediately. Live headless capture was
+disabled after the available Replicator, legacy camera, experimental RTX
+camera, viewport, and isolated child-Kit paths either returned no usable frame
+or failed to terminate within their deadlines while the long-lived control
+stage was active. It deliberately provides no continuous video loop, ROS 2
+transport, external AmazingHand runtime, or real-hardware control.
+
+## LeLab-controlled Isaac acceptance
+
+Start LeLab with the validated distribution, then run the API-driven acceptance
+tool. It exercises the same six-value service route used by manual/SO-101
+teleoperation and future ACT/VLA policy code; the Isaac bridge expands those
+values to the exact 13 named joints.
+
+```bash
+export SUPERARM_ISAAC_DISTRIBUTION_ZIP="$PWD/artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722.zip"
+export ISAAC_SIM_STARTUP_TIMEOUT_S=240
+uv run lelab --no-open
+
+RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-lelab-isaac"
+uv run python -m isaacsim_validation.run_lelab_isaac_e2e \
+  --base-url http://127.0.0.1:8000 \
+  --distribution-zip "$SUPERARM_ISAAC_DISTRIBUTION_ZIP" \
+  --run-dir "isaacsim_test/artifacts/lelab_isaac_e2e_${RUN_ID}" \
+  --http-timeout-s 400
+```
+
+The runner accepts a case only after both the bridge command sequence advances
+and every reported target matches the newly requested 13-joint vector. This
+prevents stale telemetry from producing a false settled result. It verifies
+open, half-close, and close targets; numeric arm/hand error limits; emergency
+hold; the ten-second live-command timeout hold; managed-container cleanup; and
+disconnect/reconnect.
+
+Visual evidence is a separate proof category. The runner copies the already
+validated static Isaac USD whole/open/half/close frames from `omx_wiki/assets`,
+records `proof_category=prevalidated_static_isaac_visuals` and
+`is_live_session_capture=false`, measures nonblank/difference gates, and builds
+a GIF. These images verify the asset's visible poses; they are not presented as
+frames from the live LeLab control session. In the website, the measured five
+arm plus eight hand positions drive the URDF showroom while live Isaac viewport
+capture remains unavailable.
 
 ## Evidence and proof boundaries
 
@@ -172,6 +212,14 @@ rollout. The runtime physics remains the existing eight-joint open-chain hand;
 the supplied linkage members are visual-only followers solved from checked
 offline source keyframes. Rounded `proximal_shell` and `distal_shell` parts
 remain excluded and are intentionally deferred to a later cosmetic pass.
+
+The successful live LeLab control report is retained at
+`isaacsim_test/artifacts/lelab_isaac_e2e_20260722T112742Z/lelab-isaac-e2e-report.json`.
+It reports Isaac Sim `6.0.0`, one articulation, 13 expected joint names, a
+six-value logical action, maximum settled arm error `0.009771 rad`, maximum
+settled hand error `0.000989 rad`, emergency/live-timeout hold stability beyond
+120 physics steps, managed cleanup in `6.446 s`, and a passing reconnect. Its
+PNG/GIF entries are explicitly the separate prevalidated static visual set.
 
 ## Required engineering record
 

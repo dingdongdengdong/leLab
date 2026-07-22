@@ -323,6 +323,32 @@ def test_timeout_invalidates_connection_until_explicit_reconnect():
     thread.join(timeout=1)
 
 
+def test_capture_uses_a_longer_timeout_without_weakening_control_requests():
+    def handler(request):
+        if request["op"] == "capture":
+            time.sleep(0.1)
+            return _ok(request, path="captures/hand.png", bytes=7)
+        return _ok(request, runtime="isaac_sim")
+
+    client_socket, server_socket = socket.socketpair()
+    factory = _SocketFactory(client_socket)
+    thread = _start_server(server_socket, handler)
+    client = IsaacBridgeClient(
+        "127.0.0.1",
+        8765,
+        token="secret",
+        timeout_s=0.05,
+        capture_timeout_s=0.2,
+        socket_factory=factory,
+    )
+    client.connect()
+
+    assert client.capture("hand", "hand")["path"] == "captures/hand.png"
+    assert client_socket.gettimeout() == pytest.approx(0.05)
+    client.close()
+    thread.join(timeout=1)
+
+
 def test_client_serializes_concurrent_requests_without_frame_interleaving():
     operations: list[str] = []
 
@@ -358,10 +384,17 @@ def test_control_bridge_import_is_host_safe_and_runtime_import_order_is_guarded(
     source = Path(control_bridge.__file__).read_text(encoding="utf-8")
     app_index = source.index("SimulationApp(")
     cleanup_try_index = source.index("try:", app_index)
-    assert cleanup_try_index < source.index("import omni", app_index)
-    assert source.index("import omni", app_index) > app_index
+    runtime_index = source.index("def _run_isaac_after_app", app_index)
+    omni_import_index = source.index("import omni", runtime_index)
+    assert cleanup_try_index < omni_import_index
+    assert source.index("app.update()", runtime_index) < omni_import_index
+    assert omni_import_index > app_index
     assert source.index("from pxr", app_index) > app_index
     assert source.index("from isaacsim.core", app_index) > app_index
+    capture_index = source.index("def capture(self, view: str, name: str)", runtime_index)
+    close_index = source.index("def close(self)", capture_index)
+    assert "live Isaac capture is disabled" in source[capture_index:close_index]
+    assert "import omni.replicator" not in source[runtime_index:]
     assert source.index("finally:\n        app.close()", app_index) > cleanup_try_index
 
 
@@ -374,124 +407,6 @@ def test_articulation_root_selection_requires_exactly_one_candidate():
         require_unique_articulation_root([])
     with pytest.raises(RuntimeError, match="expected one articulation root, found 2"):
         require_unique_articulation_root([object(), object()])
-
-
-class _FakeResource:
-    def __init__(self, events, name):
-        self.events = events
-        self.name = name
-
-    def destroy(self):
-        self.events.append(f"destroy:{self.name}")
-
-
-class _FakeWriter:
-    def __init__(self, owner, *, fail_detach=False):
-        self.owner = owner
-        self.fail_detach = fail_detach
-
-    def initialize(self, *, output_dir, rgb):
-        assert rgb is True
-        self.owner.output_dir = Path(output_dir)
-
-    def attach(self, products):
-        assert len(products) == 1
-        self.owner.events.append("attach")
-
-    def detach(self):
-        self.owner.events.append("detach")
-        if self.fail_detach:
-            raise RuntimeError("detach failed")
-
-
-class _FakeReplicator:
-    class _Layer:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return False
-
-    def __init__(self, *, fail_detach=False):
-        self.events = []
-        self.output_dir = None
-        self.writer = _FakeWriter(self, fail_detach=fail_detach)
-        owner = self
-
-        class Create:
-            @staticmethod
-            def camera(**_kwargs):
-                return _FakeResource(owner.events, "camera")
-
-            @staticmethod
-            def render_product(_camera, _resolution, *, force_new):
-                assert force_new is True
-                return _FakeResource(owner.events, "product")
-
-        class Registry:
-            @staticmethod
-            def get(name):
-                assert name == "BasicWriter"
-                return owner.writer
-
-        class Orchestrator:
-            @staticmethod
-            def step(**_kwargs):
-                assert owner.output_dir is not None
-                (owner.output_dir / "rgb_0.png").write_bytes(b"new-frame")
-
-            @staticmethod
-            def wait_until_complete():
-                owner.events.append("complete")
-
-        self.create = Create()
-        self.WriterRegistry = Registry()
-        self.orchestrator = Orchestrator()
-
-    def new_layer(self):
-        return self._Layer()
-
-
-def test_replicator_capture_atomically_replaces_output_and_destroys_resources(tmp_path):
-    from isaacsim_validation.control_bridge import render_replicator_png
-
-    output = tmp_path / "captures" / "hand.png"
-    output.parent.mkdir()
-    output.write_bytes(b"old-frame")
-    rep = _FakeReplicator()
-
-    size = render_replicator_png(
-        rep,
-        output=output,
-        temporary_root=tmp_path,
-        eye=[1.0, 1.0, 1.0],
-        target=[0.0, 0.0, 0.0],
-        image_has_detail=lambda path: path.read_bytes() == b"new-frame",
-    )
-
-    assert size == len(b"new-frame")
-    assert output.read_bytes() == b"new-frame"
-    assert rep.events[-3:] == ["detach", "destroy:product", "destroy:camera"]
-    assert not list(tmp_path.glob("capture-*"))
-
-
-def test_replicator_cleanup_continues_when_detach_fails(tmp_path):
-    from isaacsim_validation.control_bridge import render_replicator_png
-
-    rep = _FakeReplicator(fail_detach=True)
-    with pytest.raises(RuntimeError, match="detach failed"):
-        render_replicator_png(
-            rep,
-            output=tmp_path / "hand.png",
-            temporary_root=tmp_path,
-            eye=[1.0, 1.0, 1.0],
-            target=[0.0, 0.0, 0.0],
-            image_has_detail=lambda _path: True,
-        )
-
-    assert "destroy:product" in rep.events
-    assert "destroy:camera" in rep.events
-    assert not list(tmp_path.glob("capture-*"))
 
 
 def test_control_bridge_dispatch_survives_repeated_capture_then_command():
@@ -714,6 +629,8 @@ def test_control_launcher_has_exact_isolation_and_lifecycle_contract():
     required = [
         "nvcr.io/nvidia/isaac-sim:6.0.0",
         "--network host",
+        'container_gid=$(id -g)',
+        '--user "0:$container_gid"',
         "ACCEPT_EULA=Y",
         "NVIDIA_VISIBLE_DEVICES=all",
         "NVIDIA_DRIVER_CAPABILITIES=all",
@@ -725,7 +642,11 @@ def test_control_launcher_has_exact_isolation_and_lifecycle_contract():
         "--entrypoint /isaac-sim/python.sh",
         "-m isaacsim_validation.control_bridge",
         "container.log",
-        "trap cleanup EXIT INT TERM",
+        "terminate() {",
+        "trap cleanup EXIT",
+        "trap terminate INT TERM",
+        'docker_pid=$!',
+        'wait "$docker_pid"',
         "docker rm -f \"$container_name\"",
     ]
     for marker in required:

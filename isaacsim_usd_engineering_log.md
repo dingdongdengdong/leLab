@@ -717,3 +717,56 @@ Do not write `PASS` until the named evidence exists and has been inspected.
   assets and evidence semantics; never hide one renderer without restoring a
   visible alternative, never display expected joint coverage as measured
   coverage, and never serve a mutable artifact path after authorization.
+
+### 23. Live LeLab control passed, but long-lived Isaac capture could not be made deadline-safe
+
+- **Observed evidence:** the first API-driven acceptance draft could report a
+  settled case from cached telemetry before Isaac had accepted the new target.
+  Once the runner required a strictly newer `command_sequence` and an exact
+  reported 13-target match, all three commands settled within the planned
+  numeric limits. The same live session could not produce a deadline-safe
+  image: Replicator writer capture stalled, the legacy camera returned no RGBA,
+  experimental `RtxCamera`/`CameraSensor` returned no RGB, viewport capture
+  stalled, an isolated child Kit render exceeded its 120--300 second deadline
+  while consuming more than 10 GB, and a two-step paused Replicator attempt
+  timed out at 300 seconds. A one-step attempt returned without a frame.
+- **Cause:** command telemetry and rendering are different proof paths. The
+  long-lived headless control stage is stable at 120 Hz, but none of the tested
+  Isaac Sim 6.0 headless render surfaces both produced a usable image and
+  returned within a bounded request deadline on this host. Treating the old
+  static pose frames as live capture would have hidden that failure.
+- **Repair:** the acceptance runner now gates each case on sequence advancement,
+  exact named targets, and settled measured error. It records numeric control,
+  emergency hold, ten-second live-timeout hold, managed cleanup, and reconnect
+  as live evidence. Static whole/open/half/close Isaac frames are copied only as
+  `prevalidated_static_isaac_visuals` with `is_live_session_capture=false`; the
+  generated GIF inherits that boundary. The runtime advertises
+  `supports_capture=false`, bridge/runtime capture calls fail immediately, the
+  service rejects unsupported capture, and the website uses measured 5+8 joint
+  telemetry to animate the URDF showroom while explaining the separate static
+  evidence.
+- **Regression coverage:** E2E unit tests reject stale sequences, wrong targets,
+  nonblank-but-identical visual frames, and any visual record mislabeled as a
+  live session capture. Runtime/service/protocol tests lock the immediate
+  capture rejection while preserving command and hold behavior. Frontend tests
+  lock Isaac capture capability off without changing MuJoCo continuous video.
+- **Verification:**
+  `isaacsim_test/artifacts/lelab_isaac_e2e_20260722T112742Z/lelab-isaac-e2e-report.json`
+  is `PASS` with Isaac Sim `6.0.0`, one articulation, 13 unique expected joints,
+  logical width six, maximum settled arm error `0.009771 rad`, maximum settled
+  hand error `0.000989 rad`, 196 emergency-hold steps, 137 live-timeout-hold
+  steps, managed disconnect in `6.446 s`, and reconnect success. Adjacent static
+  hand-frame mean absolute differences are `8.2428` and `6.3470`; all three
+  frames are nonblank. These visual metrics are not live-session evidence.
+- **Result/commit:** this entry accompanies the LeLab-controlled Isaac
+  acceptance and capture-boundary commit.
+- **Remaining boundary:** there is no live Isaac viewport PNG or browser
+  screenshot of the actual runtime in this slice, and no real LeRobot episode,
+  trained ACT/VLA policy, contact/grasp-retention proof, ROS 2 path, or physical
+  motor protocol. The static images prove the distributed USD's visual poses;
+  the live report proves named control, measured convergence, safety holds, and
+  lifecycle cleanup.
+- **Reusable rule:** never let a stale observation satisfy a new command, and
+  never merge numeric runtime proof with a separate static visual proof. A
+  simulator capture capability is enabled only after it produces a reviewed
+  frame and returns within a bounded control-safe deadline.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import secrets
@@ -12,7 +13,7 @@ import time
 import uuid
 from collections.abc import Callable, Mapping
 from contextlib import suppress
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any, Literal
 
 import isaacsim_validation
@@ -88,6 +89,7 @@ class IsaacSimRuntime:
         self._log_handle: Any = None
         self._token_path: Path | None = None
         self._targets: dict[str, float] | None = None
+        self._hello: dict[str, Any] = {}
         self._latest_state: dict[str, Any] = {}
         self._last_observe = float("-inf")
         self.run_dir = Path()
@@ -103,7 +105,29 @@ class IsaacSimRuntime:
 
     @property
     def supports_capture(self) -> bool:
-        return self.bridge_mode == "managed" or self._external_run_dir is not None
+        return False
+
+    @property
+    def metadata(self) -> dict[str, Any]:
+        metadata = {
+            **self._hello,
+            "bridge_mode": self.bridge_mode,
+            "host": self.host,
+            "port": self.port,
+            "run_dir": str(self.run_dir) if self.run_dir else None,
+            "distribution_sha256": (
+                self._distribution.archive_sha256 if self._distribution is not None else None
+            ),
+        }
+        container_metadata = self.run_dir / "container-metadata.json"
+        if container_metadata.is_file():
+            try:
+                container = json.loads(container_metadata.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                container = None
+            if isinstance(container, dict):
+                metadata["container"] = container
+        return metadata
 
     def _prepare_session(self) -> None:
         if self._session_root is None:
@@ -241,6 +265,7 @@ class IsaacSimRuntime:
                 self.port,
                 token=token,
                 timeout_s=min(2.0, self.startup_timeout_s),
+                capture_timeout_s=120.0,
             )
             phase = "waiting for authenticated hello"
             deadline = self._clock() + self.startup_timeout_s
@@ -261,8 +286,15 @@ class IsaacSimRuntime:
                         ) from exc
                     self._sleep(0.1)
             joint_names = hello.get("joint_names")
+            isaac_version = hello.get("isaac_sim_version")
+            articulation_root = hello.get("articulation_root")
             if (
                 hello.get("runtime") != "isaac_sim"
+                or not isinstance(isaac_version, str)
+                or not isaac_version.startswith("6.0")
+                or not isinstance(articulation_root, str)
+                or not articulation_root
+                or hello.get("articulation_root_count") != 1
                 or hello.get("physical_dof_count") != 13
                 or hello.get("logical_action_width") != 6
                 or not isinstance(joint_names, list)
@@ -271,6 +303,7 @@ class IsaacSimRuntime:
                 or set(joint_names) != set(PHYSICAL_JOINTS)
             ):
                 raise RuntimeError("Isaac bridge hello does not match the exact 13-joint contract")
+            self._hello = dict(hello)
             self._refresh_targets()
             self._connected = True
             self._failure = None
@@ -369,34 +402,10 @@ class IsaacSimRuntime:
         return 0, None
 
     def capture(self, view: Literal["whole", "hand"], name: str) -> dict[str, Any]:
-        if not self.connected or self._client is None:
-            raise RuntimeError("Isaac runtime is disconnected")
-        if self.bridge_mode == "external" and self._external_run_dir is None:
-            raise RuntimeError("external Isaac capture requires a configured external run directory")
-        response = self._client.capture(view, name)
-        relative = response.get("path")
-        if not isinstance(relative, str):
-            raise RuntimeError("Isaac bridge returned an unsafe capture path")
-        path = PurePosixPath(relative)
-        if path.is_absolute() or ".." in path.parts or not path.parts:
-            raise RuntimeError("Isaac bridge returned an unsafe capture path")
-        artifact_root = self._artifact_root
-        if artifact_root is None:
-            raise RuntimeError("Isaac capture artifact root is unavailable")
-        candidate = artifact_root
-        for part in path.parts:
-            candidate = candidate / part
-            if candidate.is_symlink():
-                raise RuntimeError("Isaac bridge capture path contains a symlink")
-        try:
-            resolved = candidate.resolve(strict=True)
-        except FileNotFoundError as exc:
-            raise RuntimeError("Isaac bridge returned an unsafe capture path") from exc
-        if not resolved.is_relative_to(artifact_root.resolve()) or not resolved.is_file():
-            raise RuntimeError("Isaac bridge returned an unsafe capture path")
-        if response.get("bytes") != resolved.stat().st_size:
-            raise RuntimeError("Isaac bridge capture size does not match the host artifact")
-        return {**response, "path": str(resolved)}
+        del view, name
+        raise RuntimeError(
+            "live capture is disabled; use the separately validated static Isaac USD evidence"
+        )
 
     def close(self) -> None:
         self._connected = False
@@ -404,7 +413,7 @@ class IsaacSimRuntime:
         client, self._client = self._client, None
         if client is not None:
             try:
-                if self.bridge_mode == "managed":
+                if self.bridge_mode == "managed" and getattr(client, "connected", True):
                     client.shutdown()
                 else:
                     client.close()

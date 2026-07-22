@@ -11,7 +11,7 @@ import stat
 import threading
 import time
 import xml.etree.ElementTree as ET
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -436,6 +436,7 @@ class SuperArmService:
         return event
 
     def status(self) -> dict[str, Any]:
+        runtime_metadata = getattr(self.runtime, "metadata", None) if self.runtime else None
         return {
             "connected": bool(self.runtime and self.runtime.connected),
             "runtime": self.mode,
@@ -445,6 +446,9 @@ class SuperArmService:
             "supports_video": bool(self.runtime and getattr(self.runtime, "supports_video", False)),
             "supports_capture": bool(
                 self.runtime and getattr(self.runtime, "supports_capture", False)
+            ),
+            "runtime_metadata": (
+                dict(runtime_metadata) if isinstance(runtime_metadata, Mapping) else None
             ),
         }
 
@@ -579,6 +583,8 @@ class SuperArmService:
         with self._control_lock:
             if self.mode != "isaac_sim" or self.runtime is None or self._closing:
                 raise RuntimeError("Isaac capture is available only for isaac_sim sessions")
+            if not getattr(self.runtime, "supports_capture", False):
+                raise RuntimeError("Isaac runtime does not support live capture")
             capture = self.runtime.capture(view, name)
             _, _, fingerprint = self._read_capture_file(capture)
             self._latest_capture = dict(capture)

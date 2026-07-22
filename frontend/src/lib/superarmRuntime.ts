@@ -30,8 +30,7 @@ export const runtimeSupportsContinuousVideo = (
   runtime: SuperArmRuntime,
 ): boolean => runtime === "mujoco" || runtime === "hybrid_serial";
 
-export const runtimeSupportsCapture = (runtime: SuperArmRuntime): boolean =>
-  runtime === "isaac_sim";
+export const runtimeSupportsCapture = (_runtime: SuperArmRuntime): boolean => false;
 
 export const buildIsaacSessionPayload = (settings: IsaacSessionSettings) => ({
   runtime: "isaac_sim" as const,

@@ -5,9 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import selectors
-import shutil
 import socket
-import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
@@ -295,79 +293,6 @@ def require_unique_articulation_root(candidates: Sequence[Any]) -> Any:
     return candidates[0]
 
 
-def render_replicator_png(
-    rep: Any,
-    *,
-    output: Path,
-    temporary_root: Path,
-    eye: Sequence[float],
-    target: Sequence[float],
-    image_has_detail: Any,
-) -> int:
-    """Render, validate, and atomically publish one fully torn-down PNG."""
-
-    output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    temporary = Path(tempfile.mkdtemp(prefix="capture-", dir=temporary_root))
-    staged = temporary / "validated.png"
-    writer = None
-    product = None
-    camera = None
-    try:
-        with rep.new_layer():
-            camera = rep.create.camera(
-                position=eye,
-                look_at=target,
-                focal_length=35,
-                clipping_range=(0.001, 100.0),
-            )
-            product = rep.create.render_product(camera, (1280, 720), force_new=True)
-            writer = rep.WriterRegistry.get("BasicWriter")
-            operation_error: BaseException | None = None
-            try:
-                writer.initialize(output_dir=str(temporary), rgb=True)
-                writer.attach([product])
-                for _ in range(8):
-                    rep.orchestrator.step(delta_time=0.0, rt_subframes=8)
-                rep.orchestrator.wait_until_complete()
-            except BaseException as exc:
-                operation_error = exc
-
-            cleanup_errors: list[Exception] = []
-            for cleanup in (
-                writer.detach,
-                product.destroy,
-                getattr(camera, "destroy", lambda: None),
-            ):
-                try:
-                    cleanup()
-                except Exception as exc:
-                    cleanup_errors.append(exc)
-            writer = None
-            product = None
-            camera = None
-            if operation_error is not None:
-                raise operation_error
-            if cleanup_errors:
-                raise RuntimeError(f"Replicator cleanup failed: {cleanup_errors[0]}") from cleanup_errors[0]
-
-        frames = sorted(temporary.glob("rgb*.png"))
-        if not frames:
-            raise RuntimeError("Replicator did not create an RGB frame")
-        shutil.copyfile(frames[-1], staged)
-        if not image_has_detail(staged):
-            raise RuntimeError("captured image has no visible detail")
-        size = staged.stat().st_size
-        staged.replace(output)
-        return size
-    finally:
-        for resource, method in ((writer, "detach"), (product, "destroy"), (camera, "destroy")):
-            cleanup = getattr(resource, method, None)
-            if callable(cleanup):
-                with suppress(Exception):
-                    cleanup()
-        shutil.rmtree(temporary, ignore_errors=True)
-
-
 def _run_isaac(args: argparse.Namespace, token: str) -> None:
     from isaacsim import SimulationApp
 
@@ -387,17 +312,13 @@ def _run_isaac(args: argparse.Namespace, token: str) -> None:
 
 
 def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None:
-
+    app.update()
     import numpy as np
-    import omni.replicator.core as rep
     import omni.timeline
     import omni.usd
     from isaacsim.core.api import World
     from isaacsim.core.experimental.prims import Articulation
-    from isaacsim.core.utils.extensions import enable_extension
-    from pxr import Usd, UsdGeom, UsdPhysics
-
-    from .visuals import image_has_detail
+    from pxr import Usd, UsdPhysics
 
     def flat(values: Any) -> list[float]:
         if hasattr(values, "numpy"):
@@ -411,31 +332,8 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
         matches = [prim for prim in stage.Traverse() if prim.HasAPI(UsdPhysics.ArticulationRootAPI)]
         return require_unique_articulation_root(matches)
 
-    def unique_named(stage: Usd.Stage, name: str):
-        matches = [prim for prim in stage.Traverse() if prim.GetName() == name]
-        if len(matches) != 1:
-            raise RuntimeError(f"expected one prim named {name!r}, found {len(matches)}")
-        return matches[0]
-
-    def camera_pose(stage: Usd.Stage, prim: Any, *, closeup: bool) -> tuple[list[float], list[float]]:
-        cache = UsdGeom.BBoxCache(
-            Usd.TimeCode.Default(),
-            [UsdGeom.Tokens.default_, UsdGeom.Tokens.render],
-            useExtentsHint=closeup,
-        )
-        bounds = cache.ComputeWorldBound(prim).ComputeAlignedRange()
-        minimum = [float(value) for value in bounds.GetMin()]
-        maximum = [float(value) for value in bounds.GetMax()]
-        center = [(low + high) / 2.0 for low, high in zip(minimum, maximum, strict=True)]
-        span = max(maximum[index] - minimum[index] for index in range(3))
-        radius = max(span, 0.08)
-        factor = 2.4 if closeup else 2.2
-        return [center[0] + factor * radius, center[1] - factor * radius, center[2] + radius], center
-
     class IsaacRuntime:
         def __init__(self) -> None:
-            enable_extension("omni.kit.renderer.capture")
-            app.update()
             if not omni.usd.get_context().open_stage(str(args.entrypoint)):
                 raise RuntimeError(f"Isaac could not open USD: {args.entrypoint}")
             for _ in range(8):
@@ -443,7 +341,6 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             self.stage = omni.usd.get_context().get_stage()
             self.root = discover_root(self.stage)
             self.root_path = str(self.root.GetPath())
-            self.hand_root = unique_named(self.stage, "r_wrist_interface")
             self.world = World(stage_units_in_meters=1.0, physics_dt=1.0 / 120.0, rendering_dt=1.0 / 30.0)
             self.timeline = omni.timeline.get_timeline_interface()
             self.timeline.play()
@@ -474,6 +371,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 "runtime": "isaac_sim",
                 "isaac_sim_version": "6.0.0",
                 "articulation_root": self.root_path,
+                "articulation_root_count": 1,
                 "physical_dof_count": 13,
                 "logical_action_width": 6,
                 "joint_names": list(PHYSICAL_JOINTS),
@@ -523,28 +421,10 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             return self.command({name: positions[self.indices[name]] for name in PHYSICAL_JOINTS})
 
         def capture(self, view: str, name: str) -> dict[str, Any]:
-            output_dir = args.run_dir / "captures"
-            output_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-            output = output_dir / f"{name}.png"
-            prim = self.root if view == "whole" else self.hand_root
-            eye, target = camera_pose(self.stage, prim, closeup=view == "hand")
-            size = render_replicator_png(
-                rep,
-                output=output,
-                temporary_root=args.run_dir,
-                eye=eye,
-                target=target,
-                image_has_detail=image_has_detail,
+            del view, name
+            raise RuntimeError(
+                "live Isaac capture is disabled; use the separately validated static USD evidence"
             )
-            return {
-                "path": output.relative_to(args.run_dir).as_posix(),
-                "bytes": size,
-                "view": view,
-                "eye": eye,
-                "target": target,
-                "resolution": [1280, 720],
-                "method": "headless_replicator_render_product",
-            }
 
         def close(self) -> None:
             self.timeline.stop()

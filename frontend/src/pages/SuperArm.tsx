@@ -562,7 +562,7 @@ const SuperArm = () => {
                   </label>
                   {isaacBridgeMode === "external" && (
                     <label className="grid gap-1 text-sm">
-                      Shared capture directory
+                      Shared bridge artifact directory
                       <Input value={isaacExternalRunDir} onChange={(event) => setIsaacExternalRunDir(event.target.value)} disabled={connected} className="bg-slate-950" />
                     </label>
                   )}
@@ -602,11 +602,11 @@ const SuperArm = () => {
             </div>
             <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
               <div className="border-b border-slate-800 px-4 py-3">
-                <h2 className="font-semibold">{showContinuousVideo ? "MuJoCo physics" : "Isaac Sim captures"}</h2>
+                <h2 className="font-semibold">{showContinuousVideo ? "MuJoCo physics" : "Isaac Sim control telemetry"}</h2>
                 <p className="text-xs text-slate-400">
                   {showContinuousVideo
                     ? "Server-rendered closed-loop hand and full arm assembly at 15 FPS."
-                    : "On-demand LeLab capture from the Isaac Sim runtime; continuous video remains MuJoCo-only."}
+                    : "The measured 13-joint pose drives the URDF showroom. Live Isaac viewport capture is disabled; validated static USD images remain separate evidence."}
                 </p>
               </div>
               <div className="aspect-[4/3] bg-black">
@@ -618,6 +618,11 @@ const SuperArm = () => {
                   <div className="flex h-full flex-col items-center justify-center px-6 text-center text-slate-500">
                     <Hand className="mb-3 h-16 w-16" />
                     Capture a whole-robot or hand close-up frame from Isaac Sim.
+                  </div>
+                ) : connected && runtime === "isaac_sim" ? (
+                  <div className="flex h-full flex-col items-center justify-center px-6 text-center text-slate-500">
+                    <Hand className="mb-3 h-16 w-16" />
+                    Live Isaac control is active. Use the measured URDF showroom on the left; static Isaac visual proof is recorded separately.
                   </div>
                 ) : (
                   <div className="flex h-full flex-col items-center justify-center text-slate-500"><Hand className="mb-3 h-16 w-16" />Connect {runtime === "isaac_sim" ? "Isaac Sim" : "MuJoCo"} to start visualization</div>

@@ -527,6 +527,14 @@ def test_api_namespace_is_registered() -> None:
 class _FakeIsaacRuntime:
     supports_video = False
     supports_capture = True
+    metadata = {
+        "runtime": "isaac_sim",
+        "isaac_sim_version": "6.0.0",
+        "articulation_root": "/superarm_amazinghand",
+        "articulation_root_count": 1,
+        "physical_dof_count": 13,
+        "logical_action_width": 6,
+    }
 
     def __init__(self, distribution_zip, **kwargs):
         self.distribution_zip = distribution_zip
@@ -667,6 +675,21 @@ def test_stale_runtime_callback_is_ignored_after_reconnect(tmp_path: Path) -> No
 
     assert subscriber.empty()
     service.unsubscribe(subscriber)
+    service.disconnect()
+
+
+def test_isaac_service_rejects_capture_when_runtime_does_not_advertise_it(tmp_path: Path) -> None:
+    runtime = _FakeIsaacRuntime("/server/superarm.zip")
+    runtime.supports_capture = False
+    service = SuperArmService(
+        ProgramStore(tmp_path / "programs.yaml"),
+        isaac_runtime_factory=lambda *_args, **_kwargs: runtime,
+    )
+    service.start_session("isaac_sim", isaac_distribution_zip="/server/superarm.zip")
+
+    with pytest.raises(RuntimeError, match="does not support live capture"):
+        service.capture("hand", "close")
+
     service.disconnect()
 
 
@@ -834,6 +857,7 @@ def test_isaac_api_session_logical_capture_and_video_boundary(tmp_path, monkeypa
     )
     assert response.status_code == 200
     assert response.json()["runtime"] == "isaac_sim"
+    assert response.json()["runtime_metadata"]["isaac_sim_version"] == "6.0.0"
     assert runtime.kwargs["external_run_dir"] == "/server/shared-run"
     telemetry = client.get("/api/superarm/telemetry")
     assert telemetry.status_code == 200

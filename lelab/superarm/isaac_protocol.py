@@ -37,11 +37,13 @@ class IsaacBridgeClient:
         *,
         token: str,
         timeout_s: float = 2.0,
+        capture_timeout_s: float = 120.0,
         socket_factory: Callable[[tuple[str, int], float], socket.socket] = socket.create_connection,
     ) -> None:
         self.host = host
         self.port = int(port)
         self.timeout_s = float(timeout_s)
+        self.capture_timeout_s = float(capture_timeout_s)
         self._token = token
         self._socket_factory = socket_factory
         self._socket: socket.socket | None = None
@@ -139,7 +141,17 @@ class IsaacBridgeClient:
         return self._request("hold")
 
     def capture(self, view: Literal["whole", "hand"], name: str) -> dict[str, Any]:
-        return self._request("capture", view=view, name=name)
+        with self._lock:
+            sock = self._socket
+            if sock is None:
+                raise IsaacBridgeError("disconnected", "Isaac bridge is disconnected")
+            previous_timeout = sock.gettimeout()
+            sock.settimeout(self.capture_timeout_s)
+            try:
+                return self._request("capture", view=view, name=name)
+            finally:
+                if self._socket is sock:
+                    sock.settimeout(previous_timeout)
 
     def shutdown(self) -> dict[str, Any]:
         try:

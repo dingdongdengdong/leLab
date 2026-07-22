@@ -41,6 +41,9 @@ class FakeClient:
     def __init__(self, hello=None, positions=None):
         self.hello = hello or {
             "runtime": "isaac_sim",
+            "isaac_sim_version": "6.0.0",
+            "articulation_root": "/superarm_amazinghand",
+            "articulation_root_count": 1,
             "physical_dof_count": 13,
             "logical_action_width": 6,
             "joint_names": list(reversed(PHYSICAL_JOINTS)),
@@ -103,6 +106,13 @@ class UnavailableClient(FakeClient):
         raise ConnectionError("bridge not ready")
 
 
+class DisconnectedClient(FakeClient):
+    connected = False
+
+    def shutdown(self):
+        raise AssertionError("shutdown must not run after the bridge disconnected")
+
+
 def _distribution(tmp_path: Path):
     root = tmp_path / "asset"
     entrypoint = root / "usd" / "robot.usda"
@@ -121,17 +131,22 @@ def test_managed_runtime_launches_with_file_token_and_sends_complete_named_targe
     process = FakeProcess()
     client = FakeClient()
     process_calls = []
+    client_calls = []
 
     def process_factory(args, **kwargs):
         process_calls.append((args, kwargs))
         return process
+
+    def client_factory(*args, **kwargs):
+        client_calls.append((args, kwargs))
+        return client
 
     runtime = IsaacSimRuntime(
         tmp_path / "distribution.zip",
         session_root=tmp_path / "session",
         distribution_loader=lambda *_args, **_kwargs: distribution,
         process_factory=process_factory,
-        client_factory=lambda *_args, **_kwargs: client,
+        client_factory=client_factory,
     )
     runtime.connect()
 
@@ -147,6 +162,7 @@ def test_managed_runtime_launches_with_file_token_and_sends_complete_named_targe
     assert token_path.read_text(encoding="utf-8").strip() not in repr(args)
     assert kwargs["shell"] is False
     assert kwargs["start_new_session"] is True
+    assert client_calls[0][1]["capture_timeout_s"] == 120.0
 
     runtime.command_partial(arm_rad={"joint_rev_1": 0.25})
     runtime.command_partial(
@@ -161,6 +177,13 @@ def test_managed_runtime_launches_with_file_token_and_sends_complete_named_targe
     assert client.commands[2]["finger4_motor2"] == pytest.approx(1.10)
     assert runtime.frame() == (0, None)
     assert runtime.supports_video is False
+    assert runtime.supports_capture is False
+    assert runtime.metadata["isaac_sim_version"] == "6.0.0"
+    assert runtime.metadata["articulation_root"] == "/superarm_amazinghand"
+    assert runtime.metadata["articulation_root_count"] == 1
+    assert runtime.metadata["logical_action_width"] == 6
+    assert runtime.metadata["physical_dof_count"] == 13
+    assert runtime.metadata["run_dir"] == str(run_dir)
 
     runtime.close()
     assert client.shutdown_calls == 1
@@ -187,6 +210,25 @@ def test_managed_close_terminates_then_kills_a_stuck_process_group(tmp_path):
 
     assert signals == [(process.pid, signal.SIGTERM), (process.pid, signal.SIGKILL)]
     assert process.wait_calls == [5.0, 3.0, 2.0]
+
+
+def test_managed_close_cleans_up_without_shutdown_after_transport_disconnect(tmp_path):
+    distribution = _distribution(tmp_path)
+    process = FakeProcess()
+    client = DisconnectedClient()
+    runtime = IsaacSimRuntime(
+        tmp_path / "distribution.zip",
+        session_root=tmp_path / "session",
+        distribution_loader=lambda *_args, **_kwargs: distribution,
+        process_factory=lambda *_args, **_kwargs: process,
+        client_factory=lambda *_args, **_kwargs: client,
+    )
+    runtime.connect()
+
+    runtime.close()
+
+    assert client.close_calls == 1
+    assert process.wait_calls == [5.0]
 
 
 @pytest.mark.parametrize(
@@ -362,63 +404,23 @@ def test_connect_timeout_reports_phase_and_bounded_log_tail(tmp_path):
     assert client.close_calls == 1
 
 
-def test_capture_resolves_only_regular_non_symlink_files_beneath_run_dir(tmp_path):
+def test_capture_is_disabled_without_affecting_control(tmp_path):
     distribution = _distribution(tmp_path)
     client = FakeClient()
-    (tmp_path / "external-run").mkdir()
     runtime = IsaacSimRuntime(
         tmp_path / "distribution.zip",
         bridge_mode="external",
         token="secret",
-        session_root=tmp_path / "session",
-        external_run_dir=tmp_path / "external-run",
         distribution_loader=lambda *_args, **_kwargs: distribution,
         client_factory=lambda *_args, **_kwargs: client,
     )
     runtime.connect()
-    capture = (tmp_path / "external-run") / "captures" / "hand.png"
-    capture.parent.mkdir(parents=True)
-    capture.write_bytes(b"pngdata")
-    client.capture_response = {"path": "captures/hand.png", "bytes": 7}
 
-    result = runtime.capture("hand", "hand")
-    assert result["path"] == str(capture)
-
-    second = (tmp_path / "external-run") / "captures" / "whole.png"
-    second.write_bytes(b"pngdata")
-    client.capture_response = {"path": "captures/whole.png", "bytes": 7}
-    runtime.capture("whole", "whole")
+    assert runtime.supports_capture is False
+    with pytest.raises(RuntimeError, match="live capture is disabled"):
+        runtime.capture("hand", "hand")
     runtime.command_partial(arm_rad={"joint_rev_1": 0.2})
     assert client.commands[-1]["joint_rev_1"] == pytest.approx(0.2)
-
-    client.capture_response = {"path": "../escape.png", "bytes": 1}
-    with pytest.raises(RuntimeError, match="unsafe capture path"):
-        runtime.capture("hand", "bad")
-
-    outside = tmp_path / "outside.png"
-    outside.write_bytes(b"outside")
-    link = (tmp_path / "external-run") / "captures" / "link.png"
-    link.symlink_to(outside)
-    client.capture_response = {"path": "captures/link.png", "bytes": 7}
-    with pytest.raises(RuntimeError, match="symlink"):
-        runtime.capture("hand", "link")
-
-    runtime.close()
-
-
-def test_external_capture_requires_a_shared_run_directory(tmp_path):
-    distribution = _distribution(tmp_path)
-    runtime = IsaacSimRuntime(
-        tmp_path / "distribution.zip",
-        bridge_mode="external",
-        token="secret",
-        distribution_loader=lambda *_args, **_kwargs: distribution,
-        client_factory=lambda *_args, **_kwargs: FakeClient(),
-    )
-    runtime.connect()
-
-    with pytest.raises(RuntimeError, match="external run directory"):
-        runtime.capture("hand", "hand")
 
     runtime.close()
 
