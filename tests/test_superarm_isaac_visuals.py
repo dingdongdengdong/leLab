@@ -88,3 +88,10 @@ def test_direct_grasp_sequence_rejects_static_visuals(tmp_path: Path):
 
     with pytest.raises(RuntimeError, match="did not visibly change"):
         validate_direct_grasp_frames(frames)
+
+
+def test_isaac_camera_bounds_include_render_purpose_payloads():
+    runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
+
+    assert "[UsdGeom.Tokens.default_, UsdGeom.Tokens.render]" in runner
+    assert "useExtentsHint=True" in runner

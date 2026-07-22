@@ -60,7 +60,11 @@ def _flat(values) -> list[float]:
 
 
 def _bounds(stage: Usd.Stage, prim) -> tuple[list[float], list[float], list[float]]:
-    cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_])
+    cache = UsdGeom.BBoxCache(
+        Usd.TimeCode.Default(),
+        [UsdGeom.Tokens.default_, UsdGeom.Tokens.render],
+        useExtentsHint=True,
+    )
     box = cache.ComputeWorldBound(prim).ComputeAlignedRange()
     minimum = [float(value) for value in box.GetMin()]
     maximum = [float(value) for value in box.GetMax()]
