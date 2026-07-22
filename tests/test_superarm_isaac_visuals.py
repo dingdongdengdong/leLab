@@ -7,6 +7,10 @@ from isaacsim_validation.visuals import (
     crop_hand_closeup,
     image_has_detail,
     validate_direct_grasp_frames,
+    validate_independent_finger_linkage_sequence,
+    validate_passive_linkage_motion_sequence,
+    validate_passive_linkage_visual_summary,
+    zip_learning_visual_boundary,
 )
 
 
@@ -164,3 +168,147 @@ def test_static_snapshot_renderer_uses_close_range_camera_clipping():
 
     assert "clipping_range=(0.001, 100.0)" in renderer
     assert "rep.orchestrator.step(rt_subframes=8)" in renderer
+
+
+def _fake_passive_part(finger: int, index: int, *, offset: float = 0.0, **overrides):
+    part = {
+        "finger": finger,
+        "source_index": finger * 100 + index,
+        "source_prim": f"mjcf_{finger:03d}_{index:03d}_linkage",
+        "reference_prim": f"/Instances/mjcf_{finger:03d}_{index:03d}_linkage",
+        "xform_path": f"/r_wrist_interface/passive_linkage_visuals/finger{finger}/part_{finger:03d}{index:03d}",
+        "translate": (offset + finger * 0.01, index * 0.001, 0.0),
+        "orient": (1.0, 0.0, 0.0, 0.0),
+        "type_name": "Xform",
+        "applied_schemas": (),
+    }
+    part.update(overrides)
+    return part
+
+
+def _fake_passive_contract(*, offset_by_finger: dict[int, float] | None = None) -> dict:
+    offsets = offset_by_finger or {}
+    parts = [
+        _fake_passive_part(finger, index, offset=offsets.get(finger, 0.0))
+        for finger in range(1, 5)
+        for index in range(22)
+    ]
+    return {
+        "mode": "frame_plus_passive_linkage_no_shells",
+        "visual_part_count": 88,
+        "parts_per_finger": {1: 22, 2: 22, 3: 22, 4: 22},
+        "excluded_shell_visual_count": 0,
+        "added_rigid_body_count": 0,
+        "added_collider_count": 0,
+        "added_joint_count": 0,
+        "parts": parts,
+    }
+
+
+def _open_measured() -> dict[str, float]:
+    return {
+        f"finger{finger}_motor{motor}": 0.05 if motor == 1 else 0.02
+        for finger in range(1, 5)
+        for motor in range(1, 3)
+    }
+
+
+def _fake_state(name: str, contract: dict, measured: dict[str, float] | None = None, **extra) -> dict:
+    state = {
+        "name": name,
+        "passive_linkage_contract": contract,
+        "measured": measured or _open_measured(),
+    }
+    state.update(extra)
+    return state
+
+
+def test_passive_linkage_visual_summary_rejects_wrong_part_count():
+    contract = _fake_passive_contract()
+    contract["parts"] = contract["parts"][:-1]
+
+    with pytest.raises(RuntimeError, match="88"):
+        validate_passive_linkage_visual_summary(contract)
+
+
+def test_passive_linkage_visual_summary_rejects_any_shell_source():
+    contract = _fake_passive_contract()
+    contract["parts"][0]["source_prim"] = "mjcf_045_proximal_shell_1"
+
+    with pytest.raises(RuntimeError, match="shell"):
+        validate_passive_linkage_visual_summary(contract)
+
+
+def test_passive_linkage_visual_summary_rejects_follower_physics_collision_or_joint_schema():
+    for schema in ("PhysicsRigidBodyAPI", "PhysicsCollisionAPI", "PhysicsRevoluteJoint"):
+        contract = _fake_passive_contract()
+        contract["parts"][0]["applied_schemas"] = [schema]
+        with pytest.raises(RuntimeError, match="physics|collision|joint"):
+            validate_passive_linkage_visual_summary(contract)
+
+
+def test_passive_linkage_motion_sequence_rejects_unchanged_finger_followers():
+    states = [
+        _fake_state("open", _fake_passive_contract()),
+        _fake_state("half_close", _fake_passive_contract(offset_by_finger={1: 0.1, 2: 0.1, 4: 0.1})),
+        _fake_state("close", _fake_passive_contract(offset_by_finger={1: 0.2, 2: 0.2, 4: 0.2})),
+    ]
+
+    with pytest.raises(RuntimeError, match="finger3"):
+        validate_passive_linkage_motion_sequence(states)
+
+
+def test_independent_finger_snapshots_require_only_target_finger_moves():
+    open_state = _fake_state("open", _fake_passive_contract())
+    finger1_measured = _open_measured()
+    finger1_measured["finger1_motor1"] = 0.95
+    finger1_measured["finger1_motor2"] = 1.10
+    bad_state = _fake_state(
+        "finger1_close",
+        _fake_passive_contract(offset_by_finger={1: 0.2, 2: 0.2}),
+        measured=finger1_measured,
+        target_finger=1,
+    )
+
+    with pytest.raises(RuntimeError, match="finger2"):
+        validate_independent_finger_linkage_sequence(open_state, [bad_state])
+
+
+def test_static_snapshot_renderer_records_passive_linkage_visuals_before_capture():
+    renderer = (Path(__file__).parents[1] / "isaacsim_validation" / "render_physics_snapshots.py").read_text()
+
+    validate = renderer.index("_validate_passive_linkage_stage(")
+    capture = renderer.index("_capture(")
+    assert validate < capture
+    assert 'report["passive_linkage_visuals"]' in renderer
+    assert "validate_independent_finger_linkage_sequence" in renderer
+
+
+def test_numeric_runner_exports_measured_independent_finger_snapshots():
+    runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
+
+    assert "independent_finger_states" in runner
+    assert "target_finger" in runner
+    assert "close_targets = grasp_to_urdf_targets(1.0)" in runner
+    assert "open_targets = grasp_to_urdf_targets(0.0)" in runner
+    measured = runner.index("measured = {joint: positions[dof_names.index(joint)] for joint in HAND_JOINTS}")
+    snapshot = runner.index('run_dir / f"hand_finger{target_finger}_close_snapshot.usda"')
+    author = runner.index("author_passive_linkage_snapshot(", snapshot)
+    assert measured < snapshot < author
+
+
+def test_zip_learning_visual_boundary_is_shell_free_and_source_closed_loop_informed():
+    boundary = zip_learning_visual_boundary()
+
+    assert "source closed-loop-informed" in boundary
+    assert "measured Isaac joints" in boundary
+    assert "outer shells disabled" in boundary
+    assert "no closed-loop PhysX" in boundary
+
+
+def test_passive_linkage_visual_summary_rejects_wrong_declared_parts_per_finger_contract():
+    contract = _fake_passive_contract()
+    contract["parts_per_finger"] = {1: 21, 2: 22, 3: 22, 4: 23}
+
+    with pytest.raises(RuntimeError, match="22 parts per finger"):
+        validate_passive_linkage_visual_summary(contract)

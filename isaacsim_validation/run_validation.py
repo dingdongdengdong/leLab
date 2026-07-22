@@ -273,6 +273,64 @@ def main() -> int:
                 }
             )
 
+        independent_finger_results = []
+        independent_finger_snapshots = []
+        open_targets = grasp_to_urdf_targets(0.0)
+        close_targets = grasp_to_urdf_targets(1.0)
+        for target_finger in range(1, 5):
+            targets = dict(open_targets)
+            for motor in range(1, 3):
+                joint = f"finger{target_finger}_motor{motor}"
+                targets[joint] = close_targets[joint]
+            _command_targets(art, HAND_JOINTS, targets)
+            _step(world, 120)
+            positions = _flat(art.get_dof_positions())
+            measured = {joint: positions[dof_names.index(joint)] for joint in HAND_JOINTS}
+            independent_finger_results.append(
+                {
+                    "name": f"finger{target_finger}_close",
+                    "target_finger": target_finger,
+                    "targets": targets,
+                    "measured": measured,
+                    "max_target_finger_error": max(
+                        abs(
+                            measured[f"finger{target_finger}_motor{motor}"]
+                            - targets[f"finger{target_finger}_motor{motor}"]
+                        )
+                        for motor in range(1, 3)
+                    ),
+                    "max_other_finger_open_error": max(
+                        abs(measured[joint] - open_targets[joint])
+                        for joint in HAND_JOINTS
+                        if not joint.startswith(f"finger{target_finger}_")
+                    ),
+                }
+            )
+            snapshot = run_dir / f"hand_finger{target_finger}_close_snapshot.usda"
+            stage.Export(str(snapshot))
+            passive_linkage_contract = None
+            if passive_linkage_instances is not None:
+                snapshot_stage = Usd.Stage.Open(str(snapshot))
+                if snapshot_stage is None:
+                    raise RuntimeError(f"could not reopen independent finger snapshot: {snapshot}")
+                passive_linkage_contract = author_passive_linkage_snapshot(
+                    snapshot_stage,
+                    prim_path,
+                    solve_passive_linkage(measured),
+                    passive_linkage_instances,
+                )
+            independent_finger_snapshots.append(
+                {
+                    "name": f"finger{target_finger}_close",
+                    "target_finger": target_finger,
+                    "path": str(snapshot),
+                    "bytes": snapshot.stat().st_size,
+                    "method": "usd_stage_export_after_per_finger_physics_readback",
+                    "measured": measured,
+                    "passive_linkage_contract": passive_linkage_contract,
+                }
+            )
+
         hand_motion_passed = all(
             hand_results[0]["measured"][joint]
             < hand_results[1]["measured"][joint]
@@ -285,6 +343,7 @@ def main() -> int:
             "arm": arm_results,
             "capture_arm_pose": capture_arm_pose,
             "hand": hand_results,
+            "independent_fingers": independent_finger_results,
             "arm_motion_passed": all(item["passed"] for item in arm_results),
             "hand_motion_passed": hand_motion_passed,
         }
@@ -292,6 +351,7 @@ def main() -> int:
             "status": "PASS",
             "method": "flattened USD export after measured PhysX state",
             "hand_states": hand_snapshots,
+            "independent_finger_states": independent_finger_snapshots,
         }
         numeric_passed = (
             report["import"]["dof_count"] == 13
