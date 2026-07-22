@@ -73,7 +73,9 @@ def _parse_xml_numbers(raw: str | None, expected_len: int, default: tuple[float,
     return values
 
 
-def _read_zip_member(archive: zipfile.ZipFile, *, exact: str | None = None, suffix: str | None = None) -> bytes:
+def _read_zip_member(
+    archive: zipfile.ZipFile, *, exact: str | None = None, suffix: str | None = None
+) -> bytes:
     if exact is not None:
         return archive.read(exact)
     matches = [name for name in archive.namelist() if suffix is not None and name.endswith(suffix)]
@@ -96,12 +98,12 @@ def _safe_extract_prefix(archive: zipfile.ZipFile, prefix: str, destination: Pat
 def parse_base_usda(text: str) -> dict[int, SourcePrim]:
     pattern = re.compile(
         r'def Xform "(?P<name>mjcf_(?P<index>\d{3})_[^"]+)"\s*\(\s*'
-        r'instanceable = true\s*'
-        r'prepend references = @\./instances\.usda@<(?P<instance>[^>]+)>\s*'
-        r'\)\s*\{\s*'
-        r'quatd xformOp:orient = \((?P<orient>[^)]*)\)\s*'
-        r'double3 xformOp:scale = \([^)]*\)\s*'
-        r'double3 xformOp:translate = \((?P<translate>[^)]*)\)',
+        r"instanceable = true\s*"
+        r"prepend references = @\./instances\.usda@<(?P<instance>[^>]+)>\s*"
+        r"\)\s*\{\s*"
+        r"quatd xformOp:orient = \((?P<orient>[^)]*)\)\s*"
+        r"double3 xformOp:scale = \([^)]*\)\s*"
+        r"double3 xformOp:translate = \((?P<translate>[^)]*)\)",
         re.MULTILINE,
     )
     sources: dict[int, SourcePrim] = {}
@@ -135,7 +137,11 @@ def parse_robot_visual_geoms(robot_xml: bytes) -> dict[int, VisualGeom]:
             raise ValueError("Body without name in source MJCF")
         body_chain = (*chain, body_name)
         for child in body:
-            if child.tag == "geom" and child.attrib.get("class") == "visual" and child.attrib.get("type") == "mesh":
+            if (
+                child.tag == "geom"
+                and child.attrib.get("class") == "visual"
+                and child.attrib.get("type") == "mesh"
+            ):
                 geoms.append(
                     VisualGeom(
                         source_index=len(geoms),
@@ -143,7 +149,9 @@ def parse_robot_visual_geoms(robot_xml: bytes) -> dict[int, VisualGeom]:
                         body_chain=body_chain,
                         mesh_name=child.attrib["mesh"],
                         local_translate_m=_parse_xml_numbers(child.attrib.get("pos"), 3, (0.0, 0.0, 0.0)),  # type: ignore[arg-type]
-                        local_orient_wxyz=_parse_xml_numbers(child.attrib.get("quat"), 4, (1.0, 0.0, 0.0, 0.0)),  # type: ignore[arg-type]
+                        local_orient_wxyz=_parse_xml_numbers(
+                            child.attrib.get("quat"), 4, (1.0, 0.0, 0.0, 0.0)
+                        ),  # type: ignore[arg-type]
                     )
                 )
             elif child.tag == "body":
@@ -204,7 +212,9 @@ def structural_indices(geoms: dict[int, VisualGeom]) -> dict[int, tuple[int, ...
         result[finger] = selected
     selected_cores = {index for values in result.values() for index in values if index in SOURCE_CORE_INDICES}
     if selected_cores != SOURCE_CORE_INDICES:
-        raise ValueError(f"Missing source-specific proximal/distal core indices: {SOURCE_CORE_INDICES - selected_cores}")
+        raise ValueError(
+            f"Missing source-specific proximal/distal core indices: {SOURCE_CORE_INDICES - selected_cores}"
+        )
     return result
 
 
@@ -259,10 +269,15 @@ def _quat_rotate(quat: Any, vector: Any) -> Any:
 
 
 def _rounded(values: Any | tuple[float, ...], digits: int = 10) -> list[float]:
-    return [0.0 if math.isclose(float(value), 0.0, abs_tol=0.5 * 10 ** -digits) else round(float(value), digits) for value in values]
+    return [
+        0.0 if math.isclose(float(value), 0.0, abs_tol=0.5 * 10**-digits) else round(float(value), digits)
+        for value in values
+    ]
 
 
-def _solve_keyframes(model: Any, selected_indices: dict[int, tuple[int, ...]], geoms: dict[int, VisualGeom]) -> tuple[dict[str, dict[int, dict[str, list[float]]]], dict[str, object]]:
+def _solve_keyframes(
+    model: Any, selected_indices: dict[int, tuple[int, ...]], geoms: dict[int, VisualGeom]
+) -> tuple[dict[str, dict[int, dict[str, list[float]]]], dict[str, object]]:
     mujoco = _load_mujoco()
     np = _load_numpy()
     data = mujoco.MjData(model)
@@ -328,7 +343,9 @@ def _solve_keyframes(model: Any, selected_indices: dict[int, tuple[int, ...]], g
             for name, qpos_address in joint_qpos.items()
         )
         if equality_sep >= MAX_EQUALITY_SITE_PAIR_SEPARATION_M:
-            raise ValueError(f"{keyframe_name} equality site-pair separation {equality_sep} exceeds tolerance")
+            raise ValueError(
+                f"{keyframe_name} equality site-pair separation {equality_sep} exceeds tolerance"
+            )
         if motor_error >= MAX_MOTOR_TARGET_ERROR_RAD:
             raise ValueError(f"{keyframe_name} motor target error {motor_error} exceeds tolerance")
         max_sep = max(max_sep, equality_sep)
