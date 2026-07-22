@@ -5,8 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import shutil
-import tempfile
 from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -27,7 +25,6 @@ app = SimulationApp(
 )
 
 import numpy as np  # noqa: E402
-import omni.replicator.core as rep  # noqa: E402
 import omni.timeline  # noqa: E402
 import omni.usd  # noqa: E402
 from contracts import ARM_JOINTS, HAND_JOINTS, grasp_to_urdf_targets  # noqa: E402
@@ -35,6 +32,9 @@ from import_config import urdf_import_settings  # noqa: E402
 from isaacsim.core.api import World  # noqa: E402
 from isaacsim.core.experimental.prims import Articulation  # noqa: E402
 from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
+from isaacsim.core.utils.rotations import rot_matrix_to_quat  # noqa: E402
+from isaacsim.sensors.camera import Camera  # noqa: E402
+from PIL import Image  # noqa: E402
 from pxr import Usd, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
 from visuals import image_has_detail, validate_direct_grasp_frames  # noqa: E402
 
@@ -81,35 +81,56 @@ def _camera_pose(stage: Usd.Stage, prim, *, closeup: bool) -> tuple[list[float],
     return eye, center
 
 
-def _capture(path: Path, stage: Usd.Stage, prim, *, closeup: bool) -> dict:
+def _look_at_world_quat(eye: list[float], target: list[float]) -> np.ndarray:
+    forward = np.asarray(target, dtype=float) - np.asarray(eye, dtype=float)
+    forward /= max(float(np.linalg.norm(forward)), 1e-9)
+    up = np.array([0.0, 0.0, 1.0], dtype=float)
+    if abs(float(np.dot(forward, up))) > 0.98:
+        up = np.array([0.0, 1.0, 0.0], dtype=float)
+    side = np.cross(up, forward)
+    side /= max(float(np.linalg.norm(side)), 1e-9)
+    camera_up = np.cross(forward, side)
+    camera_up /= max(float(np.linalg.norm(camera_up)), 1e-9)
+    return np.asarray(rot_matrix_to_quat(np.column_stack([forward, side, camera_up])))
+
+
+def _save_rgba(path: Path, rgba) -> None:
+    pixels = np.asarray(rgba)
+    if pixels.dtype != np.uint8:
+        scale = 255 if pixels.max(initial=0) <= 1.0 else 1
+        pixels = np.clip(pixels * scale, 0, 255).astype(np.uint8)
+    Image.fromarray(pixels[:, :, :4]).save(path)
+
+
+def _capture(path: Path, stage: Usd.Stage, prim, world: World, *, closeup: bool) -> dict:
     eye, target = _camera_pose(stage, prim, closeup=closeup)
     path.parent.mkdir(parents=True, exist_ok=True)
-    output_dir = Path(tempfile.mkdtemp(prefix="isaac-superarm-capture-"))
-    try:
-        with rep.new_layer():
-            camera = rep.create.camera(position=eye, look_at=target, focal_length=35)
-            product = rep.create.render_product(camera, (1280, 720))
-            writer = rep.WriterRegistry.get("BasicWriter")
-            writer.initialize(output_dir=str(output_dir), rgb=True)
-            writer.attach([product])
-            for _ in range(6):
-                rep.orchestrator.step(rt_subframes=4)
-            writer.detach()
-        frames = sorted(output_dir.glob("rgb*.png"))
-        if not frames:
-            raise RuntimeError("Replicator did not create an RGB frame")
-        shutil.copyfile(frames[-1], path)
-    finally:
-        shutil.rmtree(output_dir, ignore_errors=True)
+    camera = Camera(
+        prim_path=f"/World/SuperArmValidationCamera_{path.stem}",
+        position=np.asarray(eye),
+        orientation=_look_at_world_quat(eye, target),
+        resolution=(1280, 720),
+    )
+    camera.initialize()
+    camera.set_focal_length(35.0)
+    rgba = None
+    for _ in range(60):
+        world.step(render=True)
+        rgba = camera.get_rgba()
+        if rgba is not None and np.asarray(rgba).size:
+            break
+    if rgba is None or not np.asarray(rgba).size:
+        raise RuntimeError("Isaac Camera.get_rgba did not create a frame")
+    _save_rgba(path, rgba)
 
     if not image_has_detail(path):
-        raise RuntimeError("Replicator screenshot has no visible detail")
+        raise RuntimeError("Isaac Camera screenshot has no visible detail")
     return {
         "path": str(path),
         "bytes": path.stat().st_size,
         "eye": eye,
         "target": target,
-        "method": "replicator_render_product",
+        "method": "isaacsim_camera_rgba",
     }
 
 
@@ -277,7 +298,7 @@ def main() -> int:
                     "max_error": max(abs(measured[joint] - targets[joint]) for joint in HAND_JOINTS),
                 }
             )
-            frame = _capture(run_dir / f"hand_{name}.png", stage, hand_root, closeup=True)
+            frame = _capture(run_dir / f"hand_{name}.png", stage, hand_root, world, closeup=True)
             hand_frames.append({"name": name, **frame})
 
         hand_motion_passed = all(
@@ -300,7 +321,7 @@ def main() -> int:
         report["phase"] = "capturing_visuals"
         _write_json(report_path, report)
         whole_robot = run_dir / "whole_robot.png"
-        screenshots = [_capture(whole_robot, stage, root_prim, closeup=False)]
+        screenshots = [_capture(whole_robot, stage, root_prim, world, closeup=False)]
         report["screenshots"] = screenshots
         report["visual_boundary"] = (
             "Raw profile retains the generated full hand visual shell; detailed hand visual geometry "

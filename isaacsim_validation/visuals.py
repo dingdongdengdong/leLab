@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageStat
 
-DIRECT_CAMERA_METHODS = frozenset({"replicator_render_product"})
+DIRECT_CAMERA_METHODS = frozenset({"isaacsim_camera_rgba", "replicator_render_product"})
 GRASP_FRAME_NAMES = ("open", "half_close", "close")
 
 

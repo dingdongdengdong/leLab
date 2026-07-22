@@ -39,4 +39,18 @@ docker run --name "$container_name" --gpus all --network host \
 
 status=${PIPESTATUS[0]}
 docker rm -f "$container_name" >/dev/null 2>&1 || true
-exit "$status"
+if (( status != 0 )); then
+  exit "$status"
+fi
+python3 - "$run_dir/isaac-report.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+report_path = Path(sys.argv[1])
+if not report_path.is_file():
+    raise SystemExit(f"Isaac validation did not create {report_path}")
+report = json.loads(report_path.read_text(encoding="utf-8"))
+if report.get("status") != "PASS":
+    raise SystemExit(f"Isaac validation report is not PASS: {report.get('error', report.get('phase'))}")
+PY

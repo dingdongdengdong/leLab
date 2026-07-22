@@ -52,7 +52,7 @@ def test_direct_grasp_sequence_requires_three_changed_camera_frames(tmp_path: Pa
             {
                 "name": name,
                 "path": str(path),
-                "method": "replicator_render_product",
+                "method": "isaacsim_camera_rgba",
             }
         )
 
@@ -105,3 +105,12 @@ def test_direct_hand_capture_restores_a_deterministic_neutral_arm_pose():
     first_hand_capture = runner.index('run_dir / f"hand_{name}.png"')
     assert reset < first_hand_capture
     assert '"capture_arm_pose": capture_arm_pose' in runner
+
+
+def test_runtime_wrapper_rejects_a_non_pass_report():
+    wrapper = (
+        Path(__file__).parents[1] / "isaacsim_validation" / "run_isaacsim60_validation.sh"
+    ).read_text()
+
+    assert 'report.get("status") != "PASS"' in wrapper
+    assert "Isaac validation report is not PASS" in wrapper
