@@ -54,6 +54,28 @@ if (( numeric_status != 0 )); then
   cp "$run_dir/numeric.log" "$run_dir/isaac.log"
   exit "$numeric_status"
 fi
+numeric_report_status=$(
+  python3 - "$run_dir/isaac-report.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+report_path = Path(sys.argv[1])
+if not report_path.is_file():
+    print("MISSING_REPORT")
+    raise SystemExit(0)
+report = json.loads(report_path.read_text(encoding="utf-8"))
+print(report.get("status") or "MISSING_STATUS")
+PY
+)
+case "$numeric_report_status" in
+  NUMERIC_PASS|PASS) ;;
+  *)
+    cp "$run_dir/numeric.log" "$run_dir/isaac.log"
+    echo "Numeric Isaac validation report is not NUMERIC_PASS: $numeric_report_status" >&2
+    exit 2
+    ;;
+esac
 
 docker run --name "$render_container_name" --gpus all --network host \
   --entrypoint /bin/bash \

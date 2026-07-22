@@ -375,3 +375,15 @@ def test_independent_finger_runner_resets_to_open_before_each_target_close():
     reset_targets = runner.index("_command_targets(art, HAND_JOINTS, open_targets)", reset_positions)
     close_targets = runner.index("targets = dict(open_targets)", reset_targets)
     assert loop < reset_positions < reset_targets < close_targets
+
+
+def test_runtime_wrapper_stops_before_renderer_when_numeric_report_is_not_passed():
+    wrapper = (Path(__file__).parents[1] / "isaacsim_validation" / "run_isaacsim60_validation.sh").read_text()
+
+    numeric_status = wrapper.index("numeric_status=${PIPESTATUS[0]}")
+    numeric_report_check = wrapper.index("numeric_report_status=")
+    render_launch = wrapper.index('docker run --name "$render_container_name"')
+    assert numeric_status < numeric_report_check < render_launch
+    assert "NUMERIC_PASS|PASS" in wrapper
+    assert "Numeric Isaac validation report is not NUMERIC_PASS" in wrapper
+    assert 'cp "$run_dir/numeric.log" "$run_dir/isaac.log"' in wrapper[numeric_report_check:render_launch]
