@@ -156,11 +156,16 @@ def test_static_snapshot_renderer_enables_capture_extension_before_rendering():
     assert renderer.index(extension) < renderer.index("def _capture(")
 
 
-def test_static_snapshot_renderer_does_not_advance_snapshot_physics():
+def test_static_snapshot_renderer_deactivates_physics_before_rendering():
     renderer = (
         Path(__file__).parents[1]
         / "isaacsim_validation"
         / "render_physics_snapshots.py"
     ).read_text()
 
-    assert "rep.orchestrator.step(delta_time=0.0, rt_subframes=8)" in renderer
+    deactivation = "_deactivate_physics_scenes(stage)"
+    capture = "frame = _capture("
+    assert deactivation in renderer
+    assert renderer.index(deactivation, renderer.index("def main()")) < renderer.index(capture)
+    assert "prim.IsA(UsdPhysics.Scene)" in renderer
+    assert "rep.orchestrator.step(rt_subframes=8)" in renderer

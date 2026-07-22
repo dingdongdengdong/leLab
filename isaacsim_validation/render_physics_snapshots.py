@@ -26,7 +26,7 @@ app = SimulationApp(
 import omni.replicator.core as rep  # noqa: E402
 import omni.usd  # noqa: E402
 from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
-from pxr import Usd, UsdGeom, UsdLux  # noqa: E402
+from pxr import Usd, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
 from visuals import image_has_detail, validate_direct_grasp_frames  # noqa: E402
 
 enable_extension("omni.kit.renderer.capture")
@@ -42,6 +42,17 @@ def _prim_named(stage: Usd.Stage, name: str):
     if len(matches) != 1:
         raise RuntimeError(f"expected one prim named {name!r}, found {len(matches)}")
     return matches[0]
+
+
+def _deactivate_physics_scenes(stage: Usd.Stage) -> list[str]:
+    paths = []
+    for prim in stage.Traverse():
+        if prim.IsA(UsdPhysics.Scene):
+            paths.append(str(prim.GetPath()))
+            prim.SetActive(False)
+    if not paths:
+        raise RuntimeError("physics snapshot contains no PhysicsScene to deactivate")
+    return paths
 
 
 def _camera_pose(stage: Usd.Stage, prim, *, closeup: bool) -> tuple[list[float], list[float]]:
@@ -79,7 +90,7 @@ def _capture(
             writer.initialize(output_dir=str(temporary), rgb=True)
             writer.attach([product])
             for _ in range(8):
-                rep.orchestrator.step(delta_time=0.0, rt_subframes=8)
+                rep.orchestrator.step(rt_subframes=8)
             writer.detach()
         frames = sorted(temporary.glob("rgb*.png"))
         if not frames:
@@ -138,6 +149,7 @@ def main() -> int:
                 app.update()
             stage = omni.usd.get_context().get_stage()
             UsdLux.DomeLight.Define(stage, "/World/SuperArmSnapshotLight").CreateIntensityAttr(700.0)
+            deactivated_physics_scenes = _deactivate_physics_scenes(stage)
             hand_root = _prim_named(stage, "r_wrist_interface")
             if fixed_hand_pose is None:
                 fixed_hand_pose = _camera_pose(stage, hand_root, closeup=True)
@@ -152,6 +164,7 @@ def main() -> int:
                 {
                     "name": snapshot["name"],
                     "snapshot": str(snapshot_path),
+                    "deactivated_physics_scenes": deactivated_physics_scenes,
                     **frame,
                 }
             )
