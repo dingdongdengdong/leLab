@@ -862,7 +862,12 @@ Do not write `PASS` until the named evidence exists and has been inspected.
   visual gates are true. One immediately preceding run recorded a bounded
   five-second read timeout during an intermittent Isaac `World.step()` stall;
   owned-session cleanup still removed its container, and no state-changing
-  request was retried.
+  request was retried. Independent test-engineer review and the final Ralph
+  architect follow-up both returned `APPROVE`. Post-deslop gates pass 465 Python
+  tests, 28 frontend tests, Ruff, Python bytecode compilation, frontend lint
+  with zero errors, the Vite production build, and `git diff --check`.
+- **Result/commits:** distribution/evidence and setup rollback are committed as
+  `1c47eb9`; the final owned-session cleanup repair is `b4e7ef4`.
 - **Remaining boundary:** the accepted PNGs/GIF are distribution-bound static
   Isaac evidence, not live viewport capture. This still does not prove a real
   LeRobot episode, a trained policy, contact/grasp retention, ROS 2, or physical

@@ -145,6 +145,8 @@ fb27e3a teleoperation and recording integration
 2784bac website Isaac controls and URDF telemetry
 9d006e3 live numeric/lifecycle acceptance and truthful capture boundary
 152fcaa durable LeLab-controlled Isaac architecture record
+1c47eb9 distribution-bound visual bytes and transactional setup rollback
+b4e7ef4 failure-isolated owned-session teardown
 ```
 
 See [[lelab-isaac-sim-control-scope]] and [[superarm-urdf-validation-in-isaac-sim-6-0]].
