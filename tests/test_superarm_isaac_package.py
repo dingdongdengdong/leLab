@@ -9,6 +9,7 @@ from isaacsim_validation.prepare_superarm_urdf import (
     EXPECTED_ARM_JOINTS,
     EXPECTED_HAND_JOINTS,
     prepare_package,
+    retain_learning_hand_visuals,
 )
 
 
@@ -49,9 +50,7 @@ def test_prepare_package_copies_unique_mesh_and_records_contract(tmp_path: Path)
     assert manifest["mesh_reference_count"] == 14
     assert manifest["unique_mesh_count"] == 1
     packaged = ET.parse(output / "superarm_amazinghand.urdf").getroot()
-    assert {mesh.get("filename") for mesh in packaged.findall(".//mesh")} == {
-        "meshes/000_part.stl"
-    }
+    assert {mesh.get("filename") for mesh in packaged.findall(".//mesh")} == {"meshes/000_part.stl"}
 
 
 def test_prepare_package_rejects_missing_mesh(tmp_path: Path):
@@ -84,9 +83,7 @@ def test_aligned_profile_preserves_hand_visuals_and_rewrites_attachment(tmp_path
     source = _write_fixture(tmp_path)
     tree = ET.parse(source)
     robot = tree.getroot()
-    attachment = ET.SubElement(
-        robot, "joint", {"name": "wrist_adapter_to_amazinghand", "type": "fixed"}
-    )
+    attachment = ET.SubElement(robot, "joint", {"name": "wrist_adapter_to_amazinghand", "type": "fixed"})
     ET.SubElement(attachment, "parent", {"link": "link_12"})
     ET.SubElement(attachment, "child", {"link": "link_13"})
     ET.SubElement(attachment, "origin", {"xyz": "0 0 0.6", "rpy": "0 0 0"})
@@ -102,3 +99,36 @@ def test_aligned_profile_preserves_hand_visuals_and_rewrites_attachment(tmp_path
     assert rewritten.find("origin").get("xyz") == "0 0 0.011753"
     assert manifest["mesh_reference_count"] == 14
     assert len(packaged.findall(".//visual")) == 14
+
+
+def test_learning_hand_visuals_keep_shells_but_remove_unbound_linkages():
+    robot = ET.Element("robot", {"name": "superarm_amazinghand"})
+
+    def add_link(name: str, meshes: list[str]) -> None:
+        link = ET.SubElement(robot, "link", {"name": name})
+        for filename in meshes:
+            visual = ET.SubElement(link, "visual")
+            geometry = ET.SubElement(visual, "geometry")
+            ET.SubElement(geometry, "mesh", {"filename": filename})
+
+    add_link("r_wrist_interface", ["r_hand_plate.stl", "finger_frame_1.stl"])
+    add_link(
+        "finger1_proximal",
+        ["proximal_shell.stl", "proximal.stl", "rotule_lever.stl"],
+    )
+    add_link("finger1_distal", ["distal_shell.stl", "distal.stl", "parallel_pin.stl"])
+    add_link("arm_link1", ["arm_link1.stl"])
+
+    removed = retain_learning_hand_visuals(robot)
+
+    assert removed == 2
+    remaining = {
+        link.get("name"): [
+            Path(visual.find("geometry/mesh").get("filename")).name for visual in link.findall("visual")
+        ]
+        for link in robot.findall("link")
+    }
+    assert remaining["r_wrist_interface"] == ["r_hand_plate.stl", "finger_frame_1.stl"]
+    assert remaining["finger1_proximal"] == ["proximal_shell.stl", "proximal.stl"]
+    assert remaining["finger1_distal"] == ["distal_shell.stl", "distal.stl"]
+    assert remaining["arm_link1"] == ["arm_link1.stl"]

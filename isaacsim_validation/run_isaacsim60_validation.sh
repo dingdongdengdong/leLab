@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-profile=${1:?usage: run_isaacsim60_validation.sh <raw|aligned|served> <run-id>}
-run_id=${2:?usage: run_isaacsim60_validation.sh <raw|aligned|served> <run-id>}
+profile=${1:?usage: run_isaacsim60_validation.sh <raw|aligned|learning|served> <run-id>}
+run_id=${2:?usage: run_isaacsim60_validation.sh <raw|aligned|learning|served> <run-id>}
 case "$profile" in
-  raw|aligned|served) ;;
-  *) echo "profile must be raw, aligned, or served" >&2; exit 2 ;;
+  raw|aligned|learning|served) ;;
+  *) echo "profile must be raw, aligned, learning, or served" >&2; exit 2 ;;
 esac
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

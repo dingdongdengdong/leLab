@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -13,6 +14,11 @@ EXPECTED_ARM_JOINTS = tuple(f"joint_rev_{index}" for index in range(1, 6))
 EXPECTED_HAND_JOINTS = tuple(
     f"finger{finger}_motor{motor}" for finger in range(1, 5) for motor in range(1, 3)
 )
+LEARNING_HAND_VISUAL_MESHES = {
+    "proximal": frozenset({"proximal.stl", "proximal_shell.stl"}),
+    "distal": frozenset({"distal.stl", "distal_shell.stl"}),
+}
+FINGER_LINK_PATTERN = re.compile(r"finger[1-4]_(proximal|distal)")
 
 
 def _sha256(path: Path) -> str:
@@ -29,6 +35,23 @@ def _resolve_mesh(source_urdf: Path, filename: str) -> Path:
     if not candidate.is_absolute():
         candidate = source_urdf.parent / candidate
     return candidate.resolve()
+
+
+def retain_learning_hand_visuals(root: ET.Element) -> int:
+    """Keep only rigidly bound shell meshes on the simplified moving finger links."""
+    removed = 0
+    for link in root.findall("link"):
+        match = FINGER_LINK_PATTERN.fullmatch(link.get("name", ""))
+        if match is None:
+            continue
+        allowed = LEARNING_HAND_VISUAL_MESHES[match.group(1)]
+        for visual in list(link.findall("visual")):
+            mesh = visual.find("geometry/mesh")
+            filename = Path(mesh.get("filename", "").removeprefix("file://")).name if mesh is not None else ""
+            if filename not in allowed:
+                link.remove(visual)
+                removed += 1
+    return removed
 
 
 def prepare_package(
@@ -50,9 +73,9 @@ def prepare_package(
     root = tree.getroot()
     if root.tag != "robot" or root.get("name") != "superarm_amazinghand":
         raise ValueError("expected robot name 'superarm_amazinghand'")
-    if profile not in {"raw", "aligned", "served"}:
-        raise ValueError("profile must be 'raw', 'aligned', or 'served'")
-    if profile in {"aligned", "served"}:
+    if profile not in {"raw", "aligned", "learning", "served"}:
+        raise ValueError("profile must be 'raw', 'aligned', 'learning', or 'served'")
+    if profile in {"aligned", "learning", "served"}:
         from lelab.superarm.showroom import (
             align_amazinghand_attachment,
             align_joint5_urdf,
@@ -63,6 +86,8 @@ def prepare_package(
         align_amazinghand_attachment(root)
         if profile == "served":
             remove_amazinghand_visuals(root)
+        elif profile == "learning":
+            retain_learning_hand_visuals(root)
 
     joint_types = {joint.get("name"): joint.get("type") for joint in root.findall("joint")}
     missing_joints = [
@@ -144,7 +169,7 @@ def main() -> int:
     parser.add_argument("--source-urdf", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--source-root", type=Path)
-    parser.add_argument("--profile", choices=("raw", "aligned", "served"), default="raw")
+    parser.add_argument("--profile", choices=("raw", "aligned", "learning", "served"), default="raw")
     args = parser.parse_args()
     manifest = prepare_package(
         args.source_urdf,
