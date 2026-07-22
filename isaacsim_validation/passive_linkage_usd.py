@@ -8,6 +8,7 @@ tests can validate the contract without Isaac Sim installed.
 from __future__ import annotations
 
 import os
+import re
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
@@ -38,6 +39,7 @@ FORBIDDEN_PHYSICS_MARKERS = (
     "Mass",
     "Joint",
 )
+ASSET_PATH_PATTERN = re.compile(r"@([^@]+)@")
 
 
 def build_passive_linkage_author_plan(poses: Sequence[PassiveVisualPose]) -> dict[str, Any]:
@@ -140,33 +142,49 @@ def author_passive_linkage_snapshot(
         )
         prim.SetInstanceable(True)
 
-    snapshot_stage.GetRootLayer().Save()
     flattened = snapshot_stage.Flatten()
     temporary_path = root_layer_path.with_name(root_layer_path.name + ".passive_linkage.tmp.usda")
     try:
         flattened.Export(str(temporary_path))
+        flattened_text = temporary_path.read_text(encoding="utf-8")
+        validate_no_source_path_leaks(flattened_text, instances_usda)
+        flattened_stage = Usd.Stage.Open(str(temporary_path))
+        if flattened_stage is None:
+            raise RuntimeError(f"could not reopen flattened passive-linkage snapshot: {temporary_path}")
+        contract = _validate_flattened_snapshot(flattened_stage, robot_root)
+        if deactivated != 8:
+            raise RuntimeError(f"expected to deactivate 8 frame-first core refs, deactivated {deactivated}")
         os.replace(temporary_path, root_layer_path)
+        return {
+            **plan,
+            **contract,
+            "deactivated_frame_first_core_ref_count": deactivated,
+            "flattened_snapshot": str(root_layer_path),
+            "published_absolute_instance_refs": False,
+            "published_external_asset_refs": False,
+        }
     finally:
         if temporary_path.exists():
             temporary_path.unlink()
 
-    final_stage = Usd.Stage.Open(str(root_layer_path))
-    if final_stage is None:
-        raise RuntimeError(f"could not reopen flattened passive-linkage snapshot: {root_layer_path}")
-    contract = _validate_flattened_snapshot(final_stage, robot_root)
-    if deactivated != 8:
-        raise RuntimeError(f"expected to deactivate 8 frame-first core refs, deactivated {deactivated}")
-    if str(instances_usda) in root_layer_path.read_text(encoding="utf-8"):
-        raise RuntimeError(
-            "flattened passive-linkage snapshot still publishes an absolute instances.usda ref"
-        )
-    return {
-        **plan,
-        **contract,
-        "deactivated_frame_first_core_ref_count": deactivated,
-        "flattened_snapshot": str(root_layer_path),
-        "published_absolute_instance_refs": False,
-    }
+
+def validate_no_source_path_leaks(snapshot_text: str, instances_usda: Path) -> None:
+    """Reject external source paths while allowing asset-free flattened prototype refs."""
+
+    instances_usda = instances_usda.resolve()
+    denied_plain_paths = (
+        str(instances_usda),
+        str(instances_usda.parent),
+    )
+    for denied_path in denied_plain_paths:
+        if denied_path and denied_path in snapshot_text:
+            raise RuntimeError(f"external source asset path leak in flattened snapshot: {denied_path}")
+    if "/tmp/" in snapshot_text:
+        raise RuntimeError("external source asset path leak in flattened snapshot: /tmp/")
+
+    for asset_path in ASSET_PATH_PATTERN.findall(snapshot_text):
+        if asset_path.startswith(("/", "file:/")):
+            raise RuntimeError(f"external source asset path leak in flattened snapshot: {asset_path}")
 
 
 def _deactivate_frame_first_core_refs(stage, robot_root: str) -> int:
