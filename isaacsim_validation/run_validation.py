@@ -76,8 +76,8 @@ def _camera_pose(stage: Usd.Stage, prim, *, closeup: bool) -> tuple[list[float],
     minimum, maximum, center = _bounds(stage, prim)
     span = max(maximum[index] - minimum[index] for index in range(3))
     radius = max(span, 0.08)
-    factor = 1.8 if closeup else 2.2
-    eye = [center[0] + factor * radius, center[1] - factor * radius, center[2] + 0.7 * radius]
+    factor = 2.4 if closeup else 2.2
+    eye = [center[0] + factor * radius, center[1] - factor * radius, center[2] + radius]
     return eye, center
 
 
@@ -147,6 +147,12 @@ def _command_targets(art: Articulation, names: tuple[str, ...], targets: dict[st
     indices = np.asarray([art.dof_names.index(name) for name in names], dtype=np.int32)
     values = np.asarray([targets[name] for name in names], dtype=np.float32)
     art.set_dof_position_targets(values, dof_indices=indices)
+
+
+def _set_positions(art: Articulation, names: tuple[str, ...], positions: dict[str, float]) -> None:
+    indices = np.asarray([art.dof_names.index(name) for name in names], dtype=np.int32)
+    values = np.asarray([positions[name] for name in names], dtype=np.float32)
+    art.set_dof_positions(values, dof_indices=indices)
 
 
 def _step(world: World, count: int, *, render: bool = False) -> None:
@@ -242,6 +248,17 @@ def main() -> int:
                 }
             )
 
+        neutral_arm = dict.fromkeys(ARM_JOINTS, 0.0)
+        _set_positions(art, ARM_JOINTS, neutral_arm)
+        _command_targets(art, ARM_JOINTS, neutral_arm)
+        _step(world, 2)
+        neutral_positions = _flat(art.get_dof_positions())
+        capture_arm_pose = {
+            joint: neutral_positions[dof_names.index(joint)] for joint in ARM_JOINTS
+        }
+        if max(abs(value) for value in capture_arm_pose.values()) > 0.005:
+            raise RuntimeError(f"could not restore neutral arm pose for direct hand captures: {capture_arm_pose}")
+
         hand_results = []
         hand_frames = []
         hand_root = _prim_named(stage, "r_wrist_interface")
@@ -273,6 +290,7 @@ def main() -> int:
             "logical_action_width": 6,
             "physical_movable_joint_count": 13,
             "arm": arm_results,
+            "capture_arm_pose": capture_arm_pose,
             "hand": hand_results,
             "arm_motion_passed": all(item["passed"] for item in arm_results),
             "hand_motion_passed": hand_motion_passed,

@@ -95,3 +95,13 @@ def test_isaac_camera_bounds_include_render_purpose_payloads():
 
     assert "[UsdGeom.Tokens.default_, UsdGeom.Tokens.render]" in runner
     assert "useExtentsHint=True" in runner
+    assert "factor = 2.4 if closeup else 2.2" in runner
+
+
+def test_direct_hand_capture_restores_a_deterministic_neutral_arm_pose():
+    runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
+
+    reset = runner.index("_set_positions(art, ARM_JOINTS, neutral_arm)")
+    first_hand_capture = runner.index('run_dir / f"hand_{name}.png"')
+    assert reset < first_hand_capture
+    assert '"capture_arm_pose": capture_arm_pose' in runner
