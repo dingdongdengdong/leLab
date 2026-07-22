@@ -98,7 +98,7 @@ def test_isaac_camera_bounds_include_render_purpose_payloads():
     ).read_text()
 
     assert "[UsdGeom.Tokens.default_, UsdGeom.Tokens.render]" in renderer
-    assert "useExtentsHint=True" in renderer
+    assert "useExtentsHint=closeup" in renderer
     assert "factor = 2.4 if closeup else 2.2" in renderer
 
 
@@ -130,6 +130,18 @@ def test_numeric_runner_exports_each_measured_hand_state_before_visual_render():
     snapshot = runner.index('stage.Export(str(snapshot))')
     awaiting_render = runner.index('"awaiting_static_visual_render"')
     assert readback < snapshot < awaiting_render
+
+
+def test_numeric_runner_restores_pristine_package_after_runtime_snapshots():
+    runner = (Path(__file__).parents[1] / "isaacsim_validation" / "run_validation.py").read_text()
+
+    pristine = runner.index("pristine_package = usd_path.read_bytes()")
+    world = runner.index("world = World(")
+    snapshot = runner.index('stage.Export(str(snapshot))')
+    restore = runner.index("usd_path.write_bytes(pristine_package)")
+    assert pristine < world < snapshot < restore
+    assert '"restored_pristine_root_layer_after_runtime"' in runner
+    assert '"physics_snapshots_only"' in runner
 
 
 def test_static_snapshot_renderer_uses_one_fixed_camera_for_all_hand_states():

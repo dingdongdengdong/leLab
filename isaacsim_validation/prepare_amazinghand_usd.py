@@ -7,10 +7,12 @@ import hashlib
 import json
 import re
 import shutil
+import textwrap
 import zipfile
 from pathlib import Path, PurePosixPath
 
 AMAZINGHAND_USD_ENTRY = Path("usd/amazinghand_graspable/amazinghand_graspable.usda")
+AMAZINGHAND_LEARNING_ENTRY = Path("usd/amazinghand_graspable/amazinghand_learning.usda")
 EXPECTED_HAND_JOINTS = tuple(
     f"finger{finger}_motor{motor}" for finger in range(1, 5) for motor in range(1, 3)
 )
@@ -28,6 +30,15 @@ REQUIRED_PACKAGE_FILES = frozenset(
 )
 VISUAL_SHELL = "amazinghand_visual_shell"
 VISUAL_SHELL_JOINT = "wrist_to_amazinghand_visual_shell"
+PROXIMAL_REFERENCES = (
+    "mjcf_051_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_proximal_shell_4",
+    "mjcf_052_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_proximal_5",
+)
+DISTAL_REFERENCES = (
+    "mjcf_045_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_distal_shell_3",
+    "mjcf_044_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_distal_2",
+)
+HAND_DRIVE_STIFFNESS = 3.1415927
 
 
 def _sha256(path: Path) -> str:
@@ -72,6 +83,25 @@ def _remove_prim_block(text: str, name: str) -> str:
     raise ValueError(f"USD prim block has unbalanced braces: {name}")
 
 
+def _extract_prim_block(text: str, name: str) -> str:
+    marker = re.search(
+        rf'(?m)^[ \t]*(?:def|over)(?: [A-Za-z0-9_:]+)? "{re.escape(name)}"(?:[ \t]*\([^{{]*?\))?[ \t]*\n?[ \t]*\{{',
+        text,
+    )
+    if marker is None:
+        raise ValueError(f"USD layer is missing expected prim block: {name}")
+    brace_start = text.find("{", marker.start())
+    depth = 0
+    for index in range(brace_start, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[marker.start() : index + 1]
+    raise ValueError(f"USD prim block has unbalanced braces: {name}")
+
+
 def _remove_relationship_target(text: str, target: str) -> str:
     pattern = rf"(?m)^[ \t]*</{re.escape(target)}>,?[ \t]*\n"
     updated, count = re.subn(pattern, "", text)
@@ -90,6 +120,14 @@ def repair_hand_only_binding(package_dir: Path) -> dict[str, bool]:
 
     physics = _remove_prim_block(physics, VISUAL_SHELL)
     physics = _remove_prim_block(physics, VISUAL_SHELL_JOINT)
+    damping_line = "            float drive:angular:physics:damping = 0.08\n"
+    stiffness_lines = (
+        damping_line
+        + f"            float drive:angular:physics:stiffness = {HAND_DRIVE_STIFFNESS}\n"
+    )
+    physics, drive_count = physics.replace(damping_line, stiffness_lines), physics.count(damping_line)
+    if drive_count != len(EXPECTED_HAND_JOINTS):
+        raise ValueError(f"expected eight AmazingHand angular drives, found {drive_count}")
     robot = _remove_relationship_target(
         robot,
         f"amazinghand_graspable/Geometry/r_wrist_interface/{VISUAL_SHELL}",
@@ -108,6 +146,119 @@ def repair_hand_only_binding(package_dir: Path) -> dict[str, bool]:
         "removed_visual_shell_fixed_joint": True,
         "removed_visual_shell_robot_link": True,
         "removed_visual_shell_robot_joint": True,
+        "authored_position_drive_stiffness": True,
+    }
+
+
+def _moving_visual_specs(finger: int) -> str:
+    proximal = "\n\n".join(
+        f'''def Xform "zip_proximal_{index}" (
+    instanceable = true
+    prepend references = @./instances.usda@</Instances/{reference}>
+)
+{{
+}}'''
+        for index, reference in enumerate(PROXIMAL_REFERENCES, start=1)
+    )
+    distal = "\n\n".join(
+        f'''def Xform "zip_distal_{index}_pose"
+{{
+    double3 xformOp:translate = (0, -0.058, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+
+    def Xform "model" (
+        instanceable = true
+        prepend references = @./instances.usda@</Instances/{reference}>
+    )
+    {{
+    }}
+}}'''
+        for index, reference in enumerate(DISTAL_REFERENCES, start=1)
+    )
+    return f'''over "finger{finger}_proximal"
+{{
+{textwrap.indent(proximal, "    ")}
+
+    over "finger{finger}_distal"
+    {{
+{textwrap.indent(distal, "        ")}
+    }}
+}}'''
+
+
+def bind_learning_visuals(package_dir: Path) -> dict[str, int | str]:
+    """Create a ZIP-geometry learning entry with visuals rigidly parented to hand links."""
+    asset = package_dir / "usd" / "amazinghand_graspable"
+    payloads = asset / "payloads"
+    base = (payloads / "base.usda").read_text(encoding="utf-8")
+    static_names = [
+        name
+        for name, number in re.findall(r'(?m)^\s*def Xform "(mjcf_(\d{3})_[^"]+)"', base)
+        if int(number) <= 25
+    ]
+    if len(static_names) != 26:
+        raise ValueError(f"expected 26 ZIP wrist/palm visual parts, found {len(static_names)}")
+    static_parts = "\n\n".join(
+        f'''def Xform "zip_static_{index:02d}" (
+    instanceable = true
+    prepend references = @./base.usda@</amazinghand_graspable/Geometry/r_wrist_interface/amazinghand_visual_shell/{name}>
+)
+{{
+}}'''
+        for index, name in enumerate(static_names)
+    )
+    finger_specs = "\n\n".join(_moving_visual_specs(finger) for finger in range(1, 5))
+    overlay = f'''#usda 1.0
+(
+    defaultPrim = "amazinghand_graspable"
+    kilogramsPerUnit = 1
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+over "amazinghand_graspable"
+{{
+    over "Geometry"
+    {{
+        over "r_wrist_interface"
+        {{
+            over "amazinghand_visual_shell" (
+                active = false
+            )
+            {{
+            }}
+
+            def Xform "zip_static_wrist_palm"
+            {{
+{textwrap.indent(static_parts, "                ")}
+            }}
+
+            over "palm"
+            {{
+{textwrap.indent(finger_specs, "                ")}
+            }}
+        }}
+    }}
+}}
+'''
+    (payloads / "learning_visuals.usda").write_text(overlay, encoding="utf-8")
+    learning = '''#usda 1.0
+(
+    defaultPrim = "amazinghand_graspable"
+    kilogramsPerUnit = 1
+    metersPerUnit = 1
+    subLayers = [
+        @./payloads/learning_visuals.usda@,
+        @./amazinghand_graspable.usda@,
+    ]
+    upAxis = "Z"
+)
+'''
+    (package_dir / AMAZINGHAND_LEARNING_ENTRY).write_text(learning, encoding="utf-8")
+    return {
+        "entry_stage": AMAZINGHAND_LEARNING_ENTRY.as_posix(),
+        "static_visual_part_count": len(static_names),
+        "moving_visual_part_count": 4 * (len(PROXIMAL_REFERENCES) + len(DISTAL_REFERENCES)),
     }
 
 
@@ -169,6 +320,7 @@ def prepare_amazinghand_usd(
             extracted_files.append(relative.as_posix())
 
     repair = repair_hand_only_binding(output_dir)
+    learning_visuals = bind_learning_visuals(output_dir)
     prepared_manifest = {
         "schema_version": 1,
         "source_kind": "isaac_sim_usd_distribution",
@@ -178,11 +330,13 @@ def prepare_amazinghand_usd(
         "prepared_binding_status": "hand_only_articulation_repaired",
         "combined_superarm_binding_status": "pending",
         "source_visual_validation": source_manifest.get("visual_validation"),
-        "entry_stage": AMAZINGHAND_USD_ENTRY.as_posix(),
+        "source_entry_stage": AMAZINGHAND_USD_ENTRY.as_posix(),
+        "entry_stage": learning_visuals["entry_stage"],
         "hand_joint_names": joint_names,
         "preview_stage_excluded_from_asset_folder": True,
         "extracted_files": sorted(extracted_files),
         "repairs": repair,
+        "learning_visuals": learning_visuals,
     }
     (output_dir / "prepared-manifest.json").write_text(
         json.dumps(prepared_manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"

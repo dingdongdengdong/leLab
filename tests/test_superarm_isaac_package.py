@@ -79,6 +79,29 @@ def test_prepare_package_rejects_unknown_profile(tmp_path: Path):
         prepare_package(source, tmp_path / "output", source.parent, profile="hybrid")
 
 
+def test_zip_learning_profile_removes_hand_visuals_but_keeps_joint_chain(tmp_path: Path):
+    source = _write_fixture(tmp_path)
+    tree = ET.parse(source)
+    robot = tree.getroot()
+    hand_anchor = robot.findall("link")[6]
+    old_name = hand_anchor.get("name")
+    hand_anchor.set("name", "r_wrist_interface")
+    for endpoint in robot.findall(".//parent") + robot.findall(".//child"):
+        if endpoint.get("link") == old_name:
+            endpoint.set("link", "r_wrist_interface")
+    tree.write(source, encoding="utf-8", xml_declaration=True)
+
+    output = tmp_path / "zip-learning"
+    manifest = prepare_package(source, output, source.parent, profile="zip_learning")
+    packaged = ET.parse(output / "superarm_amazinghand.urdf").getroot()
+
+    assert manifest["profile"] == "zip_learning"
+    assert manifest["movable_joints"] == [*EXPECTED_ARM_JOINTS, *EXPECTED_HAND_JOINTS]
+    assert packaged.find("./link[@name='r_wrist_interface']/visual") is None
+    assert manifest["mesh_reference_count"] < 14
+    assert manifest["mesh_reference_count"] > 0
+
+
 def test_aligned_profile_preserves_hand_visuals_and_rewrites_attachment(tmp_path: Path):
     source = _write_fixture(tmp_path)
     tree = ET.parse(source)

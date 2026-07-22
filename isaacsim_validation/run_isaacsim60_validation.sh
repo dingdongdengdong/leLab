@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-profile=${1:?usage: run_isaacsim60_validation.sh <raw|aligned|learning|served> <run-id>}
-run_id=${2:?usage: run_isaacsim60_validation.sh <raw|aligned|learning|served> <run-id>}
+profile=${1:?usage: run_isaacsim60_validation.sh <raw|aligned|learning|served|zip_learning> <run-id> [prepared-hand-package]}
+run_id=${2:?usage: run_isaacsim60_validation.sh <raw|aligned|learning|served|zip_learning> <run-id> [prepared-hand-package]}
+hand_usd_package=${3:-}
 case "$profile" in
-  raw|aligned|learning|served) ;;
-  *) echo "profile must be raw, aligned, learning, or served" >&2; exit 2 ;;
+  raw|aligned|learning|served|zip_learning) ;;
+  *) echo "profile must be raw, aligned, learning, served, or zip_learning" >&2; exit 2 ;;
 esac
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 input_dir="$project_root/artifacts/isaacsim_superarm/$run_id/${profile}_input"
 run_dir="$project_root/artifacts/isaacsim_superarm/$run_id/${profile}_isaac"
 test -f "$input_dir/superarm_amazinghand.urdf"
+hand_arg=""
+if [[ "$profile" == zip_learning ]]; then
+  hand_usd_package=$(realpath "${hand_usd_package:?zip_learning requires a prepared hand package}")
+  case "$hand_usd_package" in "$project_root"/*) ;; *) echo "hand package must be inside $project_root" >&2; exit 2 ;; esac
+  test -f "$hand_usd_package/prepared-manifest.json"
+  hand_arg="--hand-usd-package /workspace/project/${hand_usd_package#"$project_root"/}"
+fi
 install -d -m 0777 "$run_dir"
 chmod 0777 "$run_dir"
 
@@ -35,7 +43,7 @@ docker run --name "$numeric_container_name" --gpus all --network host \
   -lc "set +e; /isaac-sim/python.sh /workspace/project/isaacsim_validation/run_validation.py \
     --urdf /workspace/project/artifacts/isaacsim_superarm/$run_id/${profile}_input/superarm_amazinghand.urdf \
     --run-dir /workspace/project/artifacts/isaacsim_superarm/$run_id/${profile}_isaac \
-    --profile $profile; status=\$?; chmod -R a+rwX \
+    --profile $profile $hand_arg; status=\$?; chmod -R a+rwX \
     /workspace/project/artifacts/isaacsim_superarm/$run_id/${profile}_isaac \
     2>/dev/null || true; exit \$status" \
   2>&1 | tee "$run_dir/numeric.log"

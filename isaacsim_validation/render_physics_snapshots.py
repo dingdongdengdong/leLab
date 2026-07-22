@@ -48,7 +48,11 @@ def _camera_pose(stage: Usd.Stage, prim, *, closeup: bool) -> tuple[list[float],
     cache = UsdGeom.BBoxCache(
         Usd.TimeCode.Default(),
         [UsdGeom.Tokens.default_, UsdGeom.Tokens.render],
-        useExtentsHint=True,
+        # URDF import writes an extents hint before the ZIP visual overlay is
+        # added. It remains valid for the hand-link close-up, but using it for
+        # the whole robot can crop the added hand. Recompute composed bounds
+        # for the whole-robot frame.
+        useExtentsHint=closeup,
     )
     box = cache.ComputeWorldBound(prim).ComputeAlignedRange()
     minimum = [float(value) for value in box.GetMin()]
@@ -116,6 +120,11 @@ def _visual_boundary(profile: str) -> str:
         "served": (
             "Served matches the LeLab showroom URDF tree after hand visuals are removed for its MJCF overlay."
         ),
+        "zip_learning": (
+            "The hand stage comes from the supplied Isaac Sim USD distribution. Its detailed static shell is "
+            "replaced only in the learning entry by ZIP-sourced wrist, palm, proximal, and distal visuals that "
+            "are rigidly parented to the eight moving finger links."
+        ),
     }[profile]
 
 
@@ -124,7 +133,7 @@ def main() -> int:
     report_path = run_dir / "isaac-report.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
     try:
-        if report.get("status") != "NUMERIC_PASS":
+        if report.get("status") not in {"NUMERIC_PASS", "PASS"}:
             raise RuntimeError(f"numeric snapshot report is not ready: {report.get('status')}")
         snapshots = report.get("physics_snapshots", {}).get("hand_states", [])
         if [item.get("name") for item in snapshots] != ["open", "half_close", "close"]:

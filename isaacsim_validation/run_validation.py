@@ -10,7 +10,12 @@ from pathlib import Path
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--urdf", required=True, type=Path)
 parser.add_argument("--run-dir", required=True, type=Path)
-parser.add_argument("--profile", choices=("raw", "aligned", "learning", "served"), required=True)
+parser.add_argument(
+    "--profile",
+    choices=("raw", "aligned", "learning", "served", "zip_learning"),
+    required=True,
+)
+parser.add_argument("--hand-usd-package", type=Path)
 args, _ = parser.parse_known_args()
 
 from isaacsim import SimulationApp  # noqa: E402
@@ -33,6 +38,7 @@ from isaacsim.core.api import World  # noqa: E402
 from isaacsim.core.experimental.prims import Articulation  # noqa: E402
 from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
 from pxr import Usd, UsdGeom, UsdPhysics  # noqa: E402
+from zip_hand_binding import bind_zip_hand_visuals  # noqa: E402
 
 enable_extension("isaacsim.asset.importer.urdf")
 enable_extension("omni.kit.renderer.capture")
@@ -145,8 +151,22 @@ def main() -> int:
             app.update()
         prim_path = f"/{urdf.stem}"
 
-        world = World(stage_units_in_meters=1.0, physics_dt=1.0 / 120.0, rendering_dt=1.0 / 30.0)
         stage = omni.usd.get_context().get_stage()
+        if args.profile == "zip_learning":
+            if args.hand_usd_package is None:
+                raise RuntimeError("zip_learning requires --hand-usd-package")
+            report["zip_hand_binding"] = bind_zip_hand_visuals(
+                stage,
+                prim_path,
+                args.hand_usd_package,
+            )
+            report["phase"] = "bound_supplied_hand_usd_visuals"
+            _write_json(report_path, report)
+        # World creates the runtime /physicsScene in the current edit target.
+        # Preserve the robot package before that scene-owned state exists so
+        # the published asset remains a reusable robot, not a captured world.
+        pristine_package = usd_path.read_bytes()
+        world = World(stage_units_in_meters=1.0, physics_dt=1.0 / 120.0, rendering_dt=1.0 / 30.0)
         timeline = omni.timeline.get_timeline_interface()
         timeline.play()
         art = Articulation(prim_path)
@@ -263,8 +283,13 @@ def main() -> int:
         )
         report["status"] = "NUMERIC_PASS" if numeric_passed else "FAIL"
         report["phase"] = "awaiting_static_visual_render" if numeric_passed else "complete"
-        _write_json(report_path, report)
         timeline.stop()
+        usd_path.write_bytes(pristine_package)
+        report["package_cleanup"] = {
+            "restored_pristine_root_layer_after_runtime": True,
+            "runtime_state_location": "physics_snapshots_only",
+        }
+        _write_json(report_path, report)
         return 0 if numeric_passed else 2
     except Exception as exc:
         report["error"] = f"{type(exc).__name__}: {exc}"

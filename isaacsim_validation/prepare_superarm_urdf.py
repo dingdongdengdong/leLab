@@ -85,9 +85,11 @@ def prepare_package(
     root = tree.getroot()
     if root.tag != "robot" or root.get("name") != "superarm_amazinghand":
         raise ValueError("expected robot name 'superarm_amazinghand'")
-    if profile not in {"raw", "aligned", "learning", "served"}:
-        raise ValueError("profile must be 'raw', 'aligned', 'learning', or 'served'")
-    if profile in {"aligned", "learning", "served"}:
+    if profile not in {"raw", "aligned", "learning", "served", "zip_learning"}:
+        raise ValueError(
+            "profile must be 'raw', 'aligned', 'learning', 'served', or 'zip_learning'"
+        )
+    if profile in {"aligned", "learning", "served", "zip_learning"}:
         from lelab.superarm.showroom import (
             align_amazinghand_attachment,
             align_joint5_urdf,
@@ -96,7 +98,7 @@ def prepare_package(
 
         align_joint5_urdf(root)
         align_amazinghand_attachment(root)
-        if profile == "served":
+        if profile in {"served", "zip_learning"}:
             remove_amazinghand_visuals(root)
         elif profile == "learning":
             retain_learning_hand_visuals(root)
@@ -181,7 +183,11 @@ def main() -> int:
     parser.add_argument("--source-urdf", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--source-root", type=Path)
-    parser.add_argument("--profile", choices=("raw", "aligned", "learning", "served"), default="raw")
+    parser.add_argument(
+        "--profile",
+        choices=("raw", "aligned", "learning", "served", "zip_learning"),
+        default="raw",
+    )
     args = parser.parse_args()
     manifest = prepare_package(
         args.source_urdf,
