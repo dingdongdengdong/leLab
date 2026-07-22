@@ -71,3 +71,10 @@ def test_prepare_package_rejects_mesh_outside_source_root(tmp_path: Path):
 
     with pytest.raises(ValueError, match="mesh escapes allowed source root"):
         prepare_package(source, tmp_path / "output", source.parent)
+
+
+def test_prepare_package_rejects_unknown_profile(tmp_path: Path):
+    source = _write_fixture(tmp_path)
+
+    with pytest.raises(ValueError, match="profile must be"):
+        prepare_package(source, tmp_path / "output", source.parent, profile="hybrid")
