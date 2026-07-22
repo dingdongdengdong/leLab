@@ -23,6 +23,193 @@ MAX_EQUALITY_SITE_PAIR_SEPARATION_M = 1e-6
 MAX_MOTOR_TARGET_ERROR_RAD = 1e-4
 KEYFRAME_NAMES = ("open", "half_close", "close")
 
+EXPECTED_SOURCE_MJCF_SHA256 = "d21366e7c9a1f5debe04b8abb5ea1ade7fade42e493e09d003f5db196548b098"
+EXPECTED_SOURCE_HAND_ZIP_SHA256 = "3230fb5ad2c8e50a843a14553ef17a587f40428abd63a025483c34f1c8e3d377"
+EXPECTED_SOURCE_PACKAGE_ZIP_SHA256 = "c10c91ac240ac18893ab0a102e2ac6f9aa8a6a2e75c738fe6209f2d50a122b4a"
+EXPECTED_EXCLUDED_SHELL_INDICES = (45, 51, 78, 85, 114, 115, 144, 152)
+EXPECTED_STRUCTURAL_SOURCE_INDICES = (
+    26,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    35,
+    37,
+    39,
+    41,
+    44,
+    46,
+    49,
+    50,
+    52,
+    53,
+    54,
+    56,
+    57,
+    58,
+    59,
+    60,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    69,
+    71,
+    72,
+    75,
+    76,
+    80,
+    81,
+    84,
+    86,
+    88,
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95,
+    97,
+    98,
+    99,
+    100,
+    101,
+    102,
+    104,
+    106,
+    109,
+    112,
+    113,
+    117,
+    118,
+    120,
+    121,
+    122,
+    124,
+    125,
+    126,
+    127,
+    128,
+    129,
+    131,
+    132,
+    133,
+    134,
+    135,
+    136,
+    139,
+    140,
+    142,
+    146,
+    147,
+    150,
+    151,
+    153,
+    156,
+    157,
+    158,
+    159,
+    160,
+    161,
+)
+EXPECTED_STRUCTURAL_SOURCE_PRIMS = (
+    "mjcf_026_custom_servo_horn_rotule_ball_0",
+    "mjcf_028_custom_servo_horn_custom_servo_horn_2",
+    "mjcf_029_ball_link_rotule_lever_0",
+    "mjcf_030_ball_link_rotule_lever_1",
+    "mjcf_031_ball_link_m2_rod_l18_2",
+    "mjcf_032_ball_link_spacer_3",
+    "mjcf_033_rotule_ball_link_0",
+    "mjcf_035_rotule_ball_rotule_ball_2",
+    "mjcf_037_rotule_ball_rotule_ball_4",
+    "mjcf_039_std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_gimbal_1",
+    "mjcf_041_std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_3",
+    "mjcf_044_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_distal_2",
+    "mjcf_046_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_4",
+    "mjcf_049_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_2",
+    "mjcf_050_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_3",
+    "mjcf_052_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_proximal_5",
+    "mjcf_053_rotule_ball_2_custom_servo_horn_0",
+    "mjcf_054_rotule_ball_2_rotule_ball_1",
+    "mjcf_056_m2_rod_l18_rotule_lever_0",
+    "mjcf_057_m2_rod_l18_spacer_1",
+    "mjcf_058_m2_rod_l18_m2_rod_l18_2",
+    "mjcf_059_m2_rod_l18_rotule_lever_3",
+    "mjcf_060_custom_servo_horn_2_rotule_ball_0",
+    "mjcf_062_custom_servo_horn_2_custom_servo_horn_2",
+    "mjcf_063_ball_link_2_rotule_lever_0",
+    "mjcf_064_ball_link_2_rotule_lever_1",
+    "mjcf_065_ball_link_2_m2_rod_l18_2",
+    "mjcf_066_ball_link_2_spacer_3",
+    "mjcf_067_rotule_ball_3_rotule_ball_0",
+    "mjcf_069_rotule_ball_3_link_2",
+    "mjcf_071_rotule_ball_3_rotule_ball_4",
+    "mjcf_072_std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_2_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_0",
+    "mjcf_075_std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_2_gimbal_3",
+    "mjcf_076_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_2_distal_0",
+    "mjcf_080_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_2_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_4",
+    "mjcf_081_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_2_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_0",
+    "mjcf_084_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_2_proximal_3",
+    "mjcf_086_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_2_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_5",
+    "mjcf_088_rotule_ball_4_rotule_ball_1",
+    "mjcf_089_rotule_ball_4_custom_servo_horn_2",
+    "mjcf_090_ball_link_3_rotule_lever_0",
+    "mjcf_091_ball_link_3_rotule_lever_1",
+    "mjcf_092_ball_link_3_m2_rod_l18_2",
+    "mjcf_093_ball_link_3_spacer_3",
+    "mjcf_094_custom_servo_horn_3_rotule_ball_0",
+    "mjcf_095_custom_servo_horn_3_custom_servo_horn_1",
+    "mjcf_097_ball_link_4_rotule_lever_0",
+    "mjcf_098_ball_link_4_rotule_lever_1",
+    "mjcf_099_ball_link_4_m2_rod_l18_2",
+    "mjcf_100_ball_link_4_spacer_3",
+    "mjcf_101_rotule_ball_5_rotule_ball_0",
+    "mjcf_102_rotule_ball_5_rotule_ball_1",
+    "mjcf_104_rotule_ball_5_link_3",
+    "mjcf_106_std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_3_gimbal_0",
+    "mjcf_109_std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_3_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_3",
+    "mjcf_112_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_3_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_2",
+    "mjcf_113_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_3_distal_3",
+    "mjcf_117_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_3_proximal_2",
+    "mjcf_118_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_3_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_3",
+    "mjcf_120_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_3_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_5",
+    "mjcf_121_rotule_ball_6_rotule_ball_0",
+    "mjcf_122_rotule_ball_6_custom_servo_horn_1",
+    "mjcf_124_ball_link_5_rotule_lever_0",
+    "mjcf_125_ball_link_5_rotule_lever_1",
+    "mjcf_126_ball_link_5_m2_rod_l18_2",
+    "mjcf_127_ball_link_5_spacer_3",
+    "mjcf_128_custom_servo_horn_4_rotule_ball_0",
+    "mjcf_129_custom_servo_horn_4_custom_servo_horn_1",
+    "mjcf_131_ball_link_6_rotule_lever_0",
+    "mjcf_132_ball_link_6_rotule_lever_1",
+    "mjcf_133_ball_link_6_m2_rod_l18_2",
+    "mjcf_134_ball_link_6_spacer_3",
+    "mjcf_135_rotule_ball_7_rotule_ball_0",
+    "mjcf_136_rotule_ball_7_link_1",
+    "mjcf_139_rotule_ball_7_rotule_ball_4",
+    "mjcf_140_std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_4_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_0",
+    "mjcf_142_std00333_plast_tcb_torx_2_5x8__configuration_copy_of_default_4_gimbal_2",
+    "mjcf_146_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_4_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_2",
+    "mjcf_147_parallel_pin_2_x_10__fee063fca0c8b40e46bbc4ffff61d999_4_distal_3",
+    "mjcf_150_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_4_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_1",
+    "mjcf_151_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_4_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_2",
+    "mjcf_153_parallel_pin_2_x_16__da4b7ddbe9d803fe3fbc70f2e822b99b_4_proximal_4",
+    "mjcf_156_rotule_ball_8_rotule_ball_1",
+    "mjcf_157_rotule_ball_8_custom_servo_horn_2",
+    "mjcf_158_ball_link_7_rotule_lever_0",
+    "mjcf_159_ball_link_7_rotule_lever_1",
+    "mjcf_160_ball_link_7_m2_rod_l18_2",
+    "mjcf_161_ball_link_7_spacer_3",
+)
+FORBIDDEN_SOURCE_NAME_FRAGMENTS = ("proximal_shell", "distal_shell")
+FORBIDDEN_DECORATIVE_ROLES = frozenset({"screw", "washer", "std_fastener"})
+
 
 @dataclass(frozen=True, slots=True)
 class PassiveVisualPose:
@@ -65,6 +252,16 @@ def validate_passive_linkage_manifest(manifest: Mapping[str, Any]) -> None:
     if manifest.get("structural_visual_part_count") != EXPECTED_PART_COUNT:
         raise ValueError("structural_visual_part_count must be 88")
 
+    _require_exact_field(manifest, "source_mjcf_sha256", EXPECTED_SOURCE_MJCF_SHA256)
+    _require_exact_field(manifest, "source_hand_zip_sha256", EXPECTED_SOURCE_HAND_ZIP_SHA256)
+    _require_exact_field(manifest, "source_package_zip_sha256", EXPECTED_SOURCE_PACKAGE_ZIP_SHA256)
+    excluded_shell_indices = tuple(
+        _integer(item, "excluded_shell_indices[]", noun="excluded_shell_indices")
+        for item in _sequence(manifest.get("excluded_shell_indices"), "excluded_shell_indices")
+    )
+    if excluded_shell_indices != EXPECTED_EXCLUDED_SHELL_INDICES:
+        raise ValueError("excluded_shell_indices must match the locked shell-free manifest contract")
+
     solver = _mapping(manifest.get("solver"), "solver")
     max_separation = _finite_number(
         solver.get("max_equality_site_pair_separation_m"),
@@ -92,7 +289,10 @@ def validate_passive_linkage_manifest(manifest: Mapping[str, Any]) -> None:
     if len(parts) != EXPECTED_PART_COUNT:
         raise ValueError(f"parts must contain {EXPECTED_PART_COUNT} entries")
 
+    seen_source_indices: set[int] = set()
     seen_source_prims: set[str] = set()
+    actual_source_indices: list[int] = []
+    actual_source_prims: list[str] = []
     per_finger = dict.fromkeys(range(1, EXPECTED_FINGER_COUNT + 1), 0)
     for index, raw_part in enumerate(parts):
         part = _mapping(raw_part, f"parts[{index}]")
@@ -101,12 +301,23 @@ def validate_passive_linkage_manifest(manifest: Mapping[str, Any]) -> None:
             raise ValueError(f"parts[{index}].finger must be one of 1..4")
         per_finger[finger] += 1
 
+        source_index = _integer(part.get("source_index"), f"parts[{index}].source_index")
+        if source_index in seen_source_indices:
+            raise ValueError(f"Duplicate source_index: {source_index}")
+        seen_source_indices.add(source_index)
+        actual_source_indices.append(source_index)
+
         source_prim = _string(part.get("source_prim"), f"parts[{index}].source_prim")
+        if any(fragment in source_prim for fragment in FORBIDDEN_SOURCE_NAME_FRAGMENTS):
+            raise ValueError(f"Forbidden shell visual source_prim: {source_prim}")
         if source_prim in seen_source_prims:
             raise ValueError(f"Duplicate source_prim: {source_prim}")
         seen_source_prims.add(source_prim)
+        actual_source_prims.append(source_prim)
+
         _string(part.get("instance_prim"), f"parts[{index}].instance_prim")
-        _finite_number(part.get("source_index"), f"parts[{index}].source_index")
+        _validate_visual_role(part, "mesh_role", index)
+        _validate_visual_role(part, "role", index)
 
         _validate_optional_transform(part, "source_usd_rest_transform", f"parts[{index}]")
         _validate_optional_transform(
@@ -122,6 +333,10 @@ def validate_passive_linkage_manifest(manifest: Mapping[str, Any]) -> None:
                 f"parts[{index}].transforms.{keyframe_name}",
             )
 
+    if tuple(actual_source_indices) != EXPECTED_STRUCTURAL_SOURCE_INDICES:
+        raise ValueError("source_index allowlist mismatch for structural passive visuals")
+    if tuple(actual_source_prims) != EXPECTED_STRUCTURAL_SOURCE_PRIMS:
+        raise ValueError("source_prim allowlist mismatch for structural passive visuals")
     if any(count != EXPECTED_PARTS_PER_FINGER for count in per_finger.values()):
         raise ValueError(f"Each finger must contain {EXPECTED_PARTS_PER_FINGER} parts: {per_finger}")
 
@@ -256,6 +471,17 @@ def _validate_transform(transform: Mapping[str, Any], label: str) -> None:
         raise ValueError(f"Non-normalized quaternion in {label}: norm={norm}")
 
 
+def _require_exact_field(manifest: Mapping[str, Any], key: str, expected: str) -> None:
+    if manifest.get(key) != expected:
+        raise ValueError(f"{key} must match the locked passive-linkage provenance")
+
+
+def _validate_visual_role(part: Mapping[str, Any], key: str, index: int) -> None:
+    role = _string(part.get(key), f"parts[{index}].{key}")
+    if role in FORBIDDEN_DECORATIVE_ROLES:
+        raise ValueError(f"Forbidden decorative role in parts[{index}].{key}: {role}")
+
+
 def _mapping(value: Any, label: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{label} must be an object")
@@ -271,6 +497,12 @@ def _sequence(value: Any, label: str) -> list[Any]:
 def _string(value: Any, label: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{label} must be a non-empty string")
+    return value
+
+
+def _integer(value: Any, label: str, *, noun: str = "source_index") -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{label} {noun} must be an integer")
     return value
 
 

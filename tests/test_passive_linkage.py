@@ -277,3 +277,93 @@ def test_manifest_validation_rejects_nonfinite_translation_and_bad_quaternion() 
     bad_quat["parts"][0]["transforms"]["open"]["orient_wxyz"] = [2.0, 0.0, 0.0, 0.0]
     with pytest.raises(ValueError, match="Non-normalized quaternion"):
         validate_passive_linkage_manifest(bad_quat)
+
+
+def test_manifest_validation_rejects_tampered_locked_provenance() -> None:
+    from copy import deepcopy
+
+    from isaacsim_validation.passive_linkage import validate_passive_linkage_manifest
+
+    manifest = load_manifest(MANIFEST)
+    for key in ("source_mjcf_sha256", "source_hand_zip_sha256", "source_package_zip_sha256"):
+        tampered = deepcopy(manifest)
+        tampered[key] = "0" * 64
+        with pytest.raises(ValueError, match=key):
+            validate_passive_linkage_manifest(tampered)
+
+
+def test_manifest_validation_rejects_tampered_shell_exclusion_contract() -> None:
+    from copy import deepcopy
+
+    from isaacsim_validation.passive_linkage import validate_passive_linkage_manifest
+
+    manifest = load_manifest(MANIFEST)
+    tampered = deepcopy(manifest)
+    tampered["excluded_shell_indices"] = [45, 51, 78, 85, 114, 115, 144]
+
+    with pytest.raises(ValueError, match="excluded_shell_indices"):
+        validate_passive_linkage_manifest(tampered)
+
+
+def test_manifest_validation_rejects_tampered_source_index_or_prim_allowlist() -> None:
+    from copy import deepcopy
+
+    from isaacsim_validation.passive_linkage import validate_passive_linkage_manifest
+
+    manifest = load_manifest(MANIFEST)
+
+    bad_index = deepcopy(manifest)
+    bad_index["parts"][0]["source_index"] = 999
+    with pytest.raises(ValueError, match="source_index allowlist"):
+        validate_passive_linkage_manifest(bad_index)
+
+    bad_prim = deepcopy(manifest)
+    bad_prim["parts"][0]["source_prim"] = "mjcf_026_custom_servo_horn_unapproved_visual_0"
+    with pytest.raises(ValueError, match="source_prim allowlist"):
+        validate_passive_linkage_manifest(bad_prim)
+
+
+def test_manifest_validation_rejects_shell_names_and_decorative_roles() -> None:
+    from copy import deepcopy
+
+    from isaacsim_validation.passive_linkage import validate_passive_linkage_manifest
+
+    manifest = load_manifest(MANIFEST)
+
+    shell_name = deepcopy(manifest)
+    shell_name["parts"][0]["source_prim"] = "mjcf_045_finger_proximal_shell"
+    with pytest.raises(ValueError, match="shell visual"):
+        validate_passive_linkage_manifest(shell_name)
+
+    decorative_mesh_role = deepcopy(manifest)
+    decorative_mesh_role["parts"][0]["mesh_role"] = "screw"
+    with pytest.raises(ValueError, match="decorative role"):
+        validate_passive_linkage_manifest(decorative_mesh_role)
+
+    decorative_role = deepcopy(manifest)
+    decorative_role["parts"][0]["role"] = "washer"
+    with pytest.raises(ValueError, match="decorative role"):
+        validate_passive_linkage_manifest(decorative_role)
+
+
+def test_manifest_validation_requires_unique_integer_source_indices() -> None:
+    from copy import deepcopy
+
+    from isaacsim_validation.passive_linkage import validate_passive_linkage_manifest
+
+    manifest = load_manifest(MANIFEST)
+
+    fractional = deepcopy(manifest)
+    fractional["parts"][0]["source_index"] = 26.5
+    with pytest.raises(ValueError, match="source_index must be an integer"):
+        validate_passive_linkage_manifest(fractional)
+
+    boolean = deepcopy(manifest)
+    boolean["parts"][0]["source_index"] = True
+    with pytest.raises(ValueError, match="source_index must be an integer"):
+        validate_passive_linkage_manifest(boolean)
+
+    duplicate = deepcopy(manifest)
+    duplicate["parts"][1]["source_index"] = duplicate["parts"][0]["source_index"]
+    with pytest.raises(ValueError, match="Duplicate source_index"):
+        validate_passive_linkage_manifest(duplicate)
