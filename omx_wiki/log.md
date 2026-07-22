@@ -240,3 +240,7 @@
 ## [2026-07-22T09:26:22.000Z] update
 - **Pages:** superarm-urdf-validation-in-isaac-sim-6-0.md
 - **Summary:** Recorded the runtime-neutral LeLab session/API, six-to-13 command boundary, independent watchdog, explicit Isaac capture capability, lifecycle tests, and remaining live Isaac acceptance gate.
+
+## [2026-07-22T09:39:26.000Z] update
+- **Pages:** superarm-urdf-validation-in-isaac-sim-6-0.md
+- **Summary:** Recorded the registered six-control superarm_isaac LeRobot backend, positive 13-joint visualization, commanded-grasp observation boundary, session ownership, and pending teleoperation/recording integration.

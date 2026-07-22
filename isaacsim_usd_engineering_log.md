@@ -581,3 +581,41 @@ Do not write `PASS` until the named evidence exists and has been inspected.
   the physical joint set only at the backend boundary, and give simulators with
   different rendering capabilities explicit APIs rather than pretending every
   backend is a video stream.
+
+### 20. The Isaac session existed but was not a registered six-control LeRobot robot
+
+- **Observed evidence:** LeLab could start and command an `isaac_sim` session,
+  but LeRobot knew only `superarm_mujoco`. Policy, dataset, and future ACT/VLA
+  code therefore had no registered Isaac robot configuration even though the
+  service already enforced the correct six-to-13 action boundary.
+- **Cause:** runtime integration and LeRobot device registration are separate
+  layers. Reusing the MuJoCo class would also have projected motor2 through the
+  wrong negative-coordinate visualization mapping.
+- **Repair:** `SuperArmIsaacRobotConfig` is registered as `superarm_isaac` with
+  managed/external bridge settings and the server-local distribution path.
+  `SuperArmIsaacRobot` exposes exactly the canonical five-arm-plus-one-grasp
+  action and observation features, sends actions through the service's atomic
+  logical route, returns the 13 measured Isaac joint positions unchanged for
+  visualization, rejects an active non-Isaac session, and disconnects only a
+  session it started. The sixth observation is explicitly last-commanded grasp
+  state until a measured-grasp classifier is separately validated. A matching
+  YAML config preserves the arm limits, SO-101 mapping, three fixed motions,
+  exact 13 physical names, and Isaac 6.0 defaults.
+- **Regression coverage:** fake-service tests lock six-wide NumPy actions,
+  13-target expansion, positive `finger1_motor2=1.10` at close, wrong-width
+  rejection, measured arm observations, commanded-grasp semantics, positive
+  13-joint visualization, session ownership, non-Isaac conflict, and YAML
+  parity. Existing MuJoCo and shared Isaac contract tests remain green.
+- **Verification:** the focused LeRobot Isaac, MuJoCo, and shared-contract suite
+  passes 19 tests; focused Ruff passes. An independent read-only test-engineer
+  reran the suite, reviewed registration, feature width, sign semantics,
+  ownership, conflict behavior, and YAML parity, then returned APPROVE with no
+  remaining Task 5 blocker.
+- **Result/commit:** this entry is included in the registered Isaac LeRobot
+  backend feature commit.
+- **Remaining boundary:** teleoperation, manual leader, recording, website
+  selection, and live Isaac motion/visual evidence are still pending. This
+  slice does not claim a measured sixth grasp observation.
+- **Reusable rule:** policy feature width belongs to the robot-learning
+  contract, while simulator joint count and coordinate signs belong to the
+  backend; never expose the 13 physical joints as a 13-wide ACT/VLA action.

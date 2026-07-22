@@ -2,7 +2,7 @@
 title: "SuperArm plus AmazingHand USD validation in Isaac Sim 6.0"
 tags: ["superarm", "isaac-sim", "usd", "amazinghand", "lerobot", "vla"]
 created: 2026-07-22T01:19:58.784Z
-updated: 2026-07-22T09:26:22.000Z
+updated: 2026-07-22T09:39:26.000Z
 sources: []
 links: ["superarm-real-hardware-motor-protocol-boundary.md"]
 category: debugging
@@ -184,3 +184,13 @@ host/fake-bridge proof; the live Isaac motion and visual acceptance gate is
 still open. On-demand capture is intentionally non-preemptible on the single
 serialized bridge connection, so emergency stop waits for an in-progress
 capture request to finish; continuous capture/video is not enabled for Isaac.
+
+`superarm_isaac` is now a registered LeRobot robot type rather than only a
+service mode. Its action and observation feature lists remain exactly six wide:
+five measured arm values plus one fixed grasp code. The runtime expands an
+action to the 13 named Isaac targets, while visualization returns all five arm
+and eight positive-coordinate hand positions unchanged. The sixth observation
+is last-commanded grasp state, not a claimed measured classifier. The robot
+attaches only to an existing Isaac session or starts/owns one itself, rejects an
+active MuJoCo session, and disconnects only what it owns. Teleoperation and
+recording selection are the next integration slice.

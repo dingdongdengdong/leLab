@@ -1,0 +1,55 @@
+_type: superarm_isaac
+
+joint_names:
+  - joint_rev_1
+  - joint_rev_2
+  - joint_rev_3
+  - joint_rev_4
+  - joint_rev_5
+  - amazinghand_motion
+
+physical_joint_names:
+  - joint_rev_1
+  - joint_rev_2
+  - joint_rev_3
+  - joint_rev_4
+  - joint_rev_5
+  - finger1_motor1
+  - finger1_motor2
+  - finger2_motor1
+  - finger2_motor2
+  - finger3_motor1
+  - finger3_motor2
+  - finger4_motor1
+  - finger4_motor2
+
+arm_limits:
+  joint_rev_1: {min: -1.57, max: 1.57, default: 0.0, step: 0.01}
+  joint_rev_2: {min: -1.57, max: 1.57, default: 0.0, step: 0.01}
+  joint_rev_3: {min: -1.57, max: 1.57, default: 0.0, step: 0.01}
+  joint_rev_4: {min: -1.57, max: 1.57, default: 0.0, step: 0.01}
+  joint_rev_5: {min: -1.57, max: 1.57, default: 0.0, step: 0.01}
+
+so101_leader_mapping:
+  - {source: shoulder_pan.pos, target: joint_rev_1.pos, sign: 1.0, offset_rad: 0.0}
+  - {source: shoulder_lift.pos, target: joint_rev_2.pos, sign: 1.0, offset_rad: 0.0}
+  - {source: elbow_flex.pos, target: joint_rev_3.pos, sign: 1.0, offset_rad: 0.0}
+  - {source: wrist_flex.pos, target: joint_rev_4.pos, sign: 1.0, offset_rad: 0.0}
+  - {source: wrist_roll.pos, target: joint_rev_5.pos, sign: 1.0, offset_rad: 0.0}
+so101_gripper_feature: gripper.pos
+
+hand_motions:
+  - {name: open, code: 0.0, degrees: 0.0}
+  - {name: half_close, code: 0.5, degrees: 55.0}
+  - {name: close, code: 1.0, degrees: 110.0}
+
+manual_leader:
+  kind: superarm_amazinghand
+  hand_control: fixed_motions
+
+isaac:
+  bridge_mode: managed
+  host: 127.0.0.1
+  port: 8765
+  image: nvcr.io/nvidia/isaac-sim:6.0.0
+  distribution_env: SUPERARM_ISAAC_DISTRIBUTION_ZIP
