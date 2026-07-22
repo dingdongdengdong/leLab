@@ -119,6 +119,8 @@ def test_runtime_wrapper_rejects_a_non_pass_report():
     assert 'report.get("status") != "PASS"' in wrapper
     assert "Isaac validation report is not PASS" in wrapper
     assert "render_physics_snapshots.py" in wrapper
+    assert 'numeric_container_name="${container_prefix}-numeric"' in wrapper
+    assert 'render_container_name="${container_prefix}-render"' in wrapper
 
 
 def test_numeric_runner_exports_each_measured_hand_state_before_visual_render():
