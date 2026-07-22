@@ -244,3 +244,7 @@
 ## [2026-07-22T09:39:26.000Z] update
 - **Pages:** superarm-urdf-validation-in-isaac-sim-6-0.md
 - **Summary:** Recorded the registered six-control superarm_isaac LeRobot backend, positive 13-joint visualization, commanded-grasp observation boundary, session ownership, and pending teleoperation/recording integration.
+
+## [2026-07-22T09:53:39.000Z] update
+- **Pages:** superarm-urdf-validation-in-isaac-sim-6-0.md
+- **Summary:** Recorded LeLab teleoperation, manual leader, recording, optional validated Isaac robot record, positive hand mapping, malformed-ZIP fail-closed behavior, independent approval, and the remaining website/live-Isaac gates.

@@ -20,6 +20,7 @@ from .service import service
 @dataclass(kw_only=True)
 class SuperArmIsaacRobotConfig(RobotConfig):
     distribution_zip: str
+    expected_sha256: str | None = None
     bridge_mode: Literal["managed", "external"] = "managed"
     bridge_host: str = "127.0.0.1"
     bridge_port: int = 8765
@@ -83,14 +84,16 @@ class SuperArmIsaacRobot(Robot):
             if self.runtime_service.mode != "isaac_sim":
                 raise RuntimeError("SuperArm is connected to a non-Isaac runtime")
         else:
-            self.runtime_service.start_session(
-                "isaac_sim",
-                isaac_distribution_zip=self.config.distribution_zip,
-                isaac_bridge_mode=self.config.bridge_mode,
-                isaac_host=self.config.bridge_host,
-                isaac_port=self.config.bridge_port,
-                isaac_external_run_dir=self.config.external_run_dir,
-            )
+            session_args = {
+                "isaac_distribution_zip": self.config.distribution_zip,
+                "isaac_bridge_mode": self.config.bridge_mode,
+                "isaac_host": self.config.bridge_host,
+                "isaac_port": self.config.bridge_port,
+                "isaac_external_run_dir": self.config.external_run_dir,
+            }
+            if self.config.expected_sha256 is not None:
+                session_args["isaac_expected_sha256"] = self.config.expected_sha256
+            self.runtime_service.start_session("isaac_sim", **session_args)
             self._owns_session = True
         for camera in self.cameras.values():
             camera.connect()

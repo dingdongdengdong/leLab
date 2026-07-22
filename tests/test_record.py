@@ -210,6 +210,73 @@ def test_create_record_config_wires_so101_leader_to_superarm_mapping() -> None:
     assert config.teleop.gripper_feature == "gripper.pos"
 
 
+def test_create_record_config_uses_six_control_isaac_robot() -> None:
+    import lelab.record as record
+
+    workspace = Path(__file__).resolve().parents[1]
+    config_path = workspace / "lelab/superarm/data/superarm_isaac.yaml"
+    request = record.RecordingRequest(
+        leader_port="unused",
+        follower_port="unused",
+        leader_config="manual",
+        follower_config=str(config_path),
+        superarm_config=str(config_path),
+        superarm_asset_root=str(workspace),
+        robot_backend="superarm_isaac",
+        input_mode="manual",
+        isaac_distribution_zip="/server/superarm.zip",
+        isaac_bridge_mode="managed",
+        isaac_host="127.0.0.1",
+        isaac_port=8765,
+        dataset_repo_id="local/superarm_isaac_test",
+        single_task="test Isaac fixed grasp",
+        video=False,
+    )
+
+    config = record.create_record_config(request)
+
+    from lerobot.robots import make_robot_from_config
+    from lerobot.utils.feature_utils import hw_to_dataset_features
+
+    assert config.robot.type == "superarm_isaac"
+    assert config.robot.distribution_zip == "/server/superarm.zip"
+    robot = make_robot_from_config(config.robot)
+    action_feature = hw_to_dataset_features(robot.action_features, "action", False)["action"]
+    observation_feature = hw_to_dataset_features(robot.observation_features, "observation", False)[
+        "observation.state"
+    ]
+    assert action_feature["shape"] == (6,)
+    assert observation_feature["shape"] == (6,)
+    assert config.teleop.type == "superarm_input"
+    assert config.teleop.source == "manual"
+
+
+def test_create_record_config_uses_server_isaac_distribution_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import lelab.record as record
+
+    workspace = Path(__file__).resolve().parents[1]
+    config_path = workspace / "lelab/superarm/data/superarm_isaac.yaml"
+    monkeypatch.setenv("SUPERARM_ISAAC_DISTRIBUTION_ZIP", "/server/default-superarm.zip")
+    request = record.RecordingRequest(
+        leader_port="unused",
+        follower_port="unused",
+        leader_config="manual",
+        follower_config=str(config_path),
+        superarm_config=str(config_path),
+        robot_backend="superarm_isaac",
+        input_mode="manual",
+        dataset_repo_id="local/superarm_isaac_default",
+        single_task="test server default distribution",
+        video=False,
+    )
+
+    config = record.create_record_config(request)
+
+    assert config.robot.distribution_zip == "/server/default-superarm.zip"
+
+
 def test_act_policy_constructs_with_superarm_six_dimensional_head_and_camera() -> None:
     from lerobot.configs.types import FeatureType, PolicyFeature
     from lerobot.policies.act.configuration_act import ACTConfig

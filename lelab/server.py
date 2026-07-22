@@ -72,6 +72,7 @@ from .rollout import (
     handle_stop_inference,
 )
 from .superarm.api import router as superarm_router
+from .superarm.backends import is_superarm_backend
 from .superarm.service import service as superarm_service
 from .superarm.showroom import (
     align_amazinghand_attachment,
@@ -1176,7 +1177,7 @@ def set_recording_action(body: JointActionRequest):
     if (
         not recording_module.recording_active
         or active_config is None
-        or active_config.robot_backend != "superarm_mujoco"
+        or not is_superarm_backend(active_config.robot_backend)
         or active_config.input_mode != "manual"
     ):
         return JSONResponse(
@@ -1278,17 +1279,17 @@ def _default_manual_leader_presets(joint_count: int) -> list[dict[str, Any]]:
 
 
 def _manual_leader_config_for_record(record: dict) -> tuple[int, dict[str, Any]]:
-    if (record.get("robot_backend") or "so101") != "superarm_mujoco":
+    if not is_superarm_backend(record.get("robot_backend")):
         return 400, {
             "status": "error",
-            "message": "Manual web leader is only available for the SuperArm MuJoCo robot.",
+            "message": "Manual web leader is only available for SuperArm simulation robots.",
         }
     try:
         return 200, build_manual_leader_config(record)
     except FileNotFoundError:
-        return 400, {"status": "error", "message": "SuperArm MuJoCo config file is missing."}
+        return 400, {"status": "error", "message": "SuperArm config file is missing."}
     except ValueError:
-        return 400, {"status": "error", "message": "SuperArm MuJoCo config is invalid."}
+        return 400, {"status": "error", "message": "SuperArm config is invalid."}
 
 
 @app.get("/robots")

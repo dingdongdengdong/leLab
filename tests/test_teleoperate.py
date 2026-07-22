@@ -278,3 +278,73 @@ def test_superarm_mujoco_backend_skips_so101_calibration(monkeypatch: pytest.Mon
     assert result["success"] is True
     assert captured == {"robot_backend": "superarm_mujoco", "mujoco_model_path": "/tmp/superarm.xml"}
     assert teleop.handle_stop_teleoperation()["success"] is True
+
+
+def test_superarm_isaac_backend_uses_custom_robot_and_skips_so101(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import numpy as np
+
+    import lelab.teleoperate as teleop
+
+    monkeypatch.setattr(teleop, "teleoperation_active", False)
+
+    class _Robot:
+        def connect(self) -> None:
+            pass
+
+        def disconnect(self) -> None:
+            pass
+
+        def get_visualization_joints(self) -> dict[str, float]:
+            return {
+                **{f"joint_rev_{index}": index / 10 for index in range(1, 6)},
+                **{
+                    f"finger{finger}_motor{motor}": 1.10 if motor == 2 else 0.95
+                    for finger in range(1, 5)
+                    for motor in range(1, 3)
+                },
+            }
+
+        def send_action(self, action):
+            return np.asarray(action, dtype=np.float32)
+
+    captured = {}
+
+    def fake_create(request):
+        captured.update(request.model_dump())
+        return _Robot()
+
+    monkeypatch.setattr(teleop, "_create_superarm_robot", fake_create)
+    monkeypatch.setattr(
+        teleop,
+        "setup_calibration_files",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("SO101 calibration must not run for superarm_isaac")
+        ),
+    )
+    request = teleop.TeleoperateRequest(
+        leader_port="unused",
+        follower_port="unused",
+        leader_config="unused",
+        follower_config="unused",
+        robot_backend="superarm_isaac",
+        superarm_config="/server/superarm_isaac.yaml",
+        isaac_distribution_zip="/server/superarm.zip",
+        isaac_bridge_mode="managed",
+        isaac_host="127.0.0.1",
+        isaac_port=8765,
+    )
+
+    result = teleop.handle_start_teleoperation(request)
+
+    assert result["success"] is True
+    assert result["robot_backend"] == "superarm_isaac"
+    assert captured["isaac_distribution_zip"] == "/server/superarm.zip"
+    action = [0.1, -0.1, 0.2, -0.2, 0.3, 1.0]
+    sent = teleop.handle_send_joint_action(teleop.JointActionRequest(action=action))
+    assert sent["success"] is True
+    assert sent["resolved_logical_action"] == pytest.approx(action)
+    assert len(sent["physical_targets"]) == 13
+    assert sent["physical_targets"]["finger1_motor2"] == pytest.approx(1.10)
+    assert teleop.handle_stop_teleoperation()["success"] is True

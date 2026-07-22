@@ -202,6 +202,74 @@ def test_list_robot_records_prioritizes_combined_superarm_when_assets_exist(
     assert cfg.get_robot_record("SuperArm + AmazingHand") == records[0]
     assert cfg.is_robot_record_clean(records[0]) is True
 
+
+def test_builtin_isaac_record_requires_a_valid_distribution(tmp_path, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from lelab.utils import config as cfg
+
+    archive = tmp_path / "superarm.zip"
+    archive.write_bytes(b"zip")
+    monkeypatch.setenv("SUPERARM_ISAAC_DISTRIBUTION_ZIP", str(archive))
+    validation_calls = []
+
+    def validate(*_args, **kwargs):
+        validation_calls.append(kwargs)
+        return SimpleNamespace(archive_sha256="a" * 64)
+
+    monkeypatch.setattr(cfg, "validate_and_extract_distribution", validate)
+
+    records = cfg.list_robot_records()
+    isaac = next(record for record in records if record["robot_backend"] == "superarm_isaac")
+
+    assert isaac["name"] == "SuperArm + AmazingHand (Isaac Sim)"
+    assert isaac["purpose"] == "diagnostic"
+    assert isaac["isaac_distribution_zip"] == str(archive)
+    assert isaac["isaac_bridge_mode"] == "managed"
+    assert isaac["isaac_host"] == "127.0.0.1"
+    assert isaac["isaac_port"] == 8765
+    assert cfg.is_robot_record_clean(isaac) is True
+    assert validation_calls[-1]["expected_sha256"] == "a" * 64
+
+    monkeypatch.setattr(
+        cfg,
+        "validate_and_extract_distribution",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad distribution")),
+    )
+    assert all(
+        record["robot_backend"] != "superarm_isaac" for record in cfg.list_robot_records()
+    )
+
+
+def test_malformed_isaac_distribution_is_omitted_without_breaking_robot_list(
+    tmp_path, monkeypatch
+) -> None:
+    from lelab.utils import config as cfg
+
+    archive = tmp_path / "malformed.zip"
+    archive.write_bytes(b"not-a-zip")
+    monkeypatch.setenv("SUPERARM_ISAAC_DISTRIBUTION_ZIP", str(archive))
+
+    records = cfg.list_robot_records()
+
+    assert all(record["robot_backend"] != "superarm_isaac" for record in records)
+    assert (
+        cfg.is_robot_record_clean(
+            {
+                "robot_backend": "superarm_isaac",
+                "superarm_config": str(
+                    Path(__file__).resolve().parents[1]
+                    / "lelab/superarm/data/superarm_isaac.yaml"
+                ),
+                "isaac_distribution_zip": str(archive),
+                "isaac_bridge_mode": "managed",
+                "isaac_host": "127.0.0.1",
+                "isaac_port": 8765,
+            }
+        )
+        is False
+    )
+
 def test_setup_calibration_files_copies_configs(
     tmp_lerobot_home: Path,
 ) -> None:

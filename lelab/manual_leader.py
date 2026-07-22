@@ -6,6 +6,8 @@ from typing import Any
 
 import yaml
 
+from isaacsim_validation.contracts import grasp_to_urdf_targets
+
 from .superarm.mapping import degrees_to_mujoco
 
 
@@ -86,14 +88,15 @@ def _manual_leader_kind(raw_config: dict, record: dict) -> str:
 
 
 def build_manual_leader_config(record: dict) -> dict[str, Any]:
+    robot_backend = record.get("robot_backend") or "superarm_mujoco"
     config_path = _resolve_robot_config_path(record)
     if config_path is None or not config_path.exists():
-        raise FileNotFoundError("SuperArm MuJoCo config file is missing.")
+        raise FileNotFoundError("SuperArm config file is missing.")
 
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     joint_names = raw.get("joint_names") or []
     if not isinstance(joint_names, list) or not all(isinstance(name, str) for name in joint_names):
-        raise ValueError("SuperArm MuJoCo config does not define joint_names.")
+        raise ValueError("SuperArm config does not define joint_names.")
 
     manual = raw.get("manual_leader") if isinstance(raw.get("manual_leader"), dict) else {}
     kind = _manual_leader_kind(raw, record)
@@ -128,10 +131,14 @@ def build_manual_leader_config(record: dict) -> dict[str, Any]:
             degrees = motion.get("degrees") if isinstance(motion, dict) else None
             if not isinstance(degrees, int | float):
                 raise ValueError("Each AmazingHand motion must define one fixed servo angle.")
-            targets = [
-                degrees_to_mujoco(1 if name.endswith("motor1") else 2, float(degrees))
-                for name in hand_joint_names
-            ]
+            if robot_backend == "superarm_isaac":
+                targets_by_name = grasp_to_urdf_targets(float(motion["code"]))
+                targets = [targets_by_name[name] for name in hand_joint_names]
+            else:
+                targets = [
+                    degrees_to_mujoco(1 if name.endswith("motor1") else 2, float(degrees))
+                    for name in hand_joint_names
+                ]
             hand_motions.append(
                 {
                     "name": str(motion["name"]),
@@ -172,15 +179,26 @@ def build_manual_leader_config(record: dict) -> dict[str, Any]:
         "follower_port": record.get("follower_port") or "unused",
         "leader_config": record.get("leader_config") or "unused",
         "follower_config": record.get("follower_config") or str(config_path),
-        "robot_backend": "superarm_mujoco",
+        "robot_backend": robot_backend,
         "superarm_config": str(config_path),
         "superarm_asset_root": record.get("superarm_asset_root") or _superarm_asset_root(),
         "mujoco_model_path": record.get("mujoco_model_path"),
     }
+    if robot_backend == "superarm_isaac":
+        start_request.update(
+            {
+                "isaac_distribution_zip": record.get("isaac_distribution_zip"),
+                "isaac_expected_sha256": record.get("isaac_expected_sha256"),
+                "isaac_bridge_mode": record.get("isaac_bridge_mode") or "managed",
+                "isaac_host": record.get("isaac_host") or "127.0.0.1",
+                "isaac_port": int(record.get("isaac_port") or 8765),
+                "isaac_external_run_dir": record.get("isaac_external_run_dir"),
+            }
+        )
     return {
         "status": "success",
         "robot_name": record["name"],
-        "robot_backend": "superarm_mujoco",
+        "robot_backend": robot_backend,
         "joint_names": joint_names,
         "physical_joint_names": physical_joint_names,
         "sliders": sliders,

@@ -16,7 +16,7 @@ import logging
 import math
 import threading
 import time
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -43,6 +43,7 @@ except ModuleNotFoundError:
             self.__dict__.update(kwargs)
 
 
+from .superarm.backends import is_superarm_backend
 from .utils.config import setup_calibration_files
 from .utils.devices import safe_disconnect_device
 
@@ -85,6 +86,12 @@ class TeleoperateRequest(BaseModel):
     superarm_config: str | None = None
     superarm_asset_root: str | None = None
     mujoco_model_path: str | None = None
+    isaac_distribution_zip: str | None = None
+    isaac_expected_sha256: str | None = None
+    isaac_bridge_mode: Literal["managed", "external"] = "managed"
+    isaac_host: str = "127.0.0.1"
+    isaac_port: int = 8765
+    isaac_external_run_dir: str | None = None
 
 
 class JointActionRequest(BaseModel):
@@ -202,6 +209,28 @@ def _create_superarm_mujoco_robot(request: TeleoperateRequest):
     )
 
 
+def _create_superarm_robot(request: TeleoperateRequest):
+    if request.robot_backend == "superarm_mujoco":
+        return _create_superarm_mujoco_robot(request)
+    if request.robot_backend == "superarm_isaac":
+        from .superarm.isaac_robot import SuperArmIsaacRobot, SuperArmIsaacRobotConfig
+
+        if not request.isaac_distribution_zip:
+            raise ValueError("SuperArm Isaac requires isaac_distribution_zip")
+        return SuperArmIsaacRobot(
+            SuperArmIsaacRobotConfig(
+                id="lelab_web",
+                distribution_zip=request.isaac_distribution_zip,
+                expected_sha256=request.isaac_expected_sha256,
+                bridge_mode=request.isaac_bridge_mode,
+                bridge_host=request.isaac_host,
+                bridge_port=request.isaac_port,
+                external_run_dir=request.isaac_external_run_dir,
+            )
+        )
+    raise ValueError(f"Unsupported SuperArm backend: {request.robot_backend}")
+
+
 def _handle_start_superarm_teleoperation(
     request: TeleoperateRequest, websocket_manager=None
 ) -> dict[str, Any]:
@@ -209,8 +238,10 @@ def _handle_start_superarm_teleoperation(
 
     robot = None
     try:
-        robot = _create_superarm_mujoco_robot(request)
-        logger.info("Connecting SuperArm MuJoCo backend...")
+        backend = request.robot_backend
+        backend_label = "Isaac Sim" if backend == "superarm_isaac" else "MuJoCo"
+        robot = _create_superarm_robot(request)
+        logger.info("Connecting SuperArm %s backend...", backend_label)
         robot.connect()
         current_robot = robot
         current_teleop = None
@@ -218,7 +249,7 @@ def _handle_start_superarm_teleoperation(
         def superarm_worker():
             global teleoperation_active, current_robot, current_teleop
 
-            logger.info("Starting SuperArm MuJoCo telemetry loop...")
+            logger.info("Starting SuperArm %s telemetry loop...", backend_label)
             try:
                 last_broadcast_time = 0.0
                 broadcast_interval = 0.05
@@ -230,7 +261,7 @@ def _handle_start_superarm_teleoperation(
                             "type": "joint_update",
                             "joints": joint_positions,
                             "timestamp": current_time,
-                            "robot_backend": "superarm_mujoco",
+                            "robot_backend": backend,
                         }
                         visual_pose = get_visual_pose_from_robot(robot)
                         if visual_pose is not None:
@@ -240,22 +271,24 @@ def _handle_start_superarm_teleoperation(
                         last_broadcast_time = current_time
                     time.sleep(0.01)
             except Exception as e:
-                logger.error(f"Error during SuperArm MuJoCo telemetry loop: {e}")
+                logger.error("Error during SuperArm %s telemetry loop: %s", backend_label, e)
             finally:
                 _safe_disconnect(robot)
-                logger.info("SuperArm MuJoCo teleoperation stopped")
+                logger.info("SuperArm %s teleoperation stopped", backend_label)
                 teleoperation_active = False
                 current_robot = None
                 current_teleop = None
 
         teleoperation_thread = threading.Thread(
-            target=superarm_worker, name="superarm-mujoco-teleoperation", daemon=True
+            target=superarm_worker,
+            name=f"{backend.replace('_', '-')}-teleoperation",
+            daemon=True,
         )
         teleoperation_thread.start()
         return {
             "success": True,
-            "message": "SuperArm MuJoCo backend connected successfully",
-            "robot_backend": "superarm_mujoco",
+            "message": f"SuperArm {backend_label} backend connected successfully",
+            "robot_backend": backend,
             "joint_positions": get_joint_positions_from_robot(robot),
         }
     except Exception as e:
@@ -263,8 +296,8 @@ def _handle_start_superarm_teleoperation(
         teleoperation_active = False
         current_robot = None
         current_teleop = None
-        logger.error(f"Failed to start SuperArm MuJoCo backend: {e}")
-        return {"success": False, "message": str(e), "robot_backend": "superarm_mujoco"}
+        logger.error("Failed to start SuperArm %s backend: %s", request.robot_backend, e)
+        return {"success": False, "message": str(e), "robot_backend": request.robot_backend}
 
 
 def _safe_disconnect(device) -> None:
@@ -319,7 +352,7 @@ def handle_start_teleoperation(request: TeleoperateRequest, websocket_manager=No
             return {"success": False, "message": busy_messages[0]}
         teleoperation_active = True
 
-    if request.robot_backend == "superarm_mujoco":
+    if is_superarm_backend(request.robot_backend):
         return _handle_start_superarm_teleoperation(request, websocket_manager)
     if request.robot_backend != "so101":
         teleoperation_active = False
@@ -511,7 +544,7 @@ def handle_get_joint_positions() -> dict[str, Any]:
 def handle_send_joint_action(request: JointActionRequest) -> dict[str, Any]:
     """Send one action to the active robot backend.
 
-    For `robot_backend=superarm_mujoco`, `action` is the canonical six-value
+    For either SuperArm simulation backend, `action` is the canonical six-value
     vector or a mapping keyed by the canonical LeRobot features.
     """
     global current_robot

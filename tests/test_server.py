@@ -118,6 +118,50 @@ def test_manual_leader_config_rejects_so101_records(client: TestClient, tmp_lero
     assert "manual web leader" in response.json()["message"].lower()
 
 
+def test_manual_leader_config_accepts_isaac_record(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lelab import server
+
+    config_path = Path(__file__).resolve().parents[1] / "lelab/superarm/data/superarm_isaac.yaml"
+    record = {
+        "name": "SuperArm + AmazingHand (Isaac Sim)",
+        "robot_backend": "superarm_isaac",
+        "superarm_config": str(config_path),
+        "follower_config": str(config_path),
+        "superarm_asset_root": str(config_path.parents[3]),
+        "isaac_distribution_zip": "/server/superarm.zip",
+        "isaac_bridge_mode": "managed",
+        "isaac_host": "127.0.0.1",
+        "isaac_port": 8765,
+    }
+    monkeypatch.setattr(server, "get_robot_record", lambda name: record if name == record["name"] else None)
+
+    response = client.get("/manual-leader-config/SuperArm%20%2B%20AmazingHand%20%28Isaac%20Sim%29")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["robot_backend"] == "superarm_isaac"
+    assert body["start_request"]["isaac_distribution_zip"] == "/server/superarm.zip"
+    close = next(motion for motion in body["hand_motions"] if motion["name"] == "close")
+    assert close["joint_targets"]["finger1_motor2"] == pytest.approx(1.10)
+
+
+def test_mujoco_visual_routes_reject_isaac_records(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lelab import server
+
+    record = {"name": "Isaac only", "robot_backend": "superarm_isaac"}
+    monkeypatch.setattr(server, "get_robot_record", lambda name: record if name == record["name"] else None)
+
+    manifest = client.get("/robots/Isaac%20only/mujoco-visual-manifest")
+    asset = client.get("/robots/Isaac%20only/mujoco-visual-assets/hand.stl")
+
+    assert manifest.status_code == 404
+    assert asset.status_code == 404
+
+
 def test_robot_showroom_serves_only_record_urdf_and_referenced_meshes(
     client: TestClient, tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -260,6 +304,33 @@ def test_recording_action_quantizes_manual_superarm_motion(
     monkeypatch.setattr(record, "recording_config", request)
 
     response = client.post("/recording-action", json={"action": [0.1, -0.2, 0.3, -0.4, 0.5, 0.77]})
+
+    assert response.status_code == 200
+    assert response.json()["resolved_logical_action"]["amazinghand_motion.pos"] == 1.0
+
+
+def test_recording_action_accepts_manual_isaac_backend(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lelab import record
+
+    request = record.RecordingRequest(
+        leader_port="unused",
+        follower_port="unused",
+        leader_config="manual",
+        follower_config="unused",
+        dataset_repo_id="local/test",
+        single_task="test",
+        robot_backend="superarm_isaac",
+        input_mode="manual",
+        isaac_distribution_zip="/server/superarm.zip",
+    )
+    monkeypatch.setattr(record, "recording_active", True)
+    monkeypatch.setattr(record, "recording_config", request)
+
+    response = client.post(
+        "/recording-action", json={"action": [0.1, -0.2, 0.3, -0.4, 0.5, 0.77]}
+    )
 
     assert response.status_code == 200
     assert response.json()["resolved_logical_action"]["amazinghand_motion.pos"] == 1.0

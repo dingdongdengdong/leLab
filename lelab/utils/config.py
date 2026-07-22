@@ -12,16 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ipaddress
 import json
 import logging
 import os
 import platform
 import shutil
 import time
+import zipfile
 from pathlib import Path
 from typing import Literal
 
 import yaml
+
+from lelab.superarm.isaac_distribution import validate_and_extract_distribution
 
 logger = logging.getLogger(__name__)
 
@@ -340,9 +344,16 @@ _ROBOT_STRING_FIELDS = (
     "mujoco_model_path",
     "urdf_path",
     "purpose",
+    "isaac_distribution_zip",
+    "isaac_expected_sha256",
+    "isaac_bridge_mode",
+    "isaac_host",
+    "isaac_external_run_dir",
 )
 _ROBOT_LIST_FIELDS = ("cameras", "physical_joint_names")
+_ROBOT_INT_FIELDS = ("isaac_port",)
 _BUILTIN_SUPERARM_COMBINED_NAME = "SuperArm + AmazingHand"
+_BUILTIN_SUPERARM_ISAAC_NAME = "SuperArm + AmazingHand (Isaac Sim)"
 
 
 def _superarm_asset_root() -> str:
@@ -399,6 +410,43 @@ def _builtin_superarm_combined_record() -> dict | None:
     }
 
 
+def _builtin_superarm_isaac_record() -> dict | None:
+    archive_value = os.environ.get("SUPERARM_ISAAC_DISTRIBUTION_ZIP")
+    if not archive_value:
+        return None
+    archive = Path(archive_value).expanduser()
+    if not archive.is_file():
+        return None
+    try:
+        distribution = validate_and_extract_distribution(archive)
+        config_path = Path(__file__).resolve().parents[1] / "superarm/data/superarm_isaac.yaml"
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except (OSError, ValueError, zipfile.BadZipFile, yaml.YAMLError):
+        return None
+    if raw.get("_type") != "superarm_isaac":
+        return None
+    return {
+        "name": _BUILTIN_SUPERARM_ISAAC_NAME,
+        "leader_port": "unused",
+        "follower_port": "unused",
+        "leader_config": "manual_or_so101",
+        "follower_config": str(config_path),
+        "robot_backend": "superarm_isaac",
+        "superarm_config": str(config_path),
+        "superarm_asset_root": _superarm_asset_root(),
+        "isaac_distribution_zip": str(archive),
+        "isaac_expected_sha256": distribution.archive_sha256,
+        "isaac_bridge_mode": "managed",
+        "isaac_host": "127.0.0.1",
+        "isaac_port": 8765,
+        "isaac_external_run_dir": "",
+        "urdf_path": os.environ.get("SUPERARM_URDF_PATH", ""),
+        "purpose": "diagnostic",
+        "cameras": [],
+        "physical_joint_names": list(raw.get("physical_joint_names") or []),
+    }
+
+
 def _robot_record_path(name: str) -> str:
     return os.path.join(ROBOTS_PATH, f"{name}.json")
 
@@ -419,6 +467,8 @@ def _empty_record(name: str) -> dict:
     record["robot_backend"] = "so101"
     for field in _ROBOT_LIST_FIELDS:
         record[field] = []
+    for field in _ROBOT_INT_FIELDS:
+        record[field] = 0
     return record
 
 
@@ -427,6 +477,9 @@ def get_robot_record(name: str) -> dict | None:
     builtin = _builtin_superarm_combined_record()
     if name == _BUILTIN_SUPERARM_COMBINED_NAME and builtin is not None:
         return builtin
+    isaac_builtin = _builtin_superarm_isaac_record()
+    if name == _BUILTIN_SUPERARM_ISAAC_NAME and isaac_builtin is not None:
+        return isaac_builtin
     path = _robot_record_path(name)
     if not os.path.exists(path):
         return None
@@ -449,6 +502,9 @@ def list_robot_records() -> list[dict]:
     builtin = _builtin_superarm_combined_record()
     if builtin is not None:
         records.append(builtin)
+    isaac_builtin = _builtin_superarm_isaac_record()
+    if isaac_builtin is not None:
+        records.append(isaac_builtin)
     if not os.path.exists(ROBOTS_PATH):
         return records
     for filename in sorted(os.listdir(ROBOTS_PATH)):
@@ -457,6 +513,7 @@ def list_robot_records() -> list[dict]:
         name = os.path.splitext(filename)[0]
         if name in (
             _BUILTIN_SUPERARM_COMBINED_NAME,
+            _BUILTIN_SUPERARM_ISAAC_NAME,
         ):
             continue
         record = get_robot_record(name)
@@ -491,6 +548,9 @@ def save_robot_record(name: str, data: dict, allow_create: bool = True) -> bool:
             record[field] = data[field]
     for field in _ROBOT_LIST_FIELDS:
         if field in data and isinstance(data[field], list):
+            record[field] = data[field]
+    for field in _ROBOT_INT_FIELDS:
+        if field in data and isinstance(data[field], int) and not isinstance(data[field], bool):
             record[field] = data[field]
     record["name"] = name
 
@@ -532,6 +592,35 @@ def is_robot_record_clean(record: dict) -> bool:
         config_path = _resolve_superarm_config_path(config_path, workspace)
         model_path = Path(record.get("mujoco_model_path") or "")
         return os.path.exists(config_path) and model_path.is_file()
+
+    if robot_backend == "superarm_isaac":
+        config_path = record.get("superarm_config") or record.get("follower_config")
+        if not isinstance(config_path, str) or not config_path.strip():
+            return False
+        workspace = record.get("superarm_asset_root") or _superarm_asset_root()
+        resolved_config = Path(_resolve_superarm_config_path(config_path, workspace))
+        try:
+            raw = yaml.safe_load(resolved_config.read_text(encoding="utf-8")) or {}
+            if raw.get("_type") != "superarm_isaac":
+                return False
+            validate_and_extract_distribution(
+                record.get("isaac_distribution_zip") or "",
+                expected_sha256=record.get("isaac_expected_sha256") or None,
+            )
+            host = str(record.get("isaac_host") or "127.0.0.1")
+            bridge_mode = record.get("isaac_bridge_mode") or "managed"
+            if bridge_mode not in {"managed", "external"}:
+                return False
+            if (
+                bridge_mode == "managed"
+                and host != "localhost"
+                and not ipaddress.ip_address(host).is_loopback
+            ):
+                return False
+            port = int(record.get("isaac_port") or 8765)
+            return 1 <= port <= 65535
+        except (OSError, ValueError, TypeError, zipfile.BadZipFile, yaml.YAMLError):
+            return False
 
     for field in ("leader_port", "follower_port", "leader_config", "follower_config"):
         value = record.get(field, "")

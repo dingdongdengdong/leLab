@@ -619,3 +619,46 @@ Do not write `PASS` until the named evidence exists and has been inspected.
 - **Reusable rule:** policy feature width belongs to the robot-learning
   contract, while simulator joint count and coordinate signs belong to the
   backend; never expose the 13 physical joints as a 13-wide ACT/VLA action.
+
+### 21. The registered Isaac robot was still unreachable from LeLab teleoperation and recording
+
+- **Observed evidence:** `superarm_isaac` existed at the LeRobot device layer,
+  but the website teleoperation, manual leader, recording config, recording
+  action, and saved-robot paths still selected only `superarm_mujoco`. An Isaac
+  request therefore fell into SO-101 calibration or was rejected, and the
+  manual hand panel still projected the hand through MuJoCo's coordinate signs.
+- **Cause:** backend selection was duplicated as exact MuJoCo string checks in
+  the web and recording layers, and robot records did not persist or validate
+  the server-local Isaac distribution and bridge settings.
+- **Repair:** a shared SuperArm backend predicate now routes both simulation
+  backends without changing SO-101 behavior. Teleoperation and recording
+  construct `SuperArmIsaacRobotConfig`, propagate the optional pinned SHA and
+  managed/external bridge settings, and preserve the canonical six-wide
+  dataset contract. The manual leader keeps five arm sliders plus one fixed
+  grasp code but expands Isaac hand presets directly to positive URDF targets.
+  An optional diagnostic Isaac robot record appears only when the configured
+  distribution validates; MuJoCo remains the first primary built-in. Isaac
+  cleanliness revalidates the pinned archive, YAML type, bridge mode, managed
+  loopback host, and port. A malformed ZIP is omitted instead of breaking robot
+  listing. Record-scoped MJCF visual routes remain MuJoCo-only.
+- **Regression coverage:** tests lock SO-101 calibration bypass, backend labels
+  and telemetry, six logical plus 13 physical targets, positive close values,
+  manual recording actions, LeRobot action/observation shape `(6,)`, request or
+  server-default distribution selection, pinned-SHA cleanliness, malformed-ZIP
+  omission, MuJoCo-first built-in ordering, and Isaac rejection by MJCF-only
+  routes.
+- **Verification:** the full Task 6 regression command passes 91 tests with only
+  the repository's existing deprecation warnings; focused Ruff, `py_compile`,
+  and `git diff --check` pass. An independent read-only test engineer first
+  rejected the uncaught real `BadZipFile`, then reproduced the repair with a
+  malformed file and returned APPROVE after 87 focused tests and Ruff passed.
+- **Result/commit:** this entry is included in the LeLab Isaac teleoperation and
+  recording feature commit.
+- **Remaining boundary:** the website still needs an explicit Isaac selector and
+  capture UI. This slice is host/fake-runtime proof and does not claim live
+  Isaac Sim motion, screenshots, GIF evidence, a real recorded episode, or a
+  trained ACT/VLA policy.
+- **Reusable rule:** select related backends through one shared predicate, but
+  keep coordinate conversion, asset capability, and visual-route ownership
+  backend-specific; optional diagnostics must fail closed without taking down
+  the primary robot list.

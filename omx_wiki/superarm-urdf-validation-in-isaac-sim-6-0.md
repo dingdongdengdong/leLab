@@ -194,3 +194,24 @@ is last-commanded grasp state, not a claimed measured classifier. The robot
 attaches only to an existing Isaac session or starts/owns one itself, rejects an
 active MuJoCo session, and disconnects only what it owns. Teleoperation and
 recording selection are the next integration slice.
+
+LeLab teleoperation, the manual web leader, recording configuration, manual
+recording actions, and robot records now recognize both `superarm_mujoco` and
+`superarm_isaac` through one shared backend predicate. Isaac requests bypass
+SO-101 follower calibration, carry the server-local distribution path, optional
+pinned SHA, bridge ownership mode, host, port, and shared external run
+directory, and still expose exactly five arm actions plus one fixed grasp
+action to LeRobot datasets and future ACT/VLA policies. The manual hand motions
+expand to positive Isaac/URDF joint targets; they do not reuse MuJoCo's negative
+motor2 projection.
+
+The existing `SuperArm + AmazingHand` MuJoCo record remains the first primary
+built-in. `SuperArm + AmazingHand (Isaac Sim)` is an optional diagnostic record
+and is listed only when `SUPERARM_ISAAC_DISTRIBUTION_ZIP` points to a validated
+archive. Cleanliness revalidates the recorded SHA, Isaac YAML type, bridge mode,
+managed loopback host, and port. Invalid and malformed ZIPs fail closed by
+omitting the diagnostic record without breaking `/robots`. MJCF visual manifest
+and asset routes remain MuJoCo-only. Independent verification rejected and then
+confirmed the malformed-ZIP repair; the final Task 6 suite passed 91 tests plus
+Ruff and bytecode compilation. Website selection/capture and live Isaac motion,
+screenshots, and GIF evidence remain open gates.

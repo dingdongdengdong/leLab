@@ -13,13 +13,14 @@
 # limitations under the License.
 
 import logging
+import os
 import re
 import shutil
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -44,6 +45,7 @@ except ModuleNotFoundError:
     RecordConfig = _MissingLeRobot
     SO101LeaderConfig = _MissingLeRobot
 
+from .superarm.backends import is_superarm_backend
 from .utils.config import setup_calibration_files, with_lelab_tag
 from .utils.devices import safe_disconnect_device
 
@@ -92,6 +94,12 @@ class RecordingRequest(BaseModel):
     superarm_asset_root: str | None = None
     mujoco_model_path: str | None = None
     input_mode: str = "so101"
+    isaac_distribution_zip: str | None = None
+    isaac_expected_sha256: str | None = None
+    isaac_bridge_mode: Literal["managed", "external"] = "managed"
+    isaac_host: str = "127.0.0.1"
+    isaac_port: int = 8765
+    isaac_external_run_dir: str | None = None
 
 
 class UploadRequest(BaseModel):
@@ -165,7 +173,7 @@ def _build_camera_configs(cameras: dict, default_backend) -> dict:
 
 def create_record_config(request: RecordingRequest) -> RecordConfig:
     """Create a RecordConfig from the recording request"""
-    if request.robot_backend == "superarm_mujoco":
+    if is_superarm_backend(request.robot_backend):
         return _create_superarm_record_config(request)
 
     # Setup calibration files
@@ -221,7 +229,6 @@ def create_record_config(request: RecordingRequest) -> RecordConfig:
 
 
 def _create_superarm_record_config(request: RecordingRequest) -> RecordConfig:
-    from .superarm.robot import SuperArmMujocoRobotConfig
     from .superarm_teleoperator import SuperArmTeleoperatorConfig
 
     asset_root = Path(request.superarm_asset_root or Path.cwd())
@@ -231,11 +238,33 @@ def _create_superarm_record_config(request: RecordingRequest) -> RecordConfig:
     import yaml
 
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    robot_config = SuperArmMujocoRobotConfig(
-        id="lelab_recording",
-        model_path=request.mujoco_model_path,
-        cameras=_build_camera_configs(request.cameras, _platform_backend()),
-    )
+    cameras = _build_camera_configs(request.cameras, _platform_backend())
+    if request.robot_backend == "superarm_isaac":
+        from .superarm.isaac_robot import SuperArmIsaacRobotConfig
+
+        distribution_zip = request.isaac_distribution_zip or os.environ.get(
+            "SUPERARM_ISAAC_DISTRIBUTION_ZIP"
+        )
+        if not distribution_zip:
+            raise ValueError("SuperArm Isaac recording requires isaac_distribution_zip")
+        robot_config = SuperArmIsaacRobotConfig(
+            id="lelab_recording",
+            distribution_zip=distribution_zip,
+            expected_sha256=request.isaac_expected_sha256,
+            bridge_mode=request.isaac_bridge_mode,
+            bridge_host=request.isaac_host,
+            bridge_port=request.isaac_port,
+            external_run_dir=request.isaac_external_run_dir,
+            cameras=cameras,
+        )
+    else:
+        from .superarm.robot import SuperArmMujocoRobotConfig
+
+        robot_config = SuperArmMujocoRobotConfig(
+            id="lelab_recording",
+            model_path=request.mujoco_model_path,
+            cameras=cameras,
+        )
     teleop_config = SuperArmTeleoperatorConfig(
         id=f"superarm_{request.input_mode}",
         source=request.input_mode,
