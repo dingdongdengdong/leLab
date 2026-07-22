@@ -13,7 +13,10 @@ case "$report" in "$project_root"/*) ;; *) echo "report must be inside $project_
 usd_container="/workspace/project/${usd#"$project_root"/}"
 report_container="/workspace/project/${report#"$project_root"/}"
 mkdir -p "$(dirname "$report")"
+chmod 0777 "$(dirname "$report")"
+rm -f "$report"
 
+set +e
 docker run --rm --gpus all --network host \
   --entrypoint /bin/bash \
   -e ACCEPT_EULA=Y \
@@ -26,3 +29,20 @@ docker run --rm --gpus all --network host \
   nvcr.io/nvidia/isaac-sim:6.0.0 \
   -lc "/isaac-sim/python.sh /workspace/project/isaacsim_validation/validate_usd_asset.py \
     --usd '$usd_container' --output '$report_container'"
+container_status=$?
+set -e
+
+if [[ ! -s "$report" ]]; then
+  echo "Isaac Asset Validator did not write a report" >&2
+  exit 2
+fi
+if [[ "$container_status" -ne 0 ]]; then
+  exit "$container_status"
+fi
+python3 - "$report" <<'PY'
+import json
+import sys
+
+report = json.load(open(sys.argv[1], encoding="utf-8"))
+raise SystemExit(0 if report["verdict"]["passed"] else 2)
+PY
