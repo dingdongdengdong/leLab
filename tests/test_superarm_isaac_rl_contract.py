@@ -174,3 +174,32 @@ def test_generated_config_decodes_as_upstream_lerobot_hilserl(tmp_path):
     assert decoded.policy.online_step_before_learning == 100
     assert decoded.policy.actor_learner_config.learner_port == 50051
     assert decoded.env.task == "SuperArmIsaacPickLift-v0"
+
+
+def test_rl_readiness_requires_verified_isaac_image_and_x11_display(tmp_path, monkeypatch):
+    from lelab.rl import readiness
+
+    distribution = tmp_path / "robot.zip"
+    distribution.write_bytes(b"distribution")
+    monkeypatch.setattr(readiness, "DEFAULT_DISTRIBUTION_SHA256", "unused")
+    monkeypatch.setattr(readiness.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(readiness.importlib.util, "find_spec", lambda _name: object())
+    inspected = []
+
+    def fake_run(command, **_kwargs):
+        inspected.append(command)
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(readiness.subprocess, "run", fake_run)
+    monkeypatch.setattr(readiness, "_display_socket_available", lambda display: display == ":100")
+
+    result = readiness.check_rl_readiness(
+        str(distribution),
+        learner_port=50051,
+        bridge_port=8765,
+        display=":100",
+    )
+
+    assert inspected == [["docker", "image", "inspect", "nvcr.io/nvidia/isaac-sim:6.0.1"]]
+    assert result["checks"]["isaac_sim_6_0_1_image"] is True
+    assert result["checks"]["rl_x11_display"] is True

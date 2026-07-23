@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 --asset-root DIR --entrypoint FILE --run-dir DIR --host 127.0.0.1 --port PORT --token-file FILE" >&2
+  echo "usage: $0 --asset-root DIR --entrypoint FILE --run-dir DIR --host 127.0.0.1 --port PORT --token-file FILE [--image IMAGE] [--rl-display :N] [--no-webrtc]" >&2
   exit 2
 }
 
@@ -13,6 +13,8 @@ host="127.0.0.1"
 port="8765"
 token_file=""
 enable_webrtc="1"
+image=${ISAAC_SIM_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.0}
+rl_display=""
 while (($#)); do
   case "$1" in
     --asset-root) asset_root=${2:-}; shift 2 ;;
@@ -21,14 +23,31 @@ while (($#)); do
     --host) host=${2:-}; shift 2 ;;
     --port) port=${2:-}; shift 2 ;;
     --token-file) token_file=${2:-}; shift 2 ;;
+    --image) image=${2:-}; shift 2 ;;
+    --rl-display) rl_display=${2:-}; shift 2 ;;
     --no-webrtc) enable_webrtc="0"; shift ;;
     *) usage ;;
   esac
 done
 
 [[ -n "$asset_root" && -n "$entrypoint" && -n "$run_dir" && -n "$token_file" ]] || usage
+[[ -n "$image" ]] || usage
 [[ "$host" == "127.0.0.1" ]] || { echo "managed bridge binds only 127.0.0.1" >&2; exit 2; }
 [[ "$port" =~ ^[0-9]+$ ]] && ((port >= 1 && port <= 65535)) || { echo "invalid port" >&2; exit 2; }
+if [[ -n "$rl_display" ]]; then
+  [[ "$enable_webrtc" == "0" ]] || { echo "RL RGB rendering cannot share a WebRTC process" >&2; exit 2; }
+  [[ "$image" == "nvcr.io/nvidia/isaac-sim:6.0.1" ]] || {
+    echo "RL RGB rendering requires nvcr.io/nvidia/isaac-sim:6.0.1" >&2
+    exit 2
+  }
+  [[ "$rl_display" =~ ^:[0-9]+(\.[0-9]+)?$ ]] || { echo "invalid RL X11 display" >&2; exit 2; }
+  display_number=${rl_display#:}
+  display_number=${display_number%%.*}
+  [[ -S "/tmp/.X11-unix/X$display_number" ]] || {
+    echo "RL X11 display socket not found: /tmp/.X11-unix/X$display_number" >&2
+    exit 2
+  }
+fi
 
 asset_root=$(realpath "$asset_root")
 entrypoint=$(realpath "$entrypoint")
@@ -63,7 +82,6 @@ if paths_overlap "$run_dir" "$asset_root" || paths_overlap "$run_dir" "$module_r
   exit 2
 fi
 
-image=${ISAAC_SIM_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.0}
 webrtc_signal_port=${ISAACSIM_SIGNAL_PORT:-49100}
 webrtc_stream_port=${ISAACSIM_STREAM_PORT:-47998}
 webrtc_public_ip=${ISAACSIM_HOST:-}
@@ -113,31 +131,72 @@ path.write_text(json.dumps({
 }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
 
-# The bridge token is a host-owned 0600 file.  Isaac Sim's image user (1234)
-# cannot read that bind mount, while the image entrypoint also cannot run as
-# the host user, so use root only inside this isolated control container. Keep
-# the host group so completed capture files remain readable by the LeLab host.
 container_gid=$(id -g)
-docker run --name "$container_name" --gpus all --network host --user "0:$container_gid" \
-  --entrypoint /isaac-sim/python.sh \
-  -e ACCEPT_EULA=Y \
-  -e NVIDIA_VISIBLE_DEVICES=all \
-  -e NVIDIA_DRIVER_CAPABILITIES=all \
-  -e PYTHONUNBUFFERED=1 \
-  -e PYTHONPATH=/workspace/isaacsim_validation \
-  -v "$module_root:/workspace/isaacsim_validation/isaacsim_validation:ro" \
-  -v "$asset_root:/workspace/asset:ro" \
-  -v "$run_dir:/workspace/run:rw" \
-  -v "$token_file:/run/secrets/isaac_bridge_token:ro" \
-  -v isaac_sim_60_cache:/root/.cache/ov \
-  -v isaac_nucleus_60_cache:/root/.local/share/ov/data \
-  "$image" -m isaacsim_validation.control_bridge \
+docker_args=(
+  --name "$container_name"
+  --gpus all
+  --network host
+  --entrypoint /isaac-sim/python.sh
+  -e ACCEPT_EULA=Y
+  -e NVIDIA_VISIBLE_DEVICES=all
+  -e NVIDIA_DRIVER_CAPABILITIES=all
+  -e PYTHONUNBUFFERED=1
+  -e PYTHONDONTWRITEBYTECODE=1
+  -e PYTHONPATH=/workspace/isaacsim_validation
+  -v "$module_root:/workspace/isaacsim_validation/isaacsim_validation:ro"
+  -v "$asset_root:/workspace/asset:ro"
+  -v "$run_dir:/workspace/run:rw"
+  -v "$token_file:/run/secrets/isaac_bridge_token:ro"
+)
+bridge_args=()
+if [[ -n "$rl_display" ]]; then
+  cache_root=${ISAAC_SIM_RL_CACHE_ROOT:-"$HOME/.cache/lelab/isaac_sim/6.0.1"}
+  cache_dirs=(omni-user omni-cache kit ov glcache compute)
+  for cache_dir in "${cache_dirs[@]}"; do
+    mkdir -p "$cache_root/$cache_dir"
+    chmod 0777 "$cache_root/$cache_dir"
+  done
+  docker_args+=(
+    --user "1234:$container_gid"
+    -e ISAAC_SIM_DISPLAY=1
+    -e "DISPLAY=$rl_display"
+    -e QT_X11_NO_MITSHM=1
+    -e OMNI_USER_DIR=/tmp/omni-user
+    -e OMNI_CACHE_DIR=/tmp/omni-cache
+    -v /tmp/.X11-unix:/tmp/.X11-unix:rw
+    -v "$cache_root/omni-user:/tmp/omni-user"
+    -v "$cache_root/omni-cache:/tmp/omni-cache"
+    -v "$cache_root/kit:/isaac-sim/kit/cache"
+    -v "$cache_root/ov:/root/.cache/ov"
+    -v "$cache_root/glcache:/root/.cache/nvidia/GLCache"
+    -v "$cache_root/compute:/root/.nv/ComputeCache"
+  )
+  if [[ -n "${ISAAC_SIM_XAUTHORITY:-${XAUTHORITY:-}}" ]]; then
+    xauthority=${ISAAC_SIM_XAUTHORITY:-${XAUTHORITY:-}}
+    docker_args+=(
+      -e XAUTHORITY=/tmp/isaac-xauthority
+      -v "$xauthority:/tmp/isaac-xauthority:ro"
+    )
+  fi
+  bridge_args+=(--replicator-rgb)
+else
+  # The teleoperation token remains host-owned 0600, so retain the existing
+  # isolated root bridge path for compatibility with the validated 6.0.0 flow.
+  docker_args+=(
+    --user "0:$container_gid"
+    -v isaac_sim_60_cache:/root/.cache/ov
+    -v isaac_nucleus_60_cache:/root/.local/share/ov/data
+  )
+fi
+
+docker run "${docker_args[@]}" "$image" -m isaacsim_validation.control_bridge \
   --asset-root /workspace/asset \
   --entrypoint "/workspace/asset/$entrypoint_relative" \
   --run-dir /workspace/run \
   --host "$host" --port "$port" \
   --token-file /run/secrets/isaac_bridge_token \
   "${webrtc_args[@]}" \
+  "${bridge_args[@]}" \
   >"$run_dir/container.log" 2>&1 &
 docker_pid=$!
 wait "$docker_pid"

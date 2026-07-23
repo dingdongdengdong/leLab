@@ -52,6 +52,8 @@ class IsaacSimRuntime:
         external_run_dir: str | Path | None = None,
         startup_timeout_s: float = 180.0,
         enable_webrtc: bool = True,
+        image: str | None = None,
+        rl_display: str | None = None,
         state_callback: Callable[[dict[str, Any]], None] | None = None,
         process_factory: Callable[..., subprocess.Popen] = subprocess.Popen,
         client_factory: Callable[..., IsaacBridgeClient] = IsaacBridgeClient,
@@ -75,6 +77,10 @@ class IsaacSimRuntime:
         )
         self.startup_timeout_s = float(startup_timeout_s)
         self.enable_webrtc = bool(enable_webrtc)
+        self.image = image
+        self.rl_display = rl_display
+        if self.rl_display and self.enable_webrtc:
+            raise ValueError("RL RGB rendering and WebRTC cannot share one Isaac process")
         self.state_callback = state_callback
         self._process_factory = process_factory
         self._client_factory = client_factory
@@ -142,11 +148,12 @@ class IsaacSimRuntime:
                 / uuid.uuid4().hex
             )
         self._session_root = self._session_root.resolve()
-        self._session_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(self._session_root, 0o700)
+        session_mode = 0o770 if self.rl_display else 0o700
+        self._session_root.mkdir(mode=session_mode, parents=True, exist_ok=True)
+        os.chmod(self._session_root, session_mode)
         self.run_dir = self._session_root / "run"
-        self.run_dir.mkdir(mode=0o700, exist_ok=True)
-        os.chmod(self.run_dir, 0o700)
+        self.run_dir.mkdir(mode=session_mode, exist_ok=True)
+        os.chmod(self.run_dir, session_mode)
         if self.bridge_mode == "external" and self._external_run_dir is not None:
             artifact_root = self._external_run_dir.resolve()
             if not artifact_root.is_dir():
@@ -162,7 +169,7 @@ class IsaacSimRuntime:
             raise RuntimeError("Isaac distribution/session was not prepared")
         self._token_path = self._session_root / "bridge-token"
         self._token_path.write_text(token + "\n", encoding="utf-8")
-        os.chmod(self._token_path, 0o600)
+        os.chmod(self._token_path, 0o640 if self.rl_display else 0o600)
         launcher = Path(isaacsim_validation.__file__).parent / "run_isaacsim60_control_bridge.sh"
         if not launcher.is_file():
             raise RuntimeError(f"Isaac control launcher is missing: {launcher}")
@@ -183,6 +190,10 @@ class IsaacSimRuntime:
         ]
         if not self.enable_webrtc:
             command.append("--no-webrtc")
+        if self.image:
+            command.extend(["--image", self.image])
+        if self.rl_display:
+            command.extend(["--rl-display", self.rl_display])
         self._log_handle = (self.run_dir / "launcher.log").open("ab", buffering=0)
         self._process = self._process_factory(
             command,

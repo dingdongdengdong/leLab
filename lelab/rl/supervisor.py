@@ -16,6 +16,7 @@ from pathlib import Path
 from lelab.superarm.isaac_runtime import IsaacSimRuntime
 
 from .config import ReinforcementLearningRequest
+from .readiness import DEFAULT_RL_DISPLAY, DEFAULT_RL_IMAGE
 from .runtime_config import write_lerobot_config
 
 
@@ -46,6 +47,8 @@ def run(request: ReinforcementLearningRequest, output_dir: Path) -> int:
         expected_sha256=request.distribution_sha256,
         session_root=output_dir / "isaac",
         enable_webrtc=False,
+        image=os.environ.get("ISAAC_SIM_RL_IMAGE", DEFAULT_RL_IMAGE),
+        rl_display=os.environ.get("ISAAC_SIM_RL_DISPLAY", DEFAULT_RL_DISPLAY),
     )
     children: list[subprocess.Popen] = []
     try:

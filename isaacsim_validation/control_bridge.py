@@ -58,6 +58,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", default=8765, type=int)
     parser.add_argument("--token-file", required=True, type=Path)
     parser.add_argument("--webrtc", action="store_true")
+    parser.add_argument("--replicator-rgb", action="store_true")
     parser.add_argument("--webrtc-signal-port", default=49100, type=int)
     parser.add_argument("--webrtc-stream-port", default=47998, type=int)
     parser.add_argument("--webrtc-public-ip", default="")
@@ -81,6 +82,8 @@ def _validate_args(args: argparse.Namespace) -> argparse.Namespace:
         raise ValueError("WebRTC signaling port must be between 1 and 65535")
     if not 1 <= args.webrtc_stream_port <= 65535:
         raise ValueError("WebRTC media port must be between 1 and 65535")
+    if args.webrtc and args.replicator_rgb:
+        raise ValueError("WebRTC and RL Replicator RGB require separate Isaac processes")
     args.asset_root = args.asset_root.resolve(strict=True)
     if not args.asset_root.is_dir():
         raise ValueError("asset root must be a directory")
@@ -209,17 +212,13 @@ def serve(runtime: BridgeRuntime, *, host: str, port: int, token: str) -> None:
                     request_id = "invalid"
                     try:
                         if remainder:
-                            raise ProtocolError(
-                                "invalid_request", "hello must be the only handshake frame"
-                            )
+                            raise ProtocolError("invalid_request", "hello must be the only handshake frame")
                         decoded = decode_frame(raw + b"\n")
                         if isinstance(decoded.get("request_id"), str) and decoded["request_id"]:
                             request_id = decoded["request_id"][:128]
                         request = validate_request(decoded, expected_token=token)
                         if request["op"] != "hello":
-                            raise ProtocolError(
-                                "invalid_request", "first bridge operation must be hello"
-                            )
+                            raise ProtocolError("invalid_request", "first bridge operation must be hello")
                         payload, _ = dispatch_request(runtime, request)
                         _send(pending, success_response(request["request_id"], **payload))
                     except ProtocolError as exc:
@@ -317,6 +316,14 @@ def require_unique_articulation_root(candidates: Sequence[Any]) -> Any:
 def simulation_app_launch(args: argparse.Namespace) -> tuple[dict[str, Any], str]:
     """Build the Isaac launch contract without importing Isaac on the host."""
 
+    if getattr(args, "replicator_rgb", False):
+        return {
+            "headless": False,
+            "renderer": "RayTracedLighting",
+            "enable_cameras": True,
+            "extra_args": ["--/exts/isaacsim.core.throttling/enable_async=false"],
+        }, ""
+
     config: dict[str, Any] = {
         "headless": True,
         "renderer": "RaytracedLighting",
@@ -362,7 +369,12 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
     from isaacsim.core.api.objects import DynamicCuboid, FixedCuboid
     from isaacsim.core.experimental.prims import Articulation
     from isaacsim.core.rendering_manager import ViewportManager
+    from isaacsim.core.simulation_manager import SimulationManager
     from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics
+
+    rep = None
+    if args.replicator_rgb:
+        import omni.replicator.core as rep
 
     def flat(values: Any) -> list[float]:
         if hasattr(values, "numpy"):
@@ -436,11 +448,15 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 ViewportManager.set_camera(self.webrtc_camera)
                 viewport = get_active_viewport()
                 viewport_stage = viewport.stage if viewport is not None else None
-                bounds = UsdGeom.BBoxCache(
-                    Usd.TimeCode.Default(),
-                    [UsdGeom.Tokens.default_, UsdGeom.Tokens.render],
-                    useExtentsHint=False,
-                ).ComputeWorldBound(self.root).ComputeAlignedRange()
+                bounds = (
+                    UsdGeom.BBoxCache(
+                        Usd.TimeCode.Default(),
+                        [UsdGeom.Tokens.default_, UsdGeom.Tokens.render],
+                        useExtentsHint=False,
+                    )
+                    .ComputeWorldBound(self.root)
+                    .ComputeAlignedRange()
+                )
                 camera_transform = camera_xform.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
                 self.viewport_metadata = {
                     "camera_path": str(viewport.camera_path) if viewport is not None else None,
@@ -471,9 +487,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                     f"count={self.art.num_dofs}, missing={sorted(expected - actual)}, "
                     f"extra={sorted(actual - expected)}"
                 )
-            self.indices = {
-                name: int(self.art.dof_names.index(name)) for name in PHYSICAL_JOINTS
-            }
+            self.indices = {name: int(self.art.dof_names.index(name)) for name in PHYSICAL_JOINTS}
             positions = flat(self.art.get_dof_positions())
             self.targets = {name: positions[self.indices[name]] for name in PHYSICAL_JOINTS}
             self.physics_step = 2
@@ -509,8 +523,8 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             camera_xform.AddTransformOp().Set(
                 Gf.Matrix4d()
                 .SetLookAt(
-                    Gf.Vec3d(0.78, -0.42, 0.72),
-                    Gf.Vec3d(0.10, 0.30, 0.18),
+                    Gf.Vec3d(0.95, -0.65, 0.90),
+                    Gf.Vec3d(0.04, 0.30, 0.32),
                     Gf.Vec3d(0.0, 0.0, 1.0),
                 )
                 .GetInverse()
@@ -541,13 +555,34 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 self.rl_contact_proxy_paths.append(str(proxy_path))
 
         def _initialize_rl_runtime(self) -> None:
-            from isaacsim.sensors.camera import Camera
+            self._workspace_camera = None
+            self._workspace_render_product = None
+            self._workspace_rgb = None
+            if args.replicator_rgb:
+                timeline_was_playing = self.timeline.is_playing()
+                if timeline_was_playing:
+                    self.timeline.stop()
+                print(json.dumps({"event": "rl_replicator_configuring"}), flush=True)
+                rep.orchestrator.set_capture_on_play(False)
+                print(json.dumps({"event": "rl_render_product_creating"}), flush=True)
+                self._workspace_render_product = rep.create.render_product(
+                    self.workspace_camera_path,
+                    (256, 256),
+                )
+                print(json.dumps({"event": "rl_render_product_created"}), flush=True)
+                self._workspace_rgb = rep.AnnotatorRegistry.get_annotator("rgb")
+                self._workspace_rgb.attach(self._workspace_render_product)
+                print(json.dumps({"event": "rl_rgb_annotator_attached"}), flush=True)
+                if timeline_was_playing:
+                    self.timeline.play()
+            else:
+                from isaacsim.sensors.camera import Camera
 
-            self._workspace_camera = Camera(
-                prim_path=self.workspace_camera_path,
-                resolution=(256, 256),
-            )
-            self._workspace_camera.initialize()
+                self._workspace_camera = Camera(
+                    prim_path=self.workspace_camera_path,
+                    resolution=(256, 256),
+                )
+                self._workspace_camera.initialize()
             self._frame_path = args.run_dir / RL_FRAME_NAME
             self._frame_sequence = 0
             self._rl_step_count = 0
@@ -570,14 +605,61 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 raise RuntimeError("RL overlay could not resolve an end-effector rigid body")
 
         def _capture_rl_frame(self) -> dict[str, Any]:
-            frame = None
-            for _ in range(12):
-                self.world.step(render=True)
-                app.update()
-                self.physics_step += 1
-                frame = self._workspace_camera.get_rgba()
-                if frame is not None and np.asarray(frame).shape[:2] == (256, 256):
-                    break
+            if args.replicator_rgb:
+                print(json.dumps({"event": "rl_rgb_capture_start"}), flush=True)
+                saved_positions = np.asarray(flat(self.art.get_dof_positions()), dtype=np.float32)
+                saved_velocities = np.asarray(flat(self.art.get_dof_velocities()), dtype=np.float32)
+                saved_targets = np.asarray(
+                    [self.targets[name] for name in PHYSICAL_JOINTS],
+                    dtype=np.float32,
+                )
+                cube_position, cube_orientation = self.cube.get_world_pose()
+                cube_linear_velocity = np.asarray(
+                    self.cube.get_linear_velocity(),
+                    dtype=np.float32,
+                )
+                cube_angular_velocity = np.asarray(
+                    self.cube.get_angular_velocity(),
+                    dtype=np.float32,
+                )
+                timeline_was_playing = self.timeline.is_playing()
+                if timeline_was_playing:
+                    self.timeline.stop()
+                try:
+                    print(json.dumps({"event": "rl_rgb_orchestrator_step"}), flush=True)
+                    rep.orchestrator.step(delta_time=0.0, rt_subframes=8, pause_timeline=False)
+                    print(json.dumps({"event": "rl_rgb_orchestrator_complete"}), flush=True)
+                    frame = np.asarray(self._workspace_rgb.get_data())
+                    print(
+                        json.dumps({"event": "rl_rgb_data_ready", "shape": list(frame.shape)}),
+                        flush=True,
+                    )
+                finally:
+                    if timeline_was_playing:
+                        self.timeline.play()
+                        SimulationManager.invalidate_physics()
+                        SimulationManager.initialize_physics()
+                        self.art = Articulation(self.root_path)
+                        if not self.art.is_physics_tensor_entity_valid():
+                            raise RuntimeError("Isaac physics tensor did not recover after RGB capture")
+                        self.art.set_dof_positions(saved_positions)
+                        self.art.set_dof_velocities(saved_velocities)
+                        self.art.set_dof_position_targets(saved_targets)
+                        self.cube.set_world_pose(
+                            position=np.asarray(cube_position, dtype=np.float32),
+                            orientation=np.asarray(cube_orientation, dtype=np.float32),
+                        )
+                        self.cube.set_linear_velocity(cube_linear_velocity)
+                        self.cube.set_angular_velocity(cube_angular_velocity)
+            else:
+                frame = None
+                for _ in range(12):
+                    self.world.step(render=True)
+                    app.update()
+                    self.physics_step += 1
+                    frame = self._workspace_camera.get_rgba()
+                    if frame is not None and np.asarray(frame).shape[:2] == (256, 256):
+                        break
             if frame is None:
                 raise RuntimeError("workspace camera did not produce an RGB frame")
             if hasattr(frame, "numpy"):
@@ -611,6 +693,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             }
 
         def rl_reset(self, seed: int, max_steps: int) -> dict[str, Any]:
+            print(json.dumps({"event": "rl_reset_start", "seed": seed}), flush=True)
             rng = np.random.default_rng(seed)
             cube_xy = np.asarray([0.10, 0.32]) + rng.uniform(-0.035, 0.035, size=2)
             self.art.set_dof_positions(self._home_positions)
@@ -630,6 +713,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             for _ in range(24):
                 self.world.step(render=False)
                 self.physics_step += 1
+            print(json.dumps({"event": "rl_reset_settled"}), flush=True)
             return {
                 "state": self._rl_state(),
                 "frame": self._capture_rl_frame(),
@@ -660,9 +744,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 or abs(cube_xyz[0] - 0.10) > 0.35
                 or abs(cube_xyz[1] - 0.32) > 0.35
             )
-            normalized_action = (
-                np.asarray([arm_targets[name] for name in ARM_JOINTS]) - previous_arm
-            ) / 0.04
+            normalized_action = (np.asarray([arm_targets[name] for name in ARM_JOINTS]) - previous_arm) / 0.04
             lift_progress = min(
                 2.0,
                 20.0 * max(0.0, cube_xyz[2] - max(self._previous_cube_height, TABLE_TOP_Z)),
@@ -695,7 +777,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
         def hello(self) -> dict[str, Any]:
             payload = {
                 "runtime": "isaac_sim",
-                "isaac_sim_version": "6.0.0",
+                "isaac_sim_version": "6.0.1" if args.replicator_rgb else "6.0.0",
                 "articulation_root": self.root_path,
                 "articulation_root_count": 1,
                 "physical_dof_count": 13,
@@ -761,6 +843,13 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             )
 
         def close(self) -> None:
+            if self._workspace_rgb is not None and self._workspace_render_product is not None:
+                with suppress(Exception):
+                    self._workspace_rgb.detach(self._workspace_render_product)
+                with suppress(Exception):
+                    self._workspace_render_product.destroy()
+                with suppress(Exception):
+                    rep.orchestrator.wait_until_complete()
             self.timeline.stop()
 
     runtime: IsaacRuntime | None = None
