@@ -17,7 +17,7 @@ Existing `/training` remains imitation learning. The new routes are `/reinforcem
 ## Verification status (2026-07-23 UTC)
 
 - Contract and regression proof: PASS. Action mapping, state ordering, rewards, deterministic adapter reset, protocol validation, safe frame paths, upstream LeRobot config decoding, backend tests, 31 frontend tests, lint, and production build passed.
-- Task/contact proof: BLOCKED. A real managed Isaac 6.0 container loaded the exact V2 distribution, validated the 13-DOF articulation, created the overlay, and opened the authenticated bridge. The standard Isaac camera RGB annotator did not return a 256 by 256 frame before `rl_reset` timed out. See `assets/superarm-isaac-rl-smoke/live-gate-report.json` and `host-smoke3.log`. Therefore zero/hold, collider contact, scripted grasp/lift, and repeated seeded reset are not claimed.
+- Task/contact proof: BLOCKED. A real managed Isaac 6.0 container loaded the exact V2 distribution, validated the 13-DOF articulation, created the overlay, and opened the authenticated bridge. The standard Isaac camera RGB annotator did not return a 256 by 256 frame before `rl_reset` timed out. See `assets/superarm-isaac-rl-smoke/live-gate-report.json`. Therefore zero/hold, collider contact, scripted grasp/lift, and repeated seeded reset are not claimed.
 - Learner-update proof: NOT RUN. The actor cannot complete reset without a valid policy frame, so no 500-step SAC/checkpoint claim is made.
 - Actual policy-improvement proof: NOT RUN. No 20,000-step learning result or successful learned lift is claimed.
 
