@@ -63,6 +63,7 @@ class SuperArmIsaacPickLiftEnv(gym.Env):
             int(os.environ.get("LELAB_RL_BRIDGE_PORT", "8765")),
             token=os.environ["LELAB_RL_BRIDGE_TOKEN"],
             timeout_s=float(os.environ.get("LELAB_RL_BRIDGE_TIMEOUT_S", "10")),
+            capture_timeout_s=float(os.environ.get("LELAB_RL_FRAME_TIMEOUT_S", "120")),
         )
         self._client.connect()
         self._max_steps = int(os.environ.get("LELAB_RL_EPISODE_LENGTH_STEPS", "150"))

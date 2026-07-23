@@ -395,8 +395,10 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
 
     class IsaacRuntime:
         def __init__(self) -> None:
+            print(json.dumps({"event": "rl_runtime_initializing"}), flush=True)
             if not omni.usd.get_context().open_stage(str(args.entrypoint)):
                 raise RuntimeError(f"Isaac could not open USD: {args.entrypoint}")
+            print(json.dumps({"event": "rl_stage_opened"}), flush=True)
             for _ in range(8):
                 app.update()
             self.stage = omni.usd.get_context().get_stage()
@@ -406,8 +408,11 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             self.timeline = omni.timeline.get_timeline_interface()
             self.timeline.play()
             self.art = Articulation(self.root_path)
+            print(json.dumps({"event": "rl_overlay_creating"}), flush=True)
             self._create_rl_overlay()
+            print(json.dumps({"event": "rl_overlay_created"}), flush=True)
             self.world.reset()
+            print(json.dumps({"event": "rl_world_reset"}), flush=True)
             self.viewport_metadata: dict[str, Any] | None = None
             if args.webrtc:
                 from omni.kit.viewport.utility import get_active_viewport
@@ -454,8 +459,10 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             else:
                 for _ in range(2):
                     self.world.step(render=False)
+            print(json.dumps({"event": "rl_post_warmup"}), flush=True)
             if not self.art.is_physics_tensor_entity_valid():
                 raise RuntimeError("Isaac physics tensor did not initialize the articulation")
+            print(json.dumps({"event": "rl_articulation_valid"}), flush=True)
             actual = set(self.art.dof_names)
             expected = set(PHYSICAL_JOINTS)
             if self.art.num_dofs != 13 or actual != expected:
@@ -471,7 +478,9 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             self.targets = {name: positions[self.indices[name]] for name in PHYSICAL_JOINTS}
             self.physics_step = 2
             self.command_sequence = 0
+            print(json.dumps({"event": "rl_camera_initializing"}), flush=True)
             self._initialize_rl_runtime()
+            print(json.dumps({"event": "rl_runtime_ready"}), flush=True)
 
         def _create_rl_overlay(self) -> None:
             """Author task-only scene prims without mutating the distribution."""
@@ -532,19 +541,13 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 self.rl_contact_proxy_paths.append(str(proxy_path))
 
         def _initialize_rl_runtime(self) -> None:
-            import omni.kit.app
+            from isaacsim.sensors.camera import Camera
 
-            extension_manager = omni.kit.app.get_app().get_extension_manager()
-            extension_manager.set_extension_enabled_immediate(
-                "isaacsim.sensors.experimental.rtx", True
-            )
-            from isaacsim.sensors.experimental.rtx import CameraSensor, RtxCamera
-
-            self._workspace_camera = CameraSensor(
-                RtxCamera(self.workspace_camera_path),
+            self._workspace_camera = Camera(
+                prim_path=self.workspace_camera_path,
                 resolution=(256, 256),
-                annotators=["rgb"],
             )
+            self._workspace_camera.initialize()
             self._frame_path = args.run_dir / RL_FRAME_NAME
             self._frame_sequence = 0
             self._rl_step_count = 0
@@ -567,9 +570,16 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 raise RuntimeError("RL overlay could not resolve an end-effector rigid body")
 
         def _capture_rl_frame(self) -> dict[str, Any]:
-            self.world.step(render=True)
-            self.physics_step += 1
-            frame, _info = self._workspace_camera.get_data("rgb")
+            frame = None
+            for _ in range(12):
+                self.world.step(render=True)
+                app.update()
+                self.physics_step += 1
+                frame = self._workspace_camera.get_rgba()
+                if frame is not None and np.asarray(frame).shape[:2] == (256, 256):
+                    break
+            if frame is None:
+                raise RuntimeError("workspace camera did not produce an RGB frame")
             if hasattr(frame, "numpy"):
                 frame = frame.numpy()
             write_ppm_atomic(frame, self._frame_path)

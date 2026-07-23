@@ -328,3 +328,7 @@
 ## [2026-07-22T15:00:00.000Z] update
 - **Pages:** lelab-controlled-superarm-in-isaac-sim-6-0.md
 - **Summary:** Reused the existing SuperArm page at `/isaac-sim`, integrated NVIDIA direct WebRTC with client-host resolution, recorded live 1280x720 transport evidence, and preserved the black Isaac viewport as an unresolved non-PASS visual boundary.
+
+## 2026-07-23 — SuperArm Isaac HIL-SERL
+
+Added the simulation-only SAC actor/learner page and recorded the camera-gated runtime verification truth in [SuperArm Isaac HIL-SERL](superarm-isaac-hilserl.md).

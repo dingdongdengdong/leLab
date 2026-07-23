@@ -12,6 +12,7 @@ run_dir=""
 host="127.0.0.1"
 port="8765"
 token_file=""
+enable_webrtc="1"
 while (($#)); do
   case "$1" in
     --asset-root) asset_root=${2:-}; shift 2 ;;
@@ -20,6 +21,7 @@ while (($#)); do
     --host) host=${2:-}; shift 2 ;;
     --port) port=${2:-}; shift 2 ;;
     --token-file) token_file=${2:-}; shift 2 ;;
+    --no-webrtc) enable_webrtc="0"; shift ;;
     *) usage ;;
   esac
 done
@@ -67,13 +69,16 @@ webrtc_stream_port=${ISAACSIM_STREAM_PORT:-47998}
 webrtc_public_ip=${ISAACSIM_HOST:-}
 [[ "$webrtc_signal_port" =~ ^[0-9]+$ ]] && ((webrtc_signal_port >= 1 && webrtc_signal_port <= 65535)) || { echo "invalid WebRTC signaling port" >&2; exit 2; }
 [[ "$webrtc_stream_port" =~ ^[0-9]+$ ]] && ((webrtc_stream_port >= 1 && webrtc_stream_port <= 65535)) || { echo "invalid WebRTC media port" >&2; exit 2; }
-webrtc_args=(
-  --webrtc
-  --webrtc-signal-port "$webrtc_signal_port"
-  --webrtc-stream-port "$webrtc_stream_port"
-)
-if [[ -n "$webrtc_public_ip" ]]; then
-  webrtc_args+=(--webrtc-public-ip "$webrtc_public_ip")
+webrtc_args=()
+if [[ "$enable_webrtc" == "1" ]]; then
+  webrtc_args=(
+    --webrtc
+    --webrtc-signal-port "$webrtc_signal_port"
+    --webrtc-stream-port "$webrtc_stream_port"
+  )
+  if [[ -n "$webrtc_public_ip" ]]; then
+    webrtc_args+=(--webrtc-public-ip "$webrtc_public_ip")
+  fi
 fi
 run_key=$(python3 - <<'PY'
 import secrets

@@ -51,6 +51,7 @@ class IsaacSimRuntime:
         session_root: str | Path | None = None,
         external_run_dir: str | Path | None = None,
         startup_timeout_s: float = 180.0,
+        enable_webrtc: bool = True,
         state_callback: Callable[[dict[str, Any]], None] | None = None,
         process_factory: Callable[..., subprocess.Popen] = subprocess.Popen,
         client_factory: Callable[..., IsaacBridgeClient] = IsaacBridgeClient,
@@ -73,6 +74,7 @@ class IsaacSimRuntime:
             Path(external_run_dir).expanduser() if external_run_dir else None
         )
         self.startup_timeout_s = float(startup_timeout_s)
+        self.enable_webrtc = bool(enable_webrtc)
         self.state_callback = state_callback
         self._process_factory = process_factory
         self._client_factory = client_factory
@@ -179,6 +181,8 @@ class IsaacSimRuntime:
             "--token-file",
             str(self._token_path),
         ]
+        if not self.enable_webrtc:
+            command.append("--no-webrtc")
         self._log_handle = (self.run_dir / "launcher.log").open("ab", buffering=0)
         self._process = self._process_factory(
             command,

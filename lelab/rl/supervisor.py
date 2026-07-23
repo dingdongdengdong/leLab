@@ -45,6 +45,7 @@ def run(request: ReinforcementLearningRequest, output_dir: Path) -> int:
         port=request.bridge_port,
         expected_sha256=request.distribution_sha256,
         session_root=output_dir / "isaac",
+        enable_webrtc=False,
     )
     children: list[subprocess.Popen] = []
     try:

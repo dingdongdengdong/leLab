@@ -11,7 +11,7 @@ import {
 } from "@/lib/jobsApi";
 
 const SHA = "3bd316090d17f9903562139983a6c66731717f7246045ebdaf90610bf3e596d3";
-const DEFAULT_ZIP = "/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip";
+const DEFAULT_ZIP = "/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip";
 const initial: ReinforcementLearningRequest = {
   task: "SuperArmIsaacPickLift-v0", runner: "local", seed: 1000,
   episode_length_steps: 150, training_steps: 20000,

@@ -1,0 +1,13 @@
+{
+  "date_utc": "2026-07-23",
+  "distribution_sha256": "3bd316090d17f9903562139983a6c66731717f7246045ebdaf90610bf3e596d3",
+  "managed_container_started": true,
+  "authenticated_bridge_listened": true,
+  "articulation_contract_valid": true,
+  "overlay_created": true,
+  "camera_frame": false,
+  "failure": "Isaac Sim 6.0 standard Camera RGB annotator returned no 256x256 frame before the atomic rl_reset timeout",
+  "task_contact_proof": "BLOCKED",
+  "learner_update_proof": "NOT_RUN",
+  "policy_improvement_proof": "NOT_RUN"
+}
