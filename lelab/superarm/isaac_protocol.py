@@ -140,8 +140,8 @@ class IsaacBridgeClient:
     def hold(self) -> dict[str, Any]:
         return self._request("hold")
 
-    def rl_reset(self, seed: int) -> dict[str, Any]:
-        return self._request("rl_reset", seed=int(seed))
+    def rl_reset(self, seed: int, max_steps: int = 150) -> dict[str, Any]:
+        return self._request("rl_reset", seed=int(seed), max_steps=int(max_steps))
 
     def rl_step(self, arm_targets: Mapping[str, float], grasp: float) -> dict[str, Any]:
         return self._request(

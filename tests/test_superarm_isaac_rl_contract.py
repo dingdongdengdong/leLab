@@ -76,7 +76,7 @@ def test_rl_protocol_validates_reset_and_atomic_step() -> None:
         {"schema": SCHEMA, "request_id": "1", "token": token, "op": "rl_reset", "seed": 42},
         expected_token=token,
     )
-    assert reset == {"request_id": "1", "op": "rl_reset", "seed": 42}
+    assert reset == {"request_id": "1", "op": "rl_reset", "seed": 42, "max_steps": 150}
     step = validate_request(
         {
             "schema": SCHEMA,
@@ -135,7 +135,8 @@ class _FakeClient:
             "info": {},
         }
 
-    def rl_reset(self, seed: int) -> dict:
+    def rl_reset(self, seed: int, max_steps: int = 150) -> dict:
+        assert max_steps == 150
         self.reset_seeds.append(seed)
         return self._payload()
 

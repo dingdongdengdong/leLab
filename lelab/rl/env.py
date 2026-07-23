@@ -65,6 +65,7 @@ class SuperArmIsaacPickLiftEnv(gym.Env):
             timeout_s=float(os.environ.get("LELAB_RL_BRIDGE_TIMEOUT_S", "10")),
         )
         self._client.connect()
+        self._max_steps = int(os.environ.get("LELAB_RL_EPISODE_LENGTH_STEPS", "150"))
         self._current_positions = dict.fromkeys(ARM_JOINTS, 0.0)
         self._last_frame: np.ndarray | None = None
         self._closed = False
@@ -82,7 +83,7 @@ class SuperArmIsaacPickLiftEnv(gym.Env):
         del options
         super().reset(seed=seed)
         selected_seed = int(seed if seed is not None else self.np_random.integers(0, 2**32 - 1))
-        payload = self._client.rl_reset(selected_seed)
+        payload = self._client.rl_reset(selected_seed, self._max_steps)
         info = dict(payload.get("info") or {})
         info["is_intervention"] = False
         return self._observation(payload), info

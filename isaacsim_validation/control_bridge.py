@@ -23,6 +23,11 @@ from .bridge_protocol import (
 )
 from .contracts import ARM_JOINTS, HAND_JOINTS, PHYSICAL_JOINTS, validate_physical_targets
 
+TABLE_HEIGHT = 0.10
+TABLE_TOP_Z = 0.10
+CUBE_SIZE = 0.04
+RL_FRAME_NAME = "rl-workspace.ppm"
+
 
 class BridgeRuntime(Protocol):
     def hello(self) -> dict[str, Any]: ...
@@ -36,6 +41,10 @@ class BridgeRuntime(Protocol):
     def hold(self) -> dict[str, Any]: ...
 
     def capture(self, view: str, name: str) -> dict[str, Any]: ...
+
+    def rl_reset(self, seed: int, max_steps: int) -> dict[str, Any]: ...
+
+    def rl_step(self, arm_targets: Mapping[str, float], grasp: float) -> dict[str, Any]: ...
 
     def close(self) -> None: ...
 
@@ -110,6 +119,10 @@ def dispatch_request(runtime: BridgeRuntime, request: Mapping[str, Any]) -> tupl
         return runtime.hold(), False
     if op == "capture":
         return runtime.capture(request["view"], request["name"]), False
+    if op == "rl_reset":
+        return runtime.rl_reset(request["seed"], request["max_steps"]), False
+    if op == "rl_step":
+        return runtime.rl_step(request["arm_targets"], request["grasp"]), False
     if op == "shutdown":
         return {"accepted": True}, True
     raise ProtocolError("unknown_op", f"unsupported bridge operation: {op!r}")
@@ -346,6 +359,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
     import omni.timeline
     import omni.usd
     from isaacsim.core.api import World
+    from isaacsim.core.api.objects import DynamicCuboid, FixedCuboid
     from isaacsim.core.experimental.prims import Articulation
     from isaacsim.core.rendering_manager import ViewportManager
     from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics
@@ -362,6 +376,23 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
         matches = [prim for prim in stage.Traverse() if prim.HasAPI(UsdPhysics.ArticulationRootAPI)]
         return require_unique_articulation_root(matches)
 
+    def world_translation(prim: Usd.Prim) -> np.ndarray:
+        matrix = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        return np.asarray(matrix.ExtractTranslation(), dtype=np.float64)
+
+    def write_ppm_atomic(rgb: np.ndarray, destination: Path) -> None:
+        frame = np.asarray(rgb)
+        if frame.shape[-1] == 4:
+            frame = frame[..., :3]
+        if frame.shape != (256, 256, 3):
+            raise RuntimeError(f"workspace camera returned unexpected shape {frame.shape}")
+        frame = frame.astype(np.uint8, copy=False)
+        temporary = destination.with_suffix(destination.suffix + ".tmp")
+        with temporary.open("wb") as handle:
+            handle.write(b"P6\n256 256\n255\n")
+            handle.write(frame.tobytes(order="C"))
+        temporary.replace(destination)
+
     class IsaacRuntime:
         def __init__(self) -> None:
             if not omni.usd.get_context().open_stage(str(args.entrypoint)):
@@ -375,6 +406,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             self.timeline = omni.timeline.get_timeline_interface()
             self.timeline.play()
             self.art = Articulation(self.root_path)
+            self._create_rl_overlay()
             self.world.reset()
             self.viewport_metadata: dict[str, Any] | None = None
             if args.webrtc:
@@ -439,6 +471,216 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             self.targets = {name: positions[self.indices[name]] for name in PHYSICAL_JOINTS}
             self.physics_step = 2
             self.command_sequence = 0
+            self._initialize_rl_runtime()
+
+        def _create_rl_overlay(self) -> None:
+            """Author task-only scene prims without mutating the distribution."""
+
+            self.rl_root = "/LeLabRL"
+            UsdGeom.Xform.Define(self.stage, self.rl_root)
+            self.table = FixedCuboid(
+                prim_path=f"{self.rl_root}/Table",
+                name="lelab_rl_table",
+                position=np.asarray([0.10, 0.32, TABLE_HEIGHT / 2], dtype=np.float32),
+                scale=np.asarray([0.60, 0.60, TABLE_HEIGHT], dtype=np.float32),
+                color=np.asarray([0.18, 0.20, 0.24], dtype=np.float32),
+            )
+            self.cube = DynamicCuboid(
+                prim_path=f"{self.rl_root}/Cube",
+                name="lelab_rl_cube",
+                position=np.asarray([0.10, 0.32, TABLE_TOP_Z + CUBE_SIZE / 2], dtype=np.float32),
+                scale=np.asarray([CUBE_SIZE] * 3, dtype=np.float32),
+                color=np.asarray([0.95, 0.72, 0.05], dtype=np.float32),
+                mass=0.04,
+            )
+            UsdLux.DomeLight.Define(self.stage, f"{self.rl_root}/DomeLight").CreateIntensityAttr(700.0)
+            camera = UsdGeom.Camera.Define(self.stage, f"{self.rl_root}/WorkspaceCamera")
+            camera.GetFocalLengthAttr().Set(28.0)
+            camera_xform = UsdGeom.Xformable(camera)
+            camera_xform.AddTransformOp().Set(
+                Gf.Matrix4d()
+                .SetLookAt(
+                    Gf.Vec3d(0.78, -0.42, 0.72),
+                    Gf.Vec3d(0.10, 0.30, 0.18),
+                    Gf.Vec3d(0.0, 0.0, 1.0),
+                )
+                .GetInverse()
+            )
+            self.workspace_camera_path = str(camera.GetPath())
+
+            # Additive collision shapes attach to existing rigid palm/finger
+            # bodies. The immutable source USD remains unchanged on disk.
+            candidates = [
+                prim
+                for prim in self.stage.Traverse()
+                if prim.HasAPI(UsdPhysics.RigidBodyAPI)
+                and any(token in prim.GetName().lower() for token in ("palm", "finger"))
+            ]
+            selected: list[Usd.Prim] = []
+            for token in ("palm", "finger1", "finger2", "finger3", "finger4"):
+                match = next((prim for prim in candidates if token in prim.GetName().lower()), None)
+                if match is not None and match not in selected:
+                    selected.append(match)
+            if len(selected) < 5:
+                raise RuntimeError("RL overlay could not bind explicit palm/finger collision proxies")
+            self.rl_contact_proxy_paths = []
+            for index, body in enumerate(selected[:5]):
+                proxy_path = body.GetPath().AppendChild(f"LeLabRLContactProxy{index}")
+                proxy = UsdGeom.Cube.Define(self.stage, proxy_path)
+                proxy.CreateSizeAttr(0.018 if index else 0.035)
+                UsdPhysics.CollisionAPI.Apply(proxy.GetPrim())
+                self.rl_contact_proxy_paths.append(str(proxy_path))
+
+        def _initialize_rl_runtime(self) -> None:
+            import omni.kit.app
+
+            extension_manager = omni.kit.app.get_app().get_extension_manager()
+            extension_manager.set_extension_enabled_immediate(
+                "isaacsim.sensors.experimental.rtx", True
+            )
+            from isaacsim.sensors.experimental.rtx import CameraSensor, RtxCamera
+
+            self._workspace_camera = CameraSensor(
+                RtxCamera(self.workspace_camera_path),
+                resolution=(256, 256),
+                annotators=["rgb"],
+            )
+            self._frame_path = args.run_dir / RL_FRAME_NAME
+            self._frame_sequence = 0
+            self._rl_step_count = 0
+            self._success_streak = 0
+            self._previous_cube_height = TABLE_TOP_Z + CUBE_SIZE / 2
+            self._previous_grasp = 0.0
+            self._home_positions = np.asarray(
+                [self.targets[name] for name in PHYSICAL_JOINTS], dtype=np.float32
+            )
+            self._ee_prim = next(
+                (
+                    prim
+                    for prim in self.stage.Traverse()
+                    if prim.HasAPI(UsdPhysics.RigidBodyAPI)
+                    and any(token in prim.GetName().lower() for token in ("palm", "wrist"))
+                ),
+                None,
+            )
+            if self._ee_prim is None:
+                raise RuntimeError("RL overlay could not resolve an end-effector rigid body")
+
+        def _capture_rl_frame(self) -> dict[str, Any]:
+            self.world.step(render=True)
+            self.physics_step += 1
+            frame, _info = self._workspace_camera.get_data("rgb")
+            if hasattr(frame, "numpy"):
+                frame = frame.numpy()
+            write_ppm_atomic(frame, self._frame_path)
+            self._frame_sequence += 1
+            return {
+                "path": RL_FRAME_NAME,
+                "width": 256,
+                "height": 256,
+                "channels": 3,
+                "sequence": self._frame_sequence,
+            }
+
+        def _rl_state(self) -> dict[str, Any]:
+            positions = flat(self.art.get_dof_positions())
+            velocities = flat(self.art.get_dof_velocities())
+            arm_positions = [positions[self.indices[name]] for name in ARM_JOINTS]
+            arm_velocities = [velocities[self.indices[name]] for name in ARM_JOINTS]
+            ee_xyz = world_translation(self._ee_prim)
+            cube_xyz = np.asarray(self.cube.get_world_pose()[0], dtype=np.float64)
+            cube_velocity = np.asarray(self.cube.get_linear_velocity(), dtype=np.float64)
+            return {
+                "joint_positions": arm_positions,
+                "joint_velocities": arm_velocities,
+                "grasp_state": self._previous_grasp,
+                "end_effector_xyz": ee_xyz.tolist(),
+                "cube_xyz": cube_xyz.tolist(),
+                "cube_linear_velocity_xyz": cube_velocity.tolist(),
+                "end_effector_to_cube_xyz": (cube_xyz - ee_xyz).tolist(),
+            }
+
+        def rl_reset(self, seed: int, max_steps: int) -> dict[str, Any]:
+            rng = np.random.default_rng(seed)
+            cube_xy = np.asarray([0.10, 0.32]) + rng.uniform(-0.035, 0.035, size=2)
+            self.art.set_dof_positions(self._home_positions)
+            self.art.set_dof_velocities(np.zeros_like(self._home_positions))
+            self.art.set_dof_position_targets(self._home_positions)
+            self.targets = dict(zip(PHYSICAL_JOINTS, self._home_positions.tolist(), strict=True))
+            self.cube.set_world_pose(
+                position=np.asarray([cube_xy[0], cube_xy[1], TABLE_TOP_Z + CUBE_SIZE / 2])
+            )
+            self.cube.set_linear_velocity(np.zeros(3, dtype=np.float32))
+            self.cube.set_angular_velocity(np.zeros(3, dtype=np.float32))
+            self._rl_step_count = 0
+            self._rl_max_steps = int(max_steps)
+            self._success_streak = 0
+            self._previous_cube_height = TABLE_TOP_Z + CUBE_SIZE / 2
+            self._previous_grasp = 0.0
+            for _ in range(24):
+                self.world.step(render=False)
+                self.physics_step += 1
+            return {
+                "state": self._rl_state(),
+                "frame": self._capture_rl_frame(),
+                "info": {"seed": seed, "is_intervention": False},
+            }
+
+        def rl_step(self, arm_targets: Mapping[str, float], grasp: float) -> dict[str, Any]:
+            from .contracts import grasp_to_urdf_targets
+
+            previous_arm = np.asarray([self.targets[name] for name in ARM_JOINTS])
+            physical_targets = validate_physical_targets(
+                {**dict(arm_targets), **grasp_to_urdf_targets(grasp)}
+            )
+            self.command(physical_targets)
+            for _ in range(12):
+                self.world.step(render=False)
+                self.physics_step += 1
+            grasp_changed = grasp != self._previous_grasp
+            self._previous_grasp = float(grasp)
+            state = self._rl_state()
+            cube_xyz = np.asarray(state["cube_xyz"], dtype=np.float64)
+            ee_delta = np.asarray(state["end_effector_to_cube_xyz"], dtype=np.float64)
+            lifted = cube_xyz[2] >= TABLE_TOP_Z + 0.10
+            self._success_streak = self._success_streak + 1 if lifted else 0
+            success = self._success_streak >= 10
+            out_of_bounds = bool(
+                cube_xyz[2] < TABLE_TOP_Z - 0.05
+                or abs(cube_xyz[0] - 0.10) > 0.35
+                or abs(cube_xyz[1] - 0.32) > 0.35
+            )
+            normalized_action = (
+                np.asarray([arm_targets[name] for name in ARM_JOINTS]) - previous_arm
+            ) / 0.04
+            lift_progress = min(
+                2.0,
+                20.0 * max(0.0, cube_xyz[2] - max(self._previous_cube_height, TABLE_TOP_Z)),
+            )
+            terms = {
+                "distance": -2.0 * float(np.linalg.norm(ee_delta)),
+                "lift_progress": lift_progress,
+                "success": 10.0 if success else 0.0,
+                "action": -0.01 * float(np.square(normalized_action).sum()),
+                "grasp_change": -0.02 if grasp_changed else 0.0,
+            }
+            self._rl_step_count += 1
+            self._previous_cube_height = float(cube_xyz[2])
+            return {
+                "state": state,
+                "frame": self._capture_rl_frame(),
+                "reward": float(sum(terms.values())),
+                "terminated": bool(success or out_of_bounds),
+                "truncated": bool(self._rl_step_count >= self._rl_max_steps),
+                "info": {
+                    "is_intervention": False,
+                    "success": success,
+                    "failure": out_of_bounds,
+                    "success_streak": self._success_streak,
+                    "reward_terms": terms,
+                    "contact_proxy_paths": self.rl_contact_proxy_paths,
+                },
+            }
 
         def hello(self) -> dict[str, Any]:
             payload = {

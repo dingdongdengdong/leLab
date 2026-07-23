@@ -27,8 +27,10 @@ def validate_frame_descriptor(descriptor: dict[str, Any], allowed_root: str | Pa
     path = Path(descriptor["path"])
     if not path.is_absolute():
         path = root / path
+    if path.is_symlink():
+        raise ValueError("frame path must be a direct regular file beneath the allowed root")
     resolved = path.resolve(strict=True)
-    if resolved.is_symlink() or not resolved.is_file() or resolved.parent != root:
+    if not resolved.is_file() or resolved.parent != root:
         raise ValueError("frame path must be a direct regular file beneath the allowed root")
     return resolved
 

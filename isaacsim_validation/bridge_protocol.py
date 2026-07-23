@@ -87,7 +87,10 @@ def _finite_number(value: Any, name: str) -> float:
 def _validate_rl_arm_targets(value: Any) -> dict[str, float]:
     if not isinstance(value, Mapping) or set(value) != set(ARM_JOINTS):
         raise ProtocolError("invalid_targets", "rl_step arm_targets must contain exactly five arm joints")
-    return {name: _finite_number(value[name], f"arm_targets.{name}") for name in ARM_JOINTS}
+    targets = {name: _finite_number(value[name], f"arm_targets.{name}") for name in ARM_JOINTS}
+    if any(not -1.57 <= target <= 1.57 for target in targets.values()):
+        raise ProtocolError("invalid_targets", "rl_step arm_targets exceed SuperArm joint limits")
+    return targets
 
 
 def validate_request(message: Mapping[str, Any], *, expected_token: str) -> dict[str, Any]:
@@ -126,11 +129,15 @@ def validate_request(message: Mapping[str, Any], *, expected_token: str) -> dict
             raise ProtocolError("invalid_capture", "capture requires whole/hand view and a safe name")
         normalized.update({"view": view, "name": name})
     elif op == "rl_reset":
-        allowed.add("seed")
+        allowed.update({"seed", "max_steps"})
         seed = message.get("seed")
         if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2**32 - 1:
             raise ProtocolError("invalid_request", "rl_reset seed must be a uint32")
         normalized["seed"] = seed
+        max_steps = message.get("max_steps", 150)
+        if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not 10 <= max_steps <= 10_000:
+            raise ProtocolError("invalid_request", "rl_reset max_steps must be between 10 and 10000")
+        normalized["max_steps"] = max_steps
     elif op == "rl_step":
         allowed.update({"arm_targets", "grasp"})
         normalized["arm_targets"] = _validate_rl_arm_targets(message.get("arm_targets"))
