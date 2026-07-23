@@ -140,6 +140,16 @@ class IsaacBridgeClient:
     def hold(self) -> dict[str, Any]:
         return self._request("hold")
 
+    def rl_reset(self, seed: int) -> dict[str, Any]:
+        return self._request("rl_reset", seed=int(seed))
+
+    def rl_step(self, arm_targets: Mapping[str, float], grasp: float) -> dict[str, Any]:
+        return self._request(
+            "rl_step",
+            arm_targets={str(name): float(value) for name, value in arm_targets.items()},
+            grasp=float(grasp),
+        )
+
     def capture(self, view: Literal["whole", "hand"], name: str) -> dict[str, Any]:
         with self._lock:
             sock = self._socket

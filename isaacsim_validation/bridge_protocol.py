@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import hmac
 import json
+import math
 import re
 from collections.abc import Mapping
 from typing import Any
 
-from .contracts import validate_physical_targets
+from .contracts import ARM_JOINTS, validate_physical_targets
 
 SCHEMA = "lelab.superarm.isaac_bridge/v1"
 MAX_MESSAGE_BYTES = 65_536
-OPERATIONS = frozenset({"hello", "command", "observe", "hold", "capture", "shutdown"})
+OPERATIONS = frozenset(
+    {"hello", "command", "observe", "hold", "capture", "rl_reset", "rl_step", "shutdown"}
+)
 CAPTURE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 
 
@@ -72,6 +75,21 @@ def _required_text(message: Mapping[str, Any], name: str) -> str:
     return value
 
 
+def _finite_number(value: Any, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ProtocolError("invalid_request", f"{name} must be a number")
+    value = float(value)
+    if not math.isfinite(value):
+        raise ProtocolError("invalid_request", f"{name} must be finite")
+    return value
+
+
+def _validate_rl_arm_targets(value: Any) -> dict[str, float]:
+    if not isinstance(value, Mapping) or set(value) != set(ARM_JOINTS):
+        raise ProtocolError("invalid_targets", "rl_step arm_targets must contain exactly five arm joints")
+    return {name: _finite_number(value[name], f"arm_targets.{name}") for name in ARM_JOINTS}
+
+
 def validate_request(message: Mapping[str, Any], *, expected_token: str) -> dict[str, Any]:
     """Validate one authenticated client request and normalize its payload."""
 
@@ -107,6 +125,19 @@ def validate_request(message: Mapping[str, Any], *, expected_token: str) -> dict
         if view not in {"whole", "hand"} or not isinstance(name, str) or not CAPTURE_NAME.fullmatch(name):
             raise ProtocolError("invalid_capture", "capture requires whole/hand view and a safe name")
         normalized.update({"view": view, "name": name})
+    elif op == "rl_reset":
+        allowed.add("seed")
+        seed = message.get("seed")
+        if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2**32 - 1:
+            raise ProtocolError("invalid_request", "rl_reset seed must be a uint32")
+        normalized["seed"] = seed
+    elif op == "rl_step":
+        allowed.update({"arm_targets", "grasp"})
+        normalized["arm_targets"] = _validate_rl_arm_targets(message.get("arm_targets"))
+        grasp = _finite_number(message.get("grasp"), "grasp")
+        if grasp not in {0.0, 0.5, 1.0}:
+            raise ProtocolError("invalid_request", "rl_step grasp must be open, half-close, or close")
+        normalized["grasp"] = grasp
     extra = sorted(set(message) - allowed)
     if extra:
         raise ProtocolError("invalid_request", f"unexpected bridge request fields: {extra}")
