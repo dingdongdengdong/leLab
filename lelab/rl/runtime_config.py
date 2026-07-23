@@ -17,6 +17,8 @@ def build_lerobot_config(request: ReinforcementLearningRequest, output_dir: Path
         "online_ratio": 1.0,
         "output_dir": str(output_dir),
         "resume": bool(request.resume_from),
+        "steps": request.training_steps,
+        "batch_size": request.batch_size,
         "policy": {
             "type": "gaussian_actor",
             "device": "cuda",
@@ -28,11 +30,19 @@ def build_lerobot_config(request: ReinforcementLearningRequest, output_dir: Path
             "num_discrete_actions": 3,
             "online_steps": request.training_steps,
             "online_buffer_capacity": request.online_buffer_capacity,
-            "online_buffer_seed_size": request.learning_starts,
+            "online_step_before_learning": request.learning_starts,
+            "actor_learner_config": {
+                "learner_host": "127.0.0.1",
+                "learner_port": request.learner_port,
+                "policy_parameters_push_frequency": 4,
+            },
             "normalization_mapping": {
-                "VISUAL": "IDENTITY", "STATE": "MIN_MAX", "ACTION": "MIN_MAX"
+                "VISUAL": "MEAN_STD", "STATE": "MIN_MAX", "ACTION": "MIN_MAX"
             },
             "dataset_stats": {
+                "observation.image.workspace": {
+                    "mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]
+                },
                 "observation.state": {"min": state_min, "max": state_max},
                 "action": {"min": [-1.0] * 5, "max": [1.0] * 5},
             },
@@ -42,20 +52,32 @@ def build_lerobot_config(request: ReinforcementLearningRequest, output_dir: Path
             "actor_lr": request.actor_lr,
             "critic_lr": request.critic_lr,
             "temperature_lr": request.temperature_lr,
-            "batch_size": request.batch_size,
         },
         "env": {
             "type": "gym_manipulator",
             "name": "gym_hil",
             "task": request.task,
             "fps": 10,
+            "processor": {
+                "control_mode": "autonomous",
+                "gripper": {"use_gripper": True, "gripper_penalty": -0.02},
+                "reset": {
+                    "fixed_reset_joint_positions": None,
+                    "reset_time_s": 0.0,
+                    "control_time_s": request.episode_length_steps / 10.0,
+                    "terminate_on_success": True,
+                },
+                "image_preprocessing": None,
+            },
             "features": {
-                "agent_pos": {"type": "STATE", "shape": [23]},
-                "pixels": {"type": "VISUAL", "shape": [256, 256, 3]},
+                "observation.image.workspace": {"type": "VISUAL", "shape": [3, 256, 256]},
+                "observation.state": {"type": "STATE", "shape": [23]},
+                "action": {"type": "ACTION", "shape": [5]},
             },
             "features_map": {
-                "agent_pos": "observation.state",
-                "pixels": "observation.image.workspace",
+                "observation.image.workspace": "observation.image.workspace",
+                "observation.state": "observation.state",
+                "action": "action",
             },
         },
         "job_name": "superarm-isaac-hilserl",

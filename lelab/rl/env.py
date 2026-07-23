@@ -45,9 +45,9 @@ class SuperArmIsaacPickLiftEnv(gym.Env):
         self.render_mode = render_mode
         self.observation_space = gym.spaces.Dict(
             {
-                "agent_pos": gym.spaces.Box(-np.inf, np.inf, shape=(23,), dtype=np.float32),
-                "pixels": gym.spaces.Dict(
-                    {"workspace": gym.spaces.Box(0, 255, shape=IMAGE_SHAPE, dtype=np.uint8)}
+                "observation.state": gym.spaces.Box(-np.inf, np.inf, shape=(23,), dtype=np.float32),
+                "observation.image.workspace": gym.spaces.Box(
+                    0, 255, shape=IMAGE_SHAPE, dtype=np.uint8
                 ),
             }
         )
@@ -75,7 +75,7 @@ class SuperArmIsaacPickLiftEnv(gym.Env):
         frame = read_frame(payload["frame"], self._frame_root)
         self._current_positions = dict(zip(ARM_JOINTS, state[:5], strict=True))
         self._last_frame = frame
-        return {"agent_pos": state, "pixels": {"workspace": frame}}
+        return {"observation.state": state, "observation.image.workspace": frame}
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None

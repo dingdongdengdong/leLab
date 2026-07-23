@@ -155,9 +155,22 @@ def test_gym_adapter_is_deterministic_and_never_intervenes(tmp_path: Path) -> No
     first, info = env.reset(seed=7)
     second, _ = env.reset(seed=7)
     assert client.reset_seeds == [7, 7]
-    assert np.array_equal(first["agent_pos"], second["agent_pos"])
+    assert np.array_equal(first["observation.state"], second["observation.state"])
+    assert first["observation.image.workspace"].shape == (256, 256, 3)
     assert info["is_intervention"] is False
     _obs, _reward, _terminated, _truncated, step_info = env.step(np.zeros(6, dtype=np.float32))
     assert step_info["is_intervention"] is False
     env.close()
     assert client.closed
+
+
+def test_generated_config_decodes_as_upstream_lerobot_hilserl(tmp_path):
+    from lelab.rl.runtime_config import write_lerobot_config
+    from lerobot.rl.train_rl import TrainRLServerPipelineConfig
+
+    request = ReinforcementLearningRequest(distribution_zip=str(tmp_path / "robot.zip"))
+    path = write_lerobot_config(request, tmp_path / "run")
+    decoded = TrainRLServerPipelineConfig.from_pretrained(path, cli_args=[])
+    assert decoded.policy.online_step_before_learning == 100
+    assert decoded.policy.actor_learner_config.learner_port == 50051
+    assert decoded.env.task == "SuperArmIsaacPickLift-v0"
