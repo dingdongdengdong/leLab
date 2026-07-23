@@ -27,5 +27,5 @@
 
 ## pattern
 
-- [SO-101 leader to SuperArm recording guide](so-101-leader-to-superarm-recording-guide.md) — # SO-101 leader to SuperArm recording guide
+- [SuperArm leader to follower progression guide](so-101-leader-to-superarm-recording-guide.md) — # SuperArm leader to follower progression guide
 - [SuperArm follower calibration wizard](superarm-follower-calibration-wizard.md) — # SuperArm follower calibration wizard

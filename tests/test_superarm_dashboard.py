@@ -138,6 +138,20 @@ def test_so101_leader_readiness_uses_the_six_control_superarm_contract() -> None
         f"joint_rev_{index}.pos" for index in range(1, 6)
     ]
     assert readiness["gripper"]["target"] == "amazinghand_motion.pos"
+    assert [path["id"] for path in readiness["control_paths"]] == [
+        "manual_to_sim",
+        "so101_to_sim",
+        "so101_to_real",
+    ]
+    assert [path["website_status"] for path in readiness["control_paths"]] == [
+        "available",
+        "available",
+        "preparation_only",
+    ]
+    assert readiness["control_paths"][0]["entry_route"] == "/manual-leader"
+    assert readiness["control_paths"][1]["recording_input_mode"] == "so101"
+    assert readiness["control_paths"][2]["recording_input_mode"] is None
+    assert readiness["website_sequence_complete"] is False
 
 
 def test_superarm_follower_calibration_preview_requires_five_measured_joints() -> None:

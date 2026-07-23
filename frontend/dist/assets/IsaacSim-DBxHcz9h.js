@@ -1,1 +1,0 @@
-import{n as e,t}from"./index-BhINjmcY.js";var n=e(),r=()=>(0,n.jsx)(t,{fixedRuntime:`isaac_sim`,useIsaacWebRtc:!0});export{r as default};

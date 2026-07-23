@@ -20,6 +20,7 @@ from urllib.parse import quote
 import yaml
 
 from .actions import action_to_runtime_commands, normalize_superarm_action
+from .control_guide import build_control_paths
 from .isaac_distribution import IsaacDistribution, validate_and_extract_distribution
 from .isaac_runtime import IsaacSimRuntime
 from .mapping import ARM_JOINTS, UI_FINGERS
@@ -177,6 +178,8 @@ class SuperArmService:
         return {
             "supported": len(mapping) == 5,
             "manual_page_is_physical_leader": False,
+            "website_sequence_complete": False,
+            "control_paths": build_control_paths(),
             "recording_input_mode": "so101",
             "leader": {
                 "protocol": "LeRobot SO101Leader / Feetech serial",
