@@ -10,6 +10,7 @@ import Teleoperation from "@/pages/Teleoperation";
 import Calibration from "@/pages/Calibration";
 import Recording from "@/pages/Recording";
 import Training from "@/pages/Training";
+import ReinforcementLearning from "@/pages/ReinforcementLearning";
 import Inference from "@/pages/Inference";
 import EditDataset from "@/pages/EditDataset";
 import Upload from "@/pages/Upload";
@@ -61,6 +62,8 @@ function App() {
                         <Route path="/upload" element={<Upload />} />
                         <Route path="/training" element={<Training />} />
                         <Route path="/training/:jobId" element={<Training />} />
+                        <Route path="/reinforcement-learning" element={<ReinforcementLearning />} />
+                        <Route path="/reinforcement-learning/:jobId" element={<ReinforcementLearning />} />
                         <Route path="/inference" element={<Inference />} />
                         <Route path="/calibration" element={<Calibration />} />
                         <Route path="/edit-dataset" element={<EditDataset />} />

@@ -97,6 +97,7 @@ const Landing = () => {
   };
 
   const handleTrainingClick = () => navigate("/training");
+  const handleReinforcementLearningClick = () => navigate("/reinforcement-learning");
 
   const openHubViewer = (repoId: string, isPrivate: boolean) => {
     const spacePath = `/spaces/lerobot/visualize_dataset?path=${encodeURIComponent(`/${repoId}`)}`;
@@ -325,7 +326,13 @@ const Landing = () => {
                 onClick={handleTrainingClick}
                 className="w-full bg-green-500 hover:bg-green-600 text-white"
               >
-                Training
+                Imitation Learning
+              </Button>
+              <Button
+                onClick={handleReinforcementLearningClick}
+                className="bg-yellow-400 text-slate-950 hover:bg-yellow-300"
+              >
+                Reinforcement Learning — SuperArm Isaac Sim
               </Button>
             </div>
           </div>

@@ -9,6 +9,38 @@ export interface TrainingMetrics {
   current_lr: number | null;
   grad_norm: number | null;
   eta_seconds: number | null;
+  episode?: number | null;
+  episode_return?: number | null;
+  success_rate?: number | null;
+  actor_fps?: number | null;
+  replay_size?: number | null;
+  actor_loss?: number | null;
+  critic_loss?: number | null;
+  temperature?: number | null;
+  actor_status?: string | null;
+  learner_status?: string | null;
+  isaac_status?: string | null;
+}
+
+export interface ReinforcementLearningRequest {
+  task: "SuperArmIsaacPickLift-v0";
+  runner: "local";
+  seed: number;
+  episode_length_steps: number;
+  training_steps: number;
+  online_buffer_capacity: number;
+  learning_starts: number;
+  batch_size: number;
+  actor_lr: number;
+  critic_lr: number;
+  temperature_lr: number;
+  checkpoint_frequency: number;
+  distribution_zip: string;
+  distribution_sha256: string;
+  learner_port: number;
+  bridge_port: number;
+  camera_preview: boolean;
+  resume_from?: string | null;
 }
 
 export interface LogLine {
@@ -57,7 +89,8 @@ export interface JobRecord {
   id: string;
   name: string;
   state: JobState;
-  config: TrainingRequest;
+  kind: "training" | "reinforcement_learning" | "imported";
+  config: TrainingRequest | ReinforcementLearningRequest;
   output_dir: string;
   started_at: number;
   ended_at: number | null;
@@ -71,6 +104,31 @@ export interface JobRecord {
   hf_job_url: string | null;
   wandb_run_url: string | null;
   checkpoint_count: number;
+}
+
+export interface RlReadiness {
+  ready: boolean;
+  checks: Record<string, boolean>;
+  distribution_sha256: string | null;
+}
+
+export async function getRlReadiness(baseUrl: string, fetcher: Fetcher, config: ReinforcementLearningRequest) {
+  const query = new URLSearchParams({
+    distribution_zip: config.distribution_zip,
+    learner_port: String(config.learner_port),
+    bridge_port: String(config.bridge_port),
+  });
+  return apiRequest<RlReadiness>(baseUrl, fetcher, `/system/rl-readiness?${query}`, { action: "Check RL readiness" });
+}
+
+export async function startReinforcementLearningJob(baseUrl: string, fetcher: Fetcher, config: ReinforcementLearningRequest) {
+  return apiRequest<JobRecord>(baseUrl, fetcher, "/jobs/reinforcement-learning", {
+    method: "POST", body: config, action: "Start reinforcement learning",
+  });
+}
+
+export function reinforcementLearningFrameUrl(baseUrl: string, id: string, nonce = Date.now()) {
+  return `${baseUrl}/jobs/${encodeURIComponent(id)}/frame?t=${nonce}`;
 }
 
 // Per-running-job snapshot pushed by the watchdog over WS at ~1Hz. Subset
