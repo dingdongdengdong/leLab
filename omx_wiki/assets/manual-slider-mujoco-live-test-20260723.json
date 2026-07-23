@@ -1,0 +1,206 @@
+{
+  "checks": {
+    "arm_returned_near_home": true,
+    "command_success": true,
+    "hand_closed_motor1": true,
+    "hand_closed_motor2_visual_coordinate": true,
+    "hand_returned_near_open": true,
+    "joint_1_moved": true,
+    "joint_2_moved": true,
+    "joint_3_moved": true,
+    "joint_5_moved": true,
+    "start_success": true
+  },
+  "command": [
+    0.2,
+    -0.15,
+    0.1,
+    -0.05,
+    0.08,
+    1.0
+  ],
+  "command_response": {
+    "joint_positions": {
+      "finger1_motor1": 0.0006387173833407345,
+      "finger1_motor2": 0.0002047455831763586,
+      "finger2_motor1": 0.0006473602040038247,
+      "finger2_motor2": 0.00021481541927686812,
+      "finger3_motor1": 0.0006350918318092457,
+      "finger3_motor2": 0.00020511711823402562,
+      "finger4_motor1": 0.0006357972165109966,
+      "finger4_motor2": 0.00021324020528811432,
+      "joint_rev_1": -8.802895116375597e-07,
+      "joint_rev_2": 1.7487499591818707e-05,
+      "joint_rev_3": 1.7556608506507155e-06,
+      "joint_rev_4": -9.040240462919616e-05,
+      "joint_rev_5": 2.9534303409462166e-06
+    },
+    "physical_targets": {
+      "finger1_motor1": 0.0006387173833407345,
+      "finger1_motor2": 0.0002047455831763586,
+      "finger2_motor1": 0.0006473602040038247,
+      "finger2_motor2": 0.00021481541927686812,
+      "finger3_motor1": 0.0006350918318092457,
+      "finger3_motor2": 0.00020511711823402562,
+      "finger4_motor1": 0.0006357972165109966,
+      "finger4_motor2": 0.00021324020528811432,
+      "joint_rev_1": -8.802895116375597e-07,
+      "joint_rev_2": 1.7487499591818707e-05,
+      "joint_rev_3": 1.7556608506507155e-06,
+      "joint_rev_4": -9.040240462919616e-05,
+      "joint_rev_5": 2.9534303409462166e-06
+    },
+    "resolved_logical_action": [
+      0.20000000298023224,
+      -0.15000000596046448,
+      0.10000000149011612,
+      -0.05000000074505806,
+      0.07999999821186066,
+      1.0
+    ],
+    "sent_action": [
+      0.20000000298023224,
+      -0.15000000596046448,
+      0.10000000149011612,
+      -0.05000000074505806,
+      0.07999999821186066,
+      1.0
+    ],
+    "success": true,
+    "timestamp": 1784770202.9432073
+  },
+  "home": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "home_response": {
+    "joint_positions": {
+      "finger1_motor1": 0.9502749928315894,
+      "finger1_motor2": 1.1002175063643236,
+      "finger2_motor1": 0.9502792642838144,
+      "finger2_motor2": 1.1002175216905663,
+      "finger3_motor1": 0.9501921468130727,
+      "finger3_motor2": 1.1001499453021821,
+      "finger4_motor1": 0.9499895928161938,
+      "finger4_motor2": 1.0999852997079906,
+      "joint_rev_1": 0.19929904897593245,
+      "joint_rev_2": -0.19991338869992617,
+      "joint_rev_3": 0.10782542084546877,
+      "joint_rev_4": -0.07125969066462662,
+      "joint_rev_5": 0.08095726674331165
+    },
+    "physical_targets": {
+      "finger1_motor1": 0.9502749928315894,
+      "finger1_motor2": 1.1002175063643236,
+      "finger2_motor1": 0.9502792642838144,
+      "finger2_motor2": 1.1002175216905663,
+      "finger3_motor1": 0.9501921468130727,
+      "finger3_motor2": 1.1001499453021821,
+      "finger4_motor1": 0.9499895928161938,
+      "finger4_motor2": 1.0999852997079906,
+      "joint_rev_1": 0.19929904897593245,
+      "joint_rev_2": -0.19991338869992617,
+      "joint_rev_3": 0.10782542084546877,
+      "joint_rev_4": -0.07125969066462662,
+      "joint_rev_5": 0.08095726674331165
+    },
+    "resolved_logical_action": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "sent_action": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "success": true,
+    "timestamp": 1784770203.9458199
+  },
+  "measured_close": {
+    "joint_positions": {
+      "finger1_motor1": 0.9502749928315894,
+      "finger1_motor2": 1.1002175063643236,
+      "finger2_motor1": 0.9502792642838144,
+      "finger2_motor2": 1.1002175216905663,
+      "finger3_motor1": 0.9501921468130727,
+      "finger3_motor2": 1.1001499453021821,
+      "finger4_motor1": 0.9499895928161938,
+      "finger4_motor2": 1.0999852997079906,
+      "joint_rev_1": 0.19929904897593245,
+      "joint_rev_2": -0.19991338869992617,
+      "joint_rev_3": 0.10782542084546877,
+      "joint_rev_4": -0.07125969066462662,
+      "joint_rev_5": 0.08095726674331165
+    },
+    "success": true,
+    "timestamp": 1784770203.9448426
+  },
+  "measured_home": {
+    "joint_positions": {
+      "finger1_motor1": 0.0503070215870823,
+      "finger1_motor2": 0.020273074137967646,
+      "finger2_motor1": 0.05009758778055712,
+      "finger2_motor2": 0.020115546383314403,
+      "finger3_motor1": 0.05035979274559934,
+      "finger3_motor2": 0.020358060805666687,
+      "finger4_motor1": 0.05031749738527555,
+      "finger4_motor2": 0.020278948374274235,
+      "joint_rev_1": 0.0005879204614462875,
+      "joint_rev_2": -0.014758700963404855,
+      "joint_rev_3": 0.0006841911003733152,
+      "joint_rev_4": -0.013871672151560288,
+      "joint_rev_5": 0.00018952290426455258
+    },
+    "success": true,
+    "timestamp": 1784770204.9469295
+  },
+  "proof_boundary": "Proves HTTP control, MuJoCo motion/readback, five arm values, and fixed whole-hand grasp motion. Does not prove a physical SO-101 leader or real SuperArm hardware.",
+  "scope": "Manual Web Leader six-value action to live SuperArm + AmazingHand MuJoCo follower",
+  "start": {
+    "joint_positions": {
+      "finger1_motor1": 0.0006387173833407345,
+      "finger1_motor2": 0.0002047455831763586,
+      "finger2_motor1": 0.0006473602040038247,
+      "finger2_motor2": 0.00021481541927686812,
+      "finger3_motor1": 0.0006350918318092457,
+      "finger3_motor2": 0.00020511711823402562,
+      "finger4_motor1": 0.0006357972165109966,
+      "finger4_motor2": 0.00021324020528811432,
+      "joint_rev_1": -8.802895116375597e-07,
+      "joint_rev_2": 1.7487499591818707e-05,
+      "joint_rev_3": 1.7556608506507155e-06,
+      "joint_rev_4": -9.040240462919616e-05,
+      "joint_rev_5": 2.9534303409462166e-06
+    },
+    "message": "SuperArm MuJoCo backend connected successfully",
+    "robot_backend": "superarm_mujoco",
+    "success": true
+  },
+  "start_request": {
+    "follower_config": "/home/dong/july/superarm_ws.omx-worktrees/lelab-mujoco-web-lerobot/lelab/superarm/data/superarm_mujoco.yaml",
+    "follower_port": "unused",
+    "leader_config": "manual_or_so101",
+    "leader_port": "unused",
+    "mujoco_model_path": "/home/dong/.cache/huggingface/lerobot/amazinghand/model/superarm_amazinghand.xml",
+    "robot_backend": "superarm_mujoco",
+    "superarm_asset_root": "/home/dong/.cache/huggingface/lerobot/superarm/showroom",
+    "superarm_config": "/home/dong/july/superarm_ws.omx-worktrees/lelab-mujoco-web-lerobot/lelab/superarm/data/superarm_mujoco.yaml"
+  },
+  "status": "PASS",
+  "stop": {
+    "message": "Teleoperation stopped successfully",
+    "success": true
+  },
+  "tested_at": "2026-07-23T01:30:02.725161+00:00"
+}

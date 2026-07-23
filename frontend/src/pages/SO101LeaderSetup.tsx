@@ -63,6 +63,9 @@ const statusStyle = (status: ControlPath["website_status"]) =>
 const statusLabel = (status: ControlPath["website_status"]) =>
   status === "available" ? "Available now" : "Preparation only";
 
+const guideActionClass =
+  "border-yellow-300 bg-yellow-400 font-semibold text-slate-950 shadow-sm shadow-yellow-950/40 hover:border-yellow-200 hover:bg-yellow-300 hover:text-slate-950 focus-visible:ring-yellow-400";
+
 export default function SO101LeaderSetup() {
   const navigate = useNavigate();
   const { baseUrl, fetchWithHeaders } = useApi();
@@ -210,8 +213,7 @@ export default function SO101LeaderSetup() {
                     </p>
                   )}
                   <Button
-                    className="mt-4"
-                    variant="outline"
+                    className={`mt-4 ${guideActionClass}`}
                     onClick={() => navigate(path.entry_route)}
                   >
                     {path.id === "manual_to_sim"
@@ -247,8 +249,7 @@ export default function SO101LeaderSetup() {
               Detected serial ports: {guide?.leader.serial_ports.join(", ") || "none"}
             </p>
             <Button
-              className="mt-4"
-              variant="outline"
+              className={`mt-4 ${guideActionClass}`}
               onClick={() => navigate("/calibration")}
             >
               Open SO-101 calibration
@@ -322,8 +323,7 @@ export default function SO101LeaderSetup() {
                 ))}
               </ul>
               <Button
-                className="mt-4"
-                variant="outline"
+                className={`mt-4 ${guideActionClass}`}
                 onClick={() => navigate("/calibration")}
               >
                 Open SuperArm calibration
@@ -349,8 +349,13 @@ export default function SO101LeaderSetup() {
             ))}
           </ol>
           <div className="mt-5 flex flex-wrap gap-3">
-            <Button onClick={() => navigate("/")}>Open dashboard recording</Button>
-            <Button variant="outline" onClick={() => navigate("/hardware-setup")}>
+            <Button className={guideActionClass} onClick={() => navigate("/")}>
+              Open dashboard recording
+            </Button>
+            <Button
+              className={guideActionClass}
+              onClick={() => navigate("/hardware-setup")}
+            >
               Open real follower checklist
             </Button>
           </div>

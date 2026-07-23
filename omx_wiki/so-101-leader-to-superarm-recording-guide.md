@@ -180,6 +180,29 @@ Only after those five items pass should the website expose:
 SO-101 Leader -> SuperArm DM4340P + AmazingHand (Real)
 ```
 
+## Verification snapshot — 2026-07-23
+
+The three stages do not have the same proof level:
+
+- **Stage 1 is live-tested.** A Manual Web Leader action
+  `[0.20, -0.15, 0.10, -0.05, 0.08, 1.0]` started the MuJoCo backend,
+  moved the five arm channels, and closed the fixed eight-joint AmazingHand
+  pose. A following all-zero/open action returned the arm near home and the
+  hand near its open pose. The committed machine-readable report is
+  `omx_wiki/assets/manual-slider-mujoco-live-test-20260723.json`.
+- **Stage 2 is software-contract tested, not physical-device tested.** The
+  recording, server, manual-config, and teleoperation suites passed 68 tests,
+  including SO-101-to-SuperArm mapping, six-value dataset boundaries, gripper
+  quantization, and both MuJoCo and Isaac backend construction. No SO-101
+  serial port was detected during this verification, so this result does not
+  claim a real leader was moved.
+- **Stage 3 remains preparation only.** No real follower backend is registered
+  in the website and no DM4340P/AmazingHand torque test was performed.
+
+The guide action buttons use a yellow, high-contrast treatment. The reviewed
+page capture is `omx_wiki/assets/superarm-leader-follower-test-cases.png`
+(SHA-256 `1e481c538425b071baf812abc1fc16538d31e182985a59bcd2e925f9893e8a8f`).
+
 ## Safety and proof boundary
 
 - Simulation PASS does not authorize real torque.
