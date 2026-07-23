@@ -17,6 +17,10 @@ schemaVersion: 1
 The intended progression has three stages, but the website currently completes
 only the first two:
 
+[Reviewed website test-case screenshot](assets/superarm-leader-follower-test-cases.png)
+shows the live guide page with both available simulation paths and the real
+follower path explicitly labeled `Preparation only`.
+
 | Stage | Leader | Follower | Website status |
 | --- | --- | --- | --- |
 | 1 | Manual Web Leader sliders | MuJoCo or Isaac Sim software follower | Available |
