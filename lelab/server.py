@@ -65,6 +65,8 @@ from .record import (
     handle_stop_recording,
     handle_upload_dataset,
 )
+from .rl.config import ReinforcementLearningRequest
+from .rl.readiness import check_rl_readiness
 from .rollout import (
     InferenceRequest,
     handle_inference_status,
@@ -516,6 +518,30 @@ async def create_training_job(req: Request):
     return record
 
 
+@app.get("/system/rl-readiness")
+def get_rl_readiness(
+    distribution_zip: str,
+    learner_port: int = 50051,
+    bridge_port: int = 8765,
+):
+    result = check_rl_readiness(distribution_zip, learner_port, bridge_port)
+    running = any(job.state == "running" and job.runner == "local" for job in job_registry.list(100))
+    result["checks"]["no_competing_job"] = not running
+    result["ready"] = result["ready"] and not running
+    return result
+
+
+@app.post("/jobs/reinforcement-learning", status_code=201)
+def create_reinforcement_learning_job(config: ReinforcementLearningRequest):
+    readiness = get_rl_readiness(config.distribution_zip, config.learner_port, config.bridge_port)
+    if not readiness["ready"]:
+        raise HTTPException(status_code=409, detail={"message": "RL runtime is not ready", **readiness})
+    try:
+        return job_registry.start_reinforcement_learning(config)
+    except JobAlreadyRunningError as exc:
+        raise HTTPException(status_code=409, detail=f"Job already running: {exc}") from exc
+
+
 class ImportModelRequest(BaseModel):
     source: str
     name: str | None = None
@@ -608,6 +634,21 @@ def get_job(job_id: str):
         return job_registry.get(job_id)
     except JobNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found") from exc
+
+
+@app.get("/jobs/{job_id}/frame")
+def get_job_frame(job_id: str):
+    try:
+        record = job_registry.get(job_id)
+    except JobNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found") from exc
+    if record.kind != "reinforcement_learning":
+        raise HTTPException(status_code=404, detail="This job has no policy camera")
+    root = Path(record.output_dir).resolve()
+    frame = (root / "isaac" / "run" / "rl-workspace.ppm").resolve()
+    if root not in frame.parents or not frame.is_file() or frame.is_symlink():
+        raise HTTPException(status_code=404, detail="Policy camera frame is not available")
+    return FileResponse(frame, media_type="image/x-portable-pixmap", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/jobs/{job_id}/logs")
