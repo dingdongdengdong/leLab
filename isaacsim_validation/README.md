@@ -86,7 +86,7 @@ shell-free passive-linkage helper, and bounded validation evidence. Measured
 
 ```bash
 export ACCEPTED_RUN=artifacts/isaacsim_superarm/20260722T163556Z-motor2-flexion-fix/zip_learning_isaac
-export DIST=superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2
+export DIST=superarm_amazinghand_isaac60_passive_linkage_no_shell_distribution_20260724_v3
 
 .venv/bin/python -m isaacsim_validation.export_superarm_usd_distribution \
   --source-asset-dir "$ACCEPTED_RUN/superarm_amazinghand" \
@@ -106,16 +106,18 @@ export DIST=superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2
 Accepted archive:
 
 ```text
-artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip
-SHA256: 3bd316090d17f9903562139983a6c66731717f7246045ebdaf90610bf3e596d3
+artifacts/distributions/superarm_amazinghand_isaac60_passive_linkage_no_shell_distribution_20260724_v3.zip
+SHA256: c356d1157318b72532b82d73270ef06b5b11ed5b8a90641ea4e431941e4554f7
 entry: usd/superarm_amazinghand/superarm_amazinghand.usda
+visual profile: superarm_isaac60_passive_linkage_no_shell/v1
 ```
 
 After extraction, run `sha256sum -c SHA256SUMS` from the distribution
 directory. The manifest and checksum inventory also bind the exact whole,
 open, half-close, and close PNG bytes used by the E2E evidence runner. The
-accepted clean-extraction validator result is retained under
-`artifacts/distribution_validation/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2/`.
+archive was reloaded through the schema-v2 checksum validator after
+`unzip -t`; the extracted entrypoint and namespaced passive runtime both
+resolved beneath the digest-keyed cache root.
 
 ## Managed LeLab control bridge
 
@@ -138,7 +140,8 @@ isaacsim_validation/run_isaacsim60_control_bridge.sh \
   --entrypoint /path/to/extracted/distribution-root/usd/superarm_amazinghand/superarm_amazinghand.usda \
   --run-dir /tmp/superarm-isaac-session \
   --host 127.0.0.1 --port 8765 \
-  --token-file /tmp/superarm-isaac-secret/token
+  --token-file /tmp/superarm-isaac-secret/token \
+  --passive-linkage-visuals
 ```
 
 The bridge owns Isaac APIs on its main thread and supports `hello`, atomic
@@ -161,7 +164,7 @@ teleoperation and future ACT/VLA policy code; the Isaac bridge expands those
 values to the exact 13 named joints.
 
 ```bash
-export SUPERARM_ISAAC_DISTRIBUTION_ZIP="$PWD/artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip"
+export SUPERARM_ISAAC_DISTRIBUTION_ZIP="$PWD/artifacts/distributions/superarm_amazinghand_isaac60_passive_linkage_no_shell_distribution_20260724_v3.zip"
 export ISAAC_SIM_STARTUP_TIMEOUT_S=240
 uv run lelab --no-open
 

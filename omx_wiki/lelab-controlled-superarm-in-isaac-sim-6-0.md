@@ -19,9 +19,10 @@ LeLab is the control owner for the SuperArm + AmazingHand Isaac Sim backend. Thi
 The accepted asset is:
 
 ```text
-artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip
-SHA256 3bd316090d17f9903562139983a6c66731717f7246045ebdaf90610bf3e596d3
+artifacts/distributions/superarm_amazinghand_isaac60_passive_linkage_no_shell_distribution_20260724_v3.zip
+SHA256 c356d1157318b72532b82d73270ef06b5b11ed5b8a90641ea4e431941e4554f7
 entry usd/superarm_amazinghand/superarm_amazinghand.usda
+visual profile superarm_isaac60_passive_linkage_no_shell/v1
 ```
 
 ## Architecture
@@ -67,7 +68,7 @@ The physical names are `joint_rev_1` through `joint_rev_5` and `finger1_motor1`,
 ## Launch and website workflow
 
 ```bash
-export SUPERARM_ISAAC_DISTRIBUTION_ZIP="$PWD/artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip"
+export SUPERARM_ISAAC_DISTRIBUTION_ZIP="$PWD/artifacts/distributions/superarm_amazinghand_isaac60_passive_linkage_no_shell_distribution_20260724_v3.zip"
 export ISAAC_SIM_STARTUP_TIMEOUT_S=240
 uv run lelab --no-open
 ```
