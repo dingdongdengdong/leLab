@@ -13,7 +13,28 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 ENTRYPOINT = PurePosixPath("usd/superarm_amazinghand/superarm_amazinghand.usda")
-SCHEMA = "superarm.isaac_sim.usd_distribution/v1"
+SCHEMA = "superarm.isaac_sim.usd_distribution/v2"
+PASSIVE_VISUAL_PROFILE = "superarm_isaac60_passive_linkage_no_shell/v1"
+PASSIVE_RUNTIME = {
+    "python_root": "python",
+    "package": "superarm_isaac_runtime",
+    "solver": "superarm_isaac_runtime.passive_linkage:solve_passive_linkage",
+    "usd_author": (
+        "superarm_isaac_runtime.passive_linkage_usd:"
+        "author_or_update_passive_linkage_runtime"
+    ),
+    "keyframes": (
+        "python/superarm_isaac_runtime/data/"
+        "amazinghand_passive_linkage_keyframes.json"
+    ),
+    "instances": "usd/superarm_amazinghand/zip_hand_payloads/instances.usda",
+}
+GRASP_CONTRACT = {
+    "simulation_codes": [0.0, 0.5, 1.0],
+    "real_hardware_max_code": 0.5,
+    "real_hardware_max_pose": "half-close",
+    "full_close_simulation_only": True,
+}
 USD_ASSET_PATTERN = re.compile(r"@([^@]+)@")
 ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 EXPECTED_ARM_DOF_COUNT = 5
@@ -185,29 +206,37 @@ not included.
 The physical joint order and validation evidence are recorded in `manifest.json` and
 `validation/isaac-report.json`.
 
-## Detailed hand linkage helper
+## Shell-free passive-linkage runtime
 
-The clean robot keeps the shell-free moving frame visuals. The 88 detailed structural
-linkage pieces are visual-only followers, not extra physics bodies. They are intentionally
-generated from measured hand angles instead of being baked into the reusable neutral asset.
-
-The checked helper is included under `runtime/`:
+The 88 detailed structural linkage pieces are visual-only followers, not extra physics
+bodies. The checked, namespaced runtime package is included under
+`python/superarm_isaac_runtime/`. It authors the followers once and updates their
+wrist-local transforms from measured hand angles without writing runtime state back into
+the source USD.
 
 ```python
-from runtime.passive_linkage import solve_passive_linkage
-from runtime.passive_linkage_usd import author_passive_linkage_snapshot
+from superarm_isaac_runtime.passive_linkage import solve_passive_linkage
+from superarm_isaac_runtime.passive_linkage_usd import (
+    author_or_update_passive_linkage_runtime,
+)
 
 poses = solve_passive_linkage(measured_hand_joint_positions)
-contract = author_passive_linkage_snapshot(
-    file_backed_snapshot_stage,
+contract = author_or_update_passive_linkage_runtime(
+    live_stage,
     "/superarm_amazinghand",
     poses,
     extracted_root / "usd/superarm_amazinghand/zip_hand_payloads/instances.usda",
 )
 ```
 
-`author_passive_linkage_snapshot` publishes a flattened, measured-state evidence stage;
-it does not add closed-loop PhysX constraints to the reusable robot.
+The same USD module retains `author_passive_linkage_snapshot` for flattened,
+measured-state evidence stages. Neither path adds closed-loop PhysX constraints.
+
+## Hardware safety boundary
+
+Simulation may exercise open (`0.0`), half-close (`0.5`), and close (`1.0`). Real
+AmazingHand hardware is capped at half-close (`0.5` / 55 degrees). Full close is
+simulation-only unless a later hardware validation explicitly changes this contract.
 
 ## Integrity and evidence
 
@@ -223,7 +252,7 @@ it does not add closed-loop PhysX constraints to the reusable robot.
 
 This package does not prove real-hardware transport, torque/current tuning, contact
 quality, grasp retention, or a trained ACT/VLA policy. Rounded outer hand shells remain
-excluded for the current frame-first structural validation phase.
+excluded; the live shell-free presentation uses the 88 passive visual followers.
 """.encode()
 
 
@@ -291,13 +320,16 @@ def _manifest(
         },
         "joint_names": {"arm": arm_names, "hand": hand_names, "physical_order": dof_names},
         "visual_contract": {
-            "mode": zip_binding.get("visual_mode"),
+            "profile": PASSIVE_VISUAL_PROFILE,
+            "mode": "live_passive_linkage_no_shells",
             "outer_shells_included": False,
             "passive_follower_count": _passive_follower_count(runtime_report),
             "passive_followers_are_physics_bodies": False,
             "passive_snapshot_helper_included": True,
             "clean_entrypoint_contains_runtime_snapshot_state": False,
+            "runtime": PASSIVE_RUNTIME,
         },
+        "grasp_contract": GRASP_CONTRACT,
         "visual_evidence": visual_evidence,
         "validation": {
             "runtime_status": runtime_report.get("status"),
@@ -371,16 +403,19 @@ def export_distribution(
             "LICENSE-AmazingHandControl": _require_file(
                 hand_license_file, "AmazingHandControl license"
             ).read_bytes(),
-            "runtime/__init__.py": b'"""SuperArm distribution runtime helpers."""\n',
-            "runtime/passive_linkage.py": _require_file(
+            "python/superarm_isaac_runtime/__init__.py": (
+                b'"""Namespaced shell-free passive-linkage runtime."""\n'
+            ),
+            "python/superarm_isaac_runtime/passive_linkage.py": _require_file(
                 passive_solver, "passive-linkage solver"
             ).read_bytes(),
-            "runtime/passive_linkage_usd.py": _require_file(
+            "python/superarm_isaac_runtime/passive_linkage_usd.py": _require_file(
                 passive_usd, "passive-linkage USD helper"
             ).read_bytes(),
-            "runtime/data/amazinghand_passive_linkage_keyframes.json": _require_file(
-                passive_manifest, "passive-linkage keyframe manifest"
-            ).read_bytes(),
+            (
+                "python/superarm_isaac_runtime/data/"
+                "amazinghand_passive_linkage_keyframes.json"
+            ): _require_file(passive_manifest, "passive-linkage keyframe manifest").read_bytes(),
             "validation/isaac-report.json": _require_file(
                 runtime_report, "runtime validation report"
             ).read_bytes(),

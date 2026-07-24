@@ -757,6 +757,8 @@ def test_control_launcher_has_exact_isolation_and_lifecycle_contract():
         ":/root/.nv/ComputeCache",
         "-v /tmp/.X11-unix:/tmp/.X11-unix:rw",
         "--replicator-rgb",
+        "--passive-linkage-visuals",
+        "superarm_isaac_runtime",
     ]
     for marker in required:
         assert marker in launcher

@@ -10,8 +10,8 @@ import {
   startReinforcementLearningJob, stopJob,
 } from "@/lib/jobsApi";
 
-const SHA = "3bd316090d17f9903562139983a6c66731717f7246045ebdaf90610bf3e596d3";
-const DEFAULT_ZIP = "/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip";
+const SHA = "c356d1157318b72532b82d73270ef06b5b11ed5b8a90641ea4e431941e4554f7";
+const DEFAULT_ZIP = "/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/distributions/superarm_amazinghand_isaac60_passive_linkage_no_shell_distribution_20260724_v3.zip";
 const initial: ReinforcementLearningRequest = {
   task: "SuperArmIsaacPickLift-v0", runner: "local", seed: 1000,
   episode_length_steps: 150, training_steps: 20000,
@@ -63,7 +63,7 @@ export default function ReinforcementLearning() {
   return <main className="min-h-screen bg-slate-950 p-6 text-slate-100">
     <div className="mx-auto max-w-7xl space-y-6">
       <Button variant="ghost" onClick={() => navigate("/")}><ArrowLeft className="mr-2 h-4 w-4" />Home</Button>
-      <header><p className="text-sm font-semibold text-yellow-400">AUTONOMOUS SAC · LOCAL GPU</p><h1 className="text-3xl font-bold">Reinforcement Learning — SuperArm Isaac Sim</h1><p className="text-slate-400">SuperArm + AmazingHand learns seeded cube pick-and-lift from 256×256 RGB and 23-value state.</p></header>
+      <header><p className="text-sm font-semibold text-yellow-400">AUTONOMOUS SAC · LOCAL GPU</p><h1 className="text-3xl font-bold">Reinforcement Learning — SuperArm Isaac Sim</h1><p className="text-slate-400">SuperArm + shell-free passive-linkage AmazingHand runs the seeded cube pick-and-lift task from 256×256 RGB and 23-value state. Policy improvement is not yet proven.</p></header>
       {!jobId ? <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-4">
           <h2 className="text-xl font-semibold">Configuration</h2>

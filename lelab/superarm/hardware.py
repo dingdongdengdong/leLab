@@ -28,6 +28,7 @@ from .mapping import ARM_JOINTS, ARM_MAX_RAD, ARM_MIN_RAD, SERVO_SPEED_MAX, SERV
 from .transports import SerialAmazingHandTransport
 
 DM4340P_LEROBOT_TYPE = "dm4340"
+REAL_HARDWARE_MAX_GRASP_CODE = 0.5
 
 
 def validate_dm4340p_arm_motors(motors: dict[str, tuple[int, int, str]]) -> None:
@@ -153,6 +154,7 @@ class SuperArmDm4340PAmazingHandConfig(RobotConfig):
     arm_position_kd: list[float] = field(default_factory=list)
     hand_baudrate: int = 1_000_000
     hand_speed: int = 3
+    hand_max_motion_code: float = REAL_HARDWARE_MAX_GRASP_CODE
 
 
 class SuperArmDm4340PAmazingHandRobot(Robot):
@@ -163,6 +165,13 @@ class SuperArmDm4340PAmazingHandRobot(Robot):
 
     def __init__(self, config: SuperArmDm4340PAmazingHandConfig) -> None:
         super().__init__(config)
+        if (
+            not math.isfinite(config.hand_max_motion_code)
+            or not 0.0 <= config.hand_max_motion_code <= REAL_HARDWARE_MAX_GRASP_CODE
+        ):
+            raise ValueError(
+                "real AmazingHand hand_max_motion_code must be within [0.0, 0.5]"
+            )
         self.config = config
         self._arm: Any = None
         self._hand = SerialAmazingHandTransport(config.hand_port, config.hand_baudrate)
@@ -266,6 +275,7 @@ class SuperArmDm4340PAmazingHandRobot(Robot):
         if isinstance(action, np.ndarray):
             action = action.reshape(-1).tolist()
         values = normalize_superarm_action(action)
+        values[-1] = min(values[-1], self.config.hand_max_motion_code)
         arm_rad, hand_deg = action_to_runtime_commands(values)
         self._arm.send_action(arm_radians_to_openarm_degrees(arm_rad, self.config.arm_joint_calibration))
         try:

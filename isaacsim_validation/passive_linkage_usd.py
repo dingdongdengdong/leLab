@@ -171,6 +171,145 @@ def author_passive_linkage_snapshot(
             temporary_path.unlink()
 
 
+def author_or_update_passive_linkage_runtime(
+    stage,
+    robot_root: str,
+    poses: Sequence[PassiveVisualPose],
+    instances_usda: Path,
+) -> dict[str, Any]:
+    """Create live passive followers once, then update only their transforms.
+
+    This runtime path deliberately does not flatten or save the stage. The
+    distributed USD stays immutable while Isaac's session layer carries the
+    visual-only follower references and measured-pose transforms.
+    """
+
+    from pxr import Gf, Sdf, Usd, UsdGeom
+
+    instances_usda = instances_usda.resolve()
+    if not instances_usda.is_file():
+        raise FileNotFoundError(f"passive linkage instances.usda is missing: {instances_usda}")
+
+    plan = build_passive_linkage_author_plan(poses)
+    wrist = _unique_named_prim(stage, robot_root, "r_wrist_interface")
+    passive_root_path = Sdf.Path(f"/LeLab{PASSIVE_VISUAL_ROOT_NAME.title().replace('_', '')}")
+    passive_root_prim = stage.GetPrimAtPath(passive_root_path)
+    runtime_created = not bool(passive_root_prim)
+
+    if runtime_created:
+        deactivated = _deactivate_frame_first_core_refs(stage, robot_root)
+        passive_root = UsdGeom.Xform.Define(stage, passive_root_path)
+    else:
+        deactivated = _count_inactive_frame_first_core_refs(stage, robot_root)
+        if deactivated != 8:
+            raise RuntimeError(
+                "live passive linkage exists but the eight frame-first core refs "
+                f"are not all inactive: {deactivated}"
+            )
+        passive_root = UsdGeom.Xform(passive_root_prim)
+    _set_runtime_parent_pose(passive_root.GetPrim(), wrist, Usd, UsdGeom)
+
+    runtime_xform_paths: list[str] = []
+    for pose, part in zip(poses, plan["parts"], strict=True):
+        finger_path = passive_root.GetPath().AppendChild(f"finger{pose.finger}")
+        part_path = finger_path.AppendChild(f"part_{pose.source_index:03d}")
+        runtime_xform_paths.append(str(part_path))
+        if runtime_created:
+            UsdGeom.Xform.Define(stage, finger_path)
+            prim = UsdGeom.Xform.Define(stage, part_path).GetPrim()
+            _set_custom_attr(
+                prim,
+                "passive_source_index",
+                Sdf.ValueTypeNames.Int,
+                pose.source_index,
+            )
+            _set_custom_attr(
+                prim,
+                "passive_source_prim",
+                Sdf.ValueTypeNames.String,
+                pose.source_prim,
+            )
+            _set_custom_attr(
+                prim,
+                "passive_reference_prim",
+                Sdf.ValueTypeNames.String,
+                part["reference_prim"],
+            )
+            prim.GetReferences().AddReference(
+                str(instances_usda),
+                Sdf.Path(part["reference_prim"]),
+            )
+            prim.SetInstanceable(True)
+        else:
+            prim = stage.GetPrimAtPath(part_path)
+            if not bool(prim):
+                raise RuntimeError(f"live passive linkage part is missing: {part_path}")
+        _set_runtime_pose(prim, pose, Gf, UsdGeom)
+
+    return {
+        **plan,
+        "deactivated_frame_first_core_ref_count": deactivated,
+        "runtime_created": runtime_created,
+        "runtime_updated": not runtime_created,
+        "runtime_root_path": str(passive_root.GetPath()),
+        "runtime_xform_paths": runtime_xform_paths,
+        "source_usd_saved": False,
+        "source_usd_flattened": False,
+    }
+
+
+def _set_runtime_pose(prim, pose: PassiveVisualPose, gf, usd_geom) -> None:
+    xformable = usd_geom.Xformable(prim)
+    translate_op = _named_runtime_op(
+        prim,
+        "xformOp:translate:passiveRuntime",
+        usd_geom,
+    )
+    orient_op = _named_runtime_op(
+        prim,
+        "xformOp:orient:passiveRuntime",
+        usd_geom,
+    )
+    if translate_op is None:
+        translate_op = xformable.AddTranslateOp(
+            precision=usd_geom.XformOp.PrecisionDouble,
+            opSuffix="passiveRuntime",
+        )
+    if orient_op is None:
+        orient_op = xformable.AddOrientOp(
+            precision=usd_geom.XformOp.PrecisionDouble,
+            opSuffix="passiveRuntime",
+        )
+    translate_op.Set(gf.Vec3d(*pose.translate))
+    w, x, y, z = pose.orient
+    orient_op.Set(gf.Quatd(w, gf.Vec3d(x, y, z)))
+
+
+def _set_runtime_parent_pose(prim, wrist, usd, usd_geom) -> None:
+    xformable = usd_geom.Xformable(prim)
+    transform_op = _named_runtime_op(
+        prim,
+        "xformOp:transform:passiveRuntimeParent",
+        usd_geom,
+    )
+    if transform_op is None:
+        transform_op = xformable.AddTransformOp(
+            precision=usd_geom.XformOp.PrecisionDouble,
+            opSuffix="passiveRuntimeParent",
+        )
+    parent_world = usd_geom.Xformable(wrist).ComputeLocalToWorldTransform(
+        usd.TimeCode.Default()
+    )
+    transform_op.Set(parent_world)
+
+
+def _named_runtime_op(prim, name: str, usd_geom):
+    attribute = prim.GetAttribute(name)
+    if not attribute or not attribute.IsValid():
+        return None
+    return usd_geom.XformOp(attribute)
+
+
 def validate_no_source_path_leaks(snapshot_text: str, instances_usda: Path) -> None:
     """Reject external source paths while allowing asset-free flattened prototype refs."""
 
@@ -207,6 +346,14 @@ def _deactivate_frame_first_core_refs(stage, robot_root: str) -> int:
     for prim in matches:
         prim.SetActive(False)
     return len(matches)
+
+
+def _count_inactive_frame_first_core_refs(stage, robot_root: str) -> int:
+    return sum(
+        not prim.IsActive()
+        for prim in _iter_prims_under(stage, robot_root)
+        if prim.GetName() in FRAME_FIRST_CORE_REF_NAMES
+    )
 
 
 def _validate_flattened_snapshot(stage, robot_root: str) -> dict[str, Any]:
@@ -266,7 +413,8 @@ def _unique_named_prim(stage, robot_root: str, name: str):
 
 def _iter_prims_under(stage, robot_root: str):
     prefix = robot_root.rstrip("/") + "/"
-    for prim in stage.Traverse():
+    traverse = stage.TraverseAll if hasattr(stage, "TraverseAll") else stage.Traverse
+    for prim in traverse():
         path = str(prim.GetPath())
         if path == robot_root or path.startswith(prefix):
             yield prim

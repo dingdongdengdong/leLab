@@ -241,14 +241,26 @@ def test_combined_hardware_robot_routes_six_controls_to_two_protocols(tmp_path) 
     assert set(arm.actions[0]) == {f"joint_{index}.pos" for index in range(1, 6)}
     assert hand.commands == [
         (
-            {finger: [110.0, 110.0] for finger in ["pointer", "middle", "ring", "thumb"]},
+            {finger: [55.0, 55.0] for finger in ["pointer", "middle", "ring", "thumb"]},
             {finger: [3, 3] for finger in ["pointer", "middle", "ring", "thumb"]},
         )
     ]
+    assert robot._logical[-1] == 0.5
 
     robot.disconnect()
     assert arm.disconnected is True
     assert hand.closed is True
+
+
+def test_real_hardware_grasp_limit_cannot_exceed_half_close(tmp_path) -> None:
+    config = SuperArmDm4340PAmazingHandConfig(
+        arm_port="can0",
+        hand_max_motion_code=1.0,
+        calibration_dir=tmp_path,
+    )
+
+    with pytest.raises(ValueError, match="must be within \\[0.0, 0.5\\]"):
+        SuperArmDm4340PAmazingHandRobot(config)
 
 
 def test_hand_connect_failure_disconnects_the_can_arm(tmp_path, monkeypatch) -> None:

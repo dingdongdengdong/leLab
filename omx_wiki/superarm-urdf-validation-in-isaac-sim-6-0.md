@@ -98,16 +98,17 @@ one articulation root, 13 revolute joints, and zero blocking issues.
 The current relocatable distribution is:
 
 ```text
-artifacts/distributions/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2.zip
-SHA256: 3bd316090d17f9903562139983a6c66731717f7246045ebdaf90610bf3e596d3
-size: 4,026,676 bytes
+artifacts/distributions/superarm_amazinghand_isaac60_passive_linkage_no_shell_distribution_20260724_v3.zip
+SHA256: c356d1157318b72532b82d73270ef06b5b11ed5b8a90641ea4e431941e4554f7
+size: 4,029,301 bytes
 entry: usd/superarm_amazinghand/superarm_amazinghand.usda
+visual profile: superarm_isaac60_passive_linkage_no_shell/v1
 ```
 
 It has one archive root and 30 files: the clean relative-reference USD package,
 project and AmazingHandControl licenses, README, manifest, checksums, accepted
 runtime/validator reports, the reviewed contact sheet, four exact pose PNGs,
-and the pure passive linkage solver plus USD snapshot helper. The manifest,
+and the namespaced passive linkage solver plus live USD update/snapshot helper. The manifest,
 `SHA256SUMS`, and archive inventory independently agree on each PNG path, byte
 length, and SHA-256. It deliberately excludes the seven roughly 70 MB measured
 snapshot stages and other runtime logs/state.
@@ -121,10 +122,20 @@ report is retained at
 The motor-direction-corrected v2 clean-extraction report is at
 `artifacts/distribution_validation/superarm_amazinghand_isaac_sim_usd_distribution_20260722_v2/extracted-asset-validator.json`.
 
-The clean entrypoint itself contains the eight moving frame-first hand visuals.
-The 88 detailed linkage pieces remain measured-state visual followers and are
-authored by the included helper into file-backed snapshots; they are not baked
-runtime state or closed-loop PhysX bodies in the reusable asset.
+The clean entrypoint remains snapshot-free. At bridge startup, the packaged
+runtime deactivates the eight simplified frame-first core references, authors
+the 88 detailed linkage pieces once into Isaac's session layer, and then updates
+only their wrist-local transforms from the eight measured hand joints. These
+followers are not baked runtime state or closed-loop PhysX bodies.
+
+Fresh exact-archive managed-control evidence is at
+`/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/v3-passive-control-smoke-20260724/report.json`.
+Isaac Sim 6.0.0 accepted the V3 checksum and visual profile, reported 88
+followers with no outer shells, and settled the eight hand motors at the
+half-close targets. The separate Isaac Sim 6.0.1 RL RGB attempt reached a
+settled reset but returned an empty Replicator frame; its explicit blocked
+verdict is at
+`/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/v3-passive-runtime-smoke-20260724/verdict.json`.
 
 ## Proof boundaries
 

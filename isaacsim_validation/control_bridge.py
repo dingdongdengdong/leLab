@@ -6,6 +6,7 @@ import argparse
 import json
 import selectors
 import socket
+import sys
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
@@ -27,6 +28,7 @@ TABLE_HEIGHT = 0.10
 TABLE_TOP_Z = 0.10
 CUBE_SIZE = 0.04
 RL_FRAME_NAME = "rl-workspace.ppm"
+PASSIVE_VISUAL_PROFILE = "superarm_isaac60_passive_linkage_no_shell/v1"
 
 
 class BridgeRuntime(Protocol):
@@ -59,6 +61,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--token-file", required=True, type=Path)
     parser.add_argument("--webrtc", action="store_true")
     parser.add_argument("--replicator-rgb", action="store_true")
+    parser.add_argument("--passive-linkage-visuals", action="store_true")
     parser.add_argument("--webrtc-signal-port", default=49100, type=int)
     parser.add_argument("--webrtc-stream-port", default=47998, type=int)
     parser.add_argument("--webrtc-public-ip", default="")
@@ -96,6 +99,36 @@ def _validate_args(args: argparse.Namespace) -> argparse.Namespace:
     args.token_file = args.token_file.resolve(strict=True)
     if not args.token_file.is_file():
         raise ValueError("token file must be a file")
+    if args.passive_linkage_visuals:
+        args.passive_python_root = _resolved_child(
+            args.asset_root,
+            args.asset_root / "python",
+            label="passive runtime Python root",
+        )
+        args.passive_instances = _resolved_child(
+            args.asset_root,
+            (
+                args.asset_root
+                / "usd"
+                / "superarm_amazinghand"
+                / "zip_hand_payloads"
+                / "instances.usda"
+            ),
+            label="passive linkage instances",
+        )
+        required = (
+            args.passive_python_root / "superarm_isaac_runtime" / "__init__.py",
+            args.passive_python_root / "superarm_isaac_runtime" / "passive_linkage.py",
+            args.passive_python_root / "superarm_isaac_runtime" / "passive_linkage_usd.py",
+            (
+                args.passive_python_root
+                / "superarm_isaac_runtime"
+                / "data"
+                / "amazinghand_passive_linkage_keyframes.json"
+            ),
+        )
+        if not args.passive_python_root.is_dir() or not all(path.is_file() for path in required):
+            raise ValueError("passive linkage runtime package is incomplete")
     return args
 
 
@@ -317,11 +350,14 @@ def simulation_app_launch(args: argparse.Namespace) -> tuple[dict[str, Any], str
     """Build the Isaac launch contract without importing Isaac on the host."""
 
     if getattr(args, "replicator_rgb", False):
+        extra_args = ["--/exts/isaacsim.core.throttling/enable_async=false"]
+        if getattr(args, "passive_linkage_visuals", False):
+            extra_args.append("--/app/useFabricSceneDelegate=true")
         return {
             "headless": False,
             "renderer": "RayTracedLighting",
             "enable_cameras": True,
-            "extra_args": ["--/exts/isaacsim.core.throttling/enable_async=false"],
+            "extra_args": extra_args,
         }, ""
 
     config: dict[str, Any] = {
@@ -333,6 +369,8 @@ def simulation_app_launch(args: argparse.Namespace) -> tuple[dict[str, Any], str
         "window_height": 720,
     }
     if not args.webrtc:
+        if getattr(args, "passive_linkage_visuals", False):
+            config["extra_args"] = ["--/app/useFabricSceneDelegate=true"]
         return config, ""
 
     prefix = "/exts/omni.kit.livestream.app/primaryStream"
@@ -342,6 +380,8 @@ def simulation_app_launch(args: argparse.Namespace) -> tuple[dict[str, Any], str
         f'--{prefix}/streamType="webrtc"',
         f"--{prefix}/targetFps=30",
     ]
+    if getattr(args, "passive_linkage_visuals", False):
+        extra_args.append("--/app/useFabricSceneDelegate=true")
     if args.webrtc_public_ip:
         extra_args.append(f'--{prefix}/publicIp="{args.webrtc_public_ip}"')
     config.update({"hide_ui": False, "extra_args": extra_args})
@@ -362,12 +402,13 @@ def _run_isaac(args: argparse.Namespace, token: str) -> None:
 
 def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None:
     app.update()
+    import isaacsim.core.experimental.utils.backend as backend_utils
     import numpy as np
     import omni.timeline
     import omni.usd
     from isaacsim.core.api import World
     from isaacsim.core.api.objects import DynamicCuboid, FixedCuboid
-    from isaacsim.core.experimental.prims import Articulation
+    from isaacsim.core.experimental.prims import Articulation, XformPrim
     from isaacsim.core.rendering_manager import ViewportManager
     from isaacsim.core.simulation_manager import SimulationManager
     from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics
@@ -375,6 +416,22 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
     rep = None
     if args.replicator_rgb:
         import omni.replicator.core as rep
+
+    solve_passive_linkage = None
+    author_or_update_passive_linkage_runtime = None
+    if args.passive_linkage_visuals:
+        sys.path.insert(0, str(args.passive_python_root))
+        from superarm_isaac_runtime import passive_linkage, passive_linkage_usd
+
+        package_root = args.passive_python_root.resolve()
+        for module in (passive_linkage, passive_linkage_usd):
+            module_path = Path(module.__file__).resolve()
+            if not module_path.is_relative_to(package_root):
+                raise RuntimeError(f"passive runtime imported outside distribution: {module_path}")
+        solve_passive_linkage = passive_linkage.solve_passive_linkage
+        author_or_update_passive_linkage_runtime = (
+            passive_linkage_usd.author_or_update_passive_linkage_runtime
+        )
 
     def flat(values: Any) -> list[float]:
         if hasattr(values, "numpy"):
@@ -416,6 +473,9 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             self.stage = omni.usd.get_context().get_stage()
             self.root = discover_root(self.stage)
             self.root_path = str(self.root.GetPath())
+            self.passive_visual_contract: dict[str, Any] | None = None
+            self._last_passive_positions: tuple[float, ...] | None = None
+            self._author_initial_passive_linkage()
             self.world = World(stage_units_in_meters=1.0, physics_dt=1.0 / 120.0, rendering_dt=1.0 / 30.0)
             self.timeline = omni.timeline.get_timeline_interface()
             self.timeline.play()
@@ -488,6 +548,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                     f"extra={sorted(actual - expected)}"
                 )
             self.indices = {name: int(self.art.dof_names.index(name)) for name in PHYSICAL_JOINTS}
+            self._initialize_passive_runtime_views()
             positions = flat(self.art.get_dof_positions())
             self.targets = {name: positions[self.indices[name]] for name in PHYSICAL_JOINTS}
             self.physics_step = 2
@@ -604,6 +665,108 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             if self._ee_prim is None:
                 raise RuntimeError("RL overlay could not resolve an end-effector rigid body")
 
+        def _author_initial_passive_linkage(self) -> None:
+            if not args.passive_linkage_visuals:
+                return
+            open_hand = {
+                f"finger{finger}_motor{motor}": 0.05 if motor == 1 else 0.02
+                for finger in range(1, 5)
+                for motor in range(1, 3)
+            }
+            poses = solve_passive_linkage(open_hand)
+            self.passive_visual_contract = author_or_update_passive_linkage_runtime(
+                self.stage,
+                self.root_path,
+                poses,
+                args.passive_instances,
+            )
+
+        def _initialize_passive_runtime_views(self) -> None:
+            self._passive_xforms = None
+            self._passive_root_xform = None
+            self._passive_wrist = None
+            if not args.passive_linkage_visuals:
+                return
+            contract = self.passive_visual_contract or {}
+            paths = contract.get("runtime_xform_paths")
+            root_path = contract.get("runtime_root_path")
+            if not isinstance(paths, list) or len(paths) != 88 or not isinstance(root_path, str):
+                raise RuntimeError("passive visual runtime did not author its exact 88-path contract")
+            wrists = [
+                prim
+                for prim in self.stage.TraverseAll()
+                if prim.GetName() == "r_wrist_interface"
+                and str(prim.GetPath()).startswith(self.root_path.rstrip("/") + "/")
+            ]
+            if len(wrists) != 1:
+                raise RuntimeError(f"expected one passive visual wrist, found {len(wrists)}")
+            self._passive_wrist = wrists[0]
+            self._passive_xforms = XformPrim(paths, resolve_paths=False)
+            self._passive_root_xform = XformPrim(root_path, resolve_paths=False)
+
+        def _update_passive_linkage(
+            self,
+            *,
+            force: bool = False,
+            measured_override: Mapping[str, float] | None = None,
+        ) -> None:
+            if not args.passive_linkage_visuals:
+                return
+            positions = flat(self.art.get_dof_positions())
+            measured_values = tuple(
+                float(measured_override[name])
+                if measured_override is not None
+                else positions[self.indices[name]]
+                for name in HAND_JOINTS
+            )
+            if (
+                not force
+                and self._last_passive_positions is not None
+                and max(
+                    abs(current - previous)
+                    for current, previous in zip(
+                        measured_values,
+                        self._last_passive_positions,
+                        strict=True,
+                    )
+                )
+                < 1e-5
+            ):
+                return
+            measured = dict(zip(HAND_JOINTS, measured_values, strict=True))
+            poses = solve_passive_linkage(measured)
+            if (
+                self._passive_xforms is None
+                or self._passive_root_xform is None
+                or self._passive_wrist is None
+            ):
+                raise RuntimeError("passive visual runtime views are not initialized")
+            translations = np.asarray([pose.translate for pose in poses], dtype=np.float32)
+            orientations = np.asarray([pose.orient for pose in poses], dtype=np.float32)
+            wrist_matrix = UsdGeom.Xformable(
+                self._passive_wrist
+            ).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+            wrist_quaternion = wrist_matrix.RemoveScaleShear().ExtractRotationQuat()
+            wrist_position = np.asarray(wrist_matrix.ExtractTranslation(), dtype=np.float32)
+            wrist_orientation = np.asarray(
+                [wrist_quaternion.GetReal(), *wrist_quaternion.GetImaginary()],
+                dtype=np.float32,
+            )
+            with backend_utils.use_backend(
+                "usdrt",
+                raise_on_unsupported=True,
+                raise_on_fallback=True,
+            ):
+                self._passive_root_xform.set_world_poses(
+                    positions=wrist_position,
+                    orientations=wrist_orientation,
+                )
+                self._passive_xforms.set_local_poses(
+                    translations=translations,
+                    orientations=orientations,
+                )
+            self._last_passive_positions = measured_values
+
         def _capture_rl_frame(self) -> dict[str, Any]:
             if args.replicator_rgb:
                 print(json.dumps({"event": "rl_rgb_capture_start"}), flush=True)
@@ -713,6 +876,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             for _ in range(24):
                 self.world.step(render=False)
                 self.physics_step += 1
+            self._update_passive_linkage(force=True)
             print(json.dumps({"event": "rl_reset_settled"}), flush=True)
             return {
                 "state": self._rl_state(),
@@ -783,6 +947,15 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 "physical_dof_count": 13,
                 "logical_action_width": 6,
                 "joint_names": list(PHYSICAL_JOINTS),
+                "visual_profile": (
+                    PASSIVE_VISUAL_PROFILE if args.passive_linkage_visuals else None
+                ),
+                "passive_follower_count": (
+                    self.passive_visual_contract.get("visual_part_count")
+                    if self.passive_visual_contract is not None
+                    else 0
+                ),
+                "outer_shells_included": False,
             }
             if args.webrtc:
                 payload["webrtc"] = {
@@ -802,6 +975,10 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             indices = np.asarray([self.indices[name] for name in PHYSICAL_JOINTS], dtype=np.int32)
             values = np.asarray([self.targets[name] for name in PHYSICAL_JOINTS], dtype=np.float32)
             self.art.set_dof_position_targets(values, dof_indices=indices)
+            self._update_passive_linkage(
+                force=True,
+                measured_override={name: self.targets[name] for name in HAND_JOINTS},
+            )
             self.command_sequence += 1
             return {"accepted": True, "command_sequence": self.command_sequence}
 

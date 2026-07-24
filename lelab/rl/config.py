@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-DEFAULT_DISTRIBUTION_SHA256 = "3bd316090d17f9903562139983a6c66731717f7246045ebdaf90610bf3e596d3"
+DEFAULT_DISTRIBUTION_SHA256 = "c356d1157318b72532b82d73270ef06b5b11ed5b8a90641ea4e431941e4554f7"
 DEFAULT_TASK = "SuperArmIsaacPickLift-v0"
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 

@@ -20,7 +20,11 @@ import isaacsim_validation
 from isaacsim_validation.contracts import PHYSICAL_JOINTS, validate_physical_targets
 
 from .actions import action_to_isaac_targets
-from .isaac_distribution import IsaacDistribution, validate_and_extract_distribution
+from .isaac_distribution import (
+    PASSIVE_VISUAL_PROFILE,
+    IsaacDistribution,
+    validate_and_extract_distribution,
+)
 from .isaac_protocol import IsaacBridgeClient
 from .mapping import (
     ARM_JOINTS,
@@ -187,6 +191,7 @@ class IsaacSimRuntime:
             str(self.port),
             "--token-file",
             str(self._token_path),
+            "--passive-linkage-visuals",
         ]
         if not self.enable_webrtc:
             command.append("--no-webrtc")
@@ -316,8 +321,14 @@ class IsaacSimRuntime:
                 or len(joint_names) != len(PHYSICAL_JOINTS)
                 or len(set(joint_names)) != len(PHYSICAL_JOINTS)
                 or set(joint_names) != set(PHYSICAL_JOINTS)
+                or hello.get("visual_profile") != PASSIVE_VISUAL_PROFILE
+                or hello.get("passive_follower_count") != 88
+                or hello.get("outer_shells_included") is not False
             ):
-                raise RuntimeError("Isaac bridge hello does not match the exact 13-joint contract")
+                raise RuntimeError(
+                    "Isaac bridge hello does not match the exact 13-joint contract "
+                    "with shell-free passive-linkage visuals"
+                )
             self._hello = dict(hello)
             self._refresh_targets()
             self._connected = True
