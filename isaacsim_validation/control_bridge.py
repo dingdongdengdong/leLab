@@ -465,6 +465,9 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             self.stage = omni.usd.get_context().get_stage()
             self.root = discover_root(self.stage)
             self.root_path = str(self.root.GetPath())
+            self.passive_visual_contract: dict[str, Any] | None = None
+            self._last_passive_positions: tuple[float, ...] | None = None
+            self._author_initial_passive_linkage()
             self.world = World(stage_units_in_meters=1.0, physics_dt=1.0 / 120.0, rendering_dt=1.0 / 30.0)
             self.timeline = omni.timeline.get_timeline_interface()
             self.timeline.play()
@@ -541,8 +544,6 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             self.targets = {name: positions[self.indices[name]] for name in PHYSICAL_JOINTS}
             self.physics_step = 2
             self.command_sequence = 0
-            self.passive_visual_contract: dict[str, Any] | None = None
-            self._last_passive_positions: tuple[float, ...] | None = None
             self._update_passive_linkage(force=True)
             print(json.dumps({"event": "rl_camera_initializing"}), flush=True)
             self._initialize_rl_runtime()
@@ -655,6 +656,22 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             )
             if self._ee_prim is None:
                 raise RuntimeError("RL overlay could not resolve an end-effector rigid body")
+
+        def _author_initial_passive_linkage(self) -> None:
+            if not args.passive_linkage_visuals:
+                return
+            open_hand = {
+                f"finger{finger}_motor{motor}": 0.05 if motor == 1 else 0.02
+                for finger in range(1, 5)
+                for motor in range(1, 3)
+            }
+            poses = solve_passive_linkage(open_hand)
+            self.passive_visual_contract = author_or_update_passive_linkage_runtime(
+                self.stage,
+                self.root_path,
+                poses,
+                args.passive_instances,
+            )
 
         def _update_passive_linkage(self, *, force: bool = False) -> None:
             if not args.passive_linkage_visuals:

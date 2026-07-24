@@ -241,7 +241,7 @@ def author_or_update_passive_linkage_runtime(
             prim = stage.GetPrimAtPath(part_path)
             if not bool(prim):
                 raise RuntimeError(f"live passive linkage part is missing: {part_path}")
-        _set_runtime_pose(UsdGeom.Xformable(prim), pose, Gf, UsdGeom)
+        _set_runtime_pose(prim, pose, Gf, UsdGeom)
 
     return {
         **plan,
@@ -253,21 +253,38 @@ def author_or_update_passive_linkage_runtime(
     }
 
 
-def _set_runtime_pose(xformable, pose: PassiveVisualPose, gf, usd_geom) -> None:
-    translate_op = None
-    orient_op = None
-    for op in xformable.GetOrderedXformOps():
-        if op.GetOpType() == usd_geom.XformOp.TypeTranslate:
-            translate_op = op
-        elif op.GetOpType() == usd_geom.XformOp.TypeOrient:
-            orient_op = op
+def _set_runtime_pose(prim, pose: PassiveVisualPose, gf, usd_geom) -> None:
+    xformable = usd_geom.Xformable(prim)
+    translate_op = _named_runtime_op(
+        prim,
+        "xformOp:translate:passiveRuntime",
+        usd_geom,
+    )
+    orient_op = _named_runtime_op(
+        prim,
+        "xformOp:orient:passiveRuntime",
+        usd_geom,
+    )
     if translate_op is None:
-        translate_op = xformable.AddTranslateOp(precision=usd_geom.XformOp.PrecisionDouble)
+        translate_op = xformable.AddTranslateOp(
+            precision=usd_geom.XformOp.PrecisionDouble,
+            opSuffix="passiveRuntime",
+        )
     if orient_op is None:
-        orient_op = xformable.AddOrientOp(precision=usd_geom.XformOp.PrecisionDouble)
+        orient_op = xformable.AddOrientOp(
+            precision=usd_geom.XformOp.PrecisionDouble,
+            opSuffix="passiveRuntime",
+        )
     translate_op.Set(gf.Vec3d(*pose.translate))
     w, x, y, z = pose.orient
     orient_op.Set(gf.Quatd(w, gf.Vec3d(x, y, z)))
+
+
+def _named_runtime_op(prim, name: str, usd_geom):
+    attribute = prim.GetAttribute(name)
+    if not attribute or not attribute.IsValid():
+        return None
+    return usd_geom.XformOp(attribute)
 
 
 def validate_no_source_path_leaks(snapshot_text: str, instances_usda: Path) -> None:

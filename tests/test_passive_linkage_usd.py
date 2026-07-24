@@ -136,8 +136,14 @@ def test_live_runtime_authors_once_then_updates_without_saving_or_flattening(
     assert created["visual_part_count"] == updated["visual_part_count"] == 88
     assert sum(len(prim.references) for prim in part_prims) == 88
     assert all(prim.instanceable for prim in part_prims)
-    assert all(prim.xform_ops["translate"].set_calls == 2 for prim in part_prims)
-    assert all(prim.xform_ops["orient"].set_calls == 2 for prim in part_prims)
+    assert all(
+        prim.xform_ops["xformOp:translate:passiveRuntime"].set_calls == 2
+        for prim in part_prims
+    )
+    assert all(
+        prim.xform_ops["xformOp:orient:passiveRuntime"].set_calls == 2
+        for prim in part_prims
+    )
     assert stage.flatten_calls == 0
     assert stage.root_layer.save_calls == 0
     assert sum(not prim.active for prim in stage.prims.values()) == 8
@@ -264,6 +270,9 @@ class _FakePrim:
     def CreateAttribute(self, name: str, value_type, custom: bool = False):  # noqa: N802 - mimics pxr API
         return _FakeAttribute(self, name, value_type, custom)
 
+    def GetAttribute(self, name: str):  # noqa: N802 - mimics pxr API
+        return self.xform_ops.get(name)
+
 
 class _FakeRootLayer:
     def __init__(self, path: Path):
@@ -348,6 +357,9 @@ class _FakeOp:
     def GetOpType(self) -> str:  # noqa: N802 - mimics pxr API
         return self.op_type
 
+    def IsValid(self) -> bool:  # noqa: N802 - mimics pxr API
+        return True
+
     def Set(self, value) -> bool:  # noqa: N802 - mimics pxr API
         self.value = value
         self.set_calls += 1
@@ -358,18 +370,24 @@ class _FakeXformable:
     def __init__(self, prim: _FakePrim):
         self.prim = prim
 
-    def GetOrderedXformOps(self):  # noqa: N802 - mimics pxr API
-        return list(self.prim.xform_ops.values())
-
-    def AddTranslateOp(self, **_kwargs) -> _FakeOp:  # noqa: N802 - mimics pxr API
+    def AddTranslateOp(self, *, opSuffix: str = "", **_kwargs) -> _FakeOp:  # noqa: N802, N803 - pxr API
         op = _FakeOp("translate")
-        self.prim.xform_ops["translate"] = op
+        self.prim.xform_ops[f"xformOp:translate:{opSuffix}"] = op
         return op
 
-    def AddOrientOp(self, **_kwargs) -> _FakeOp:  # noqa: N802 - mimics pxr API
+    def AddOrientOp(self, *, opSuffix: str = "", **_kwargs) -> _FakeOp:  # noqa: N802, N803 - pxr API
         op = _FakeOp("orient")
-        self.prim.xform_ops["orient"] = op
+        self.prim.xform_ops[f"xformOp:orient:{opSuffix}"] = op
         return op
+
+
+class _FakeXformOp:
+    PrecisionDouble = "double"
+    TypeTranslate = "translate"
+    TypeOrient = "orient"
+
+    def __new__(cls, attribute: _FakeOp):
+        return attribute
 
 
 def _install_fake_pxr(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -386,10 +404,6 @@ def _install_fake_pxr(monkeypatch: pytest.MonkeyPatch) -> None:
     pxr.UsdGeom = types.SimpleNamespace(
         Xform=_FakeXform,
         Xformable=_FakeXformable,
-        XformOp=types.SimpleNamespace(
-            PrecisionDouble="double",
-            TypeTranslate="translate",
-            TypeOrient="orient",
-        ),
+        XformOp=_FakeXformOp,
     )
     monkeypatch.setitem(sys.modules, "pxr", pxr)
