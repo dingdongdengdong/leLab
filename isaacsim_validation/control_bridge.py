@@ -544,7 +544,6 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             self.targets = {name: positions[self.indices[name]] for name in PHYSICAL_JOINTS}
             self.physics_step = 2
             self.command_sequence = 0
-            self._update_passive_linkage(force=True)
             print(json.dumps({"event": "rl_camera_initializing"}), flush=True)
             self._initialize_rl_runtime()
             print(json.dumps({"event": "rl_runtime_ready"}), flush=True)
@@ -673,11 +672,21 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 args.passive_instances,
             )
 
-        def _update_passive_linkage(self, *, force: bool = False) -> None:
+        def _update_passive_linkage(
+            self,
+            *,
+            force: bool = False,
+            measured_override: Mapping[str, float] | None = None,
+        ) -> None:
             if not args.passive_linkage_visuals:
                 return
             positions = flat(self.art.get_dof_positions())
-            measured_values = tuple(positions[self.indices[name]] for name in HAND_JOINTS)
+            measured_values = tuple(
+                float(measured_override[name])
+                if measured_override is not None
+                else positions[self.indices[name]]
+                for name in HAND_JOINTS
+            )
             if (
                 not force
                 and self._last_passive_positions is not None
@@ -694,12 +703,44 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 return
             measured = dict(zip(HAND_JOINTS, measured_values, strict=True))
             poses = solve_passive_linkage(measured)
-            self.passive_visual_contract = author_or_update_passive_linkage_runtime(
-                self.stage,
-                self.root_path,
-                poses,
-                args.passive_instances,
+            saved_positions = np.asarray(positions, dtype=np.float32)
+            saved_velocities = np.asarray(flat(self.art.get_dof_velocities()), dtype=np.float32)
+            saved_targets = np.asarray(
+                [self.targets[name] for name in PHYSICAL_JOINTS],
+                dtype=np.float32,
             )
+            cube_position, cube_orientation = self.cube.get_world_pose()
+            cube_linear_velocity = np.asarray(self.cube.get_linear_velocity(), dtype=np.float32)
+            cube_angular_velocity = np.asarray(self.cube.get_angular_velocity(), dtype=np.float32)
+            timeline_was_playing = self.timeline.is_playing()
+            if timeline_was_playing:
+                self.timeline.stop()
+            SimulationManager.invalidate_physics()
+            try:
+                self.passive_visual_contract = author_or_update_passive_linkage_runtime(
+                    self.stage,
+                    self.root_path,
+                    poses,
+                    args.passive_instances,
+                )
+            finally:
+                if timeline_was_playing:
+                    self.timeline.play()
+                SimulationManager.initialize_physics()
+                self.art = Articulation(self.root_path)
+                if not self.art.is_physics_tensor_entity_valid():
+                    raise RuntimeError(
+                        "Isaac physics tensor did not recover after passive visual update"
+                    )
+                self.art.set_dof_positions(saved_positions)
+                self.art.set_dof_velocities(saved_velocities)
+                self.art.set_dof_position_targets(saved_targets)
+                self.cube.set_world_pose(
+                    position=np.asarray(cube_position, dtype=np.float32),
+                    orientation=np.asarray(cube_orientation, dtype=np.float32),
+                )
+                self.cube.set_linear_velocity(cube_linear_velocity)
+                self.cube.set_angular_velocity(cube_angular_velocity)
             self._last_passive_positions = measured_values
 
         def _capture_rl_frame(self) -> dict[str, Any]:
@@ -830,7 +871,6 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             for _ in range(12):
                 self.world.step(render=False)
                 self.physics_step += 1
-            self._update_passive_linkage(force=True)
             grasp_changed = grasp != self._previous_grasp
             self._previous_grasp = float(grasp)
             state = self._rl_state()
@@ -905,13 +945,16 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
         def step(self) -> None:
             self.world.step(render=args.webrtc)
             self.physics_step += 1
-            self._update_passive_linkage()
 
         def command(self, targets: Mapping[str, float]) -> dict[str, Any]:
             self.targets = validate_physical_targets(targets)
             indices = np.asarray([self.indices[name] for name in PHYSICAL_JOINTS], dtype=np.int32)
             values = np.asarray([self.targets[name] for name in PHYSICAL_JOINTS], dtype=np.float32)
             self.art.set_dof_position_targets(values, dof_indices=indices)
+            self._update_passive_linkage(
+                force=True,
+                measured_override={name: self.targets[name] for name in HAND_JOINTS},
+            )
             self.command_sequence += 1
             return {"accepted": True, "command_sequence": self.command_sequence}
 

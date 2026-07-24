@@ -409,7 +409,8 @@ def _unique_named_prim(stage, robot_root: str, name: str):
 
 def _iter_prims_under(stage, robot_root: str):
     prefix = robot_root.rstrip("/") + "/"
-    for prim in stage.Traverse():
+    traverse = stage.TraverseAll if hasattr(stage, "TraverseAll") else stage.Traverse
+    for prim in traverse():
         path = str(prim.GetPath())
         if path == robot_root or path.startswith(prefix):
             yield prim

@@ -321,6 +321,9 @@ class _FakeStage:
         return self.root_layer
 
     def Traverse(self):  # noqa: N802 - mimics pxr API
+        return [prim for prim in self.prims.values() if prim.IsActive()]
+
+    def TraverseAll(self):  # noqa: N802 - mimics pxr API
         return list(self.prims.values())
 
     def Flatten(self) -> _FakeFlattened:  # noqa: N802 - mimics pxr API
