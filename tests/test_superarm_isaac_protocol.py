@@ -394,8 +394,22 @@ def test_control_bridge_import_is_host_safe_and_runtime_import_order_is_guarded(
     capture_index = source.index("def capture(self, view: str, name: str)", runtime_index)
     close_index = source.index("def close(self)", capture_index)
     assert "live Isaac capture is disabled" in source[capture_index:close_index]
-    assert "import omni.replicator" not in source[runtime_index:]
-    assert 'UsdLux.DomeLight.Define(\n                    self.stage' in source[runtime_index:]
+    replicator_import_index = source.index("import omni.replicator.core as rep", runtime_index)
+    assert replicator_import_index > app_index
+    assert "rep.orchestrator.set_capture_on_play(False)" in source[runtime_index:]
+    assert "rep.create.render_product(" in source[runtime_index:]
+    assert 'rep.AnnotatorRegistry.get_annotator("rgb")' in source[runtime_index:]
+    assert (
+        "rep.orchestrator.step(delta_time=0.0, rt_subframes=8, pause_timeline=False)"
+        in source[runtime_index:]
+    )
+    assert "saved_positions = np.asarray(flat(self.art.get_dof_positions())" in source[runtime_index:]
+    assert "self.timeline.stop()" in source[runtime_index:]
+    assert "SimulationManager.invalidate_physics()" in source[runtime_index:]
+    assert "SimulationManager.initialize_physics()" in source[runtime_index:]
+    assert "self.art.set_dof_positions(saved_positions)" in source[runtime_index:]
+    assert "self.cube.set_linear_velocity(cube_linear_velocity)" in source[runtime_index:]
+    assert "UsdLux.DomeLight.Define(\n                    self.stage" in source[runtime_index:]
     reset_index = source.index("self.world.reset()", runtime_index)
     light_index = source.index("UsdLux.DomeLight.Define(", runtime_index)
     custom_camera_index = source.index("UsdGeom.Camera.Define(", runtime_index)
@@ -468,6 +482,27 @@ def test_control_bridge_keeps_non_webrtc_launch_lightweight():
 
     assert experience == ""
     assert "extra_args" not in config
+
+
+def test_control_bridge_uses_verified_replicator_launch_contract_for_rl():
+    from argparse import Namespace
+
+    from isaacsim_validation.control_bridge import simulation_app_launch
+
+    config, experience = simulation_app_launch(
+        Namespace(
+            replicator_rgb=True,
+            webrtc=False,
+            webrtc_signal_port=49100,
+            webrtc_stream_port=47998,
+            webrtc_public_ip="",
+        )
+    )
+
+    assert experience == ""
+    assert config["headless"] is False
+    assert config["enable_cameras"] is True
+    assert "--/exts/isaacsim.core.throttling/enable_async=false" in config["extra_args"]
 
 
 def test_control_bridge_dispatch_survives_repeated_capture_then_command():
@@ -712,6 +747,16 @@ def test_control_launcher_has_exact_isolation_and_lifecycle_contract():
         'docker_pid=$!',
         'wait "$docker_pid"',
         "docker rm -f \"$container_name\"",
+        "--rl-display",
+        "nvcr.io/nvidia/isaac-sim:6.0.1",
+        '--user "1234:$container_gid"',
+        "-e OMNI_USER_DIR=/tmp/omni-user",
+        "-e OMNI_CACHE_DIR=/tmp/omni-cache",
+        ":/isaac-sim/kit/cache",
+        ":/root/.cache/nvidia/GLCache",
+        ":/root/.nv/ComputeCache",
+        "-v /tmp/.X11-unix:/tmp/.X11-unix:rw",
+        "--replicator-rgb",
     ]
     for marker in required:
         assert marker in launcher

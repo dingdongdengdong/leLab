@@ -140,6 +140,29 @@ class IsaacBridgeClient:
     def hold(self) -> dict[str, Any]:
         return self._request("hold")
 
+    def rl_reset(self, seed: int, max_steps: int = 150) -> dict[str, Any]:
+        return self._rl_request("rl_reset", seed=int(seed), max_steps=int(max_steps))
+
+    def rl_step(self, arm_targets: Mapping[str, float], grasp: float) -> dict[str, Any]:
+        return self._rl_request(
+            "rl_step",
+            arm_targets={str(name): float(value) for name, value in arm_targets.items()},
+            grasp=float(grasp),
+        )
+
+    def _rl_request(self, op: str, **payload: Any) -> dict[str, Any]:
+        with self._lock:
+            sock = self._socket
+            if sock is None:
+                raise IsaacBridgeError("disconnected", "Isaac bridge is disconnected")
+            previous_timeout = sock.gettimeout()
+            sock.settimeout(self.capture_timeout_s)
+            try:
+                return self._request(op, **payload)
+            finally:
+                if self._socket is sock:
+                    sock.settimeout(previous_timeout)
+
     def capture(self, view: Literal["whole", "hand"], name: str) -> dict[str, Any]:
         with self._lock:
             sock = self._socket

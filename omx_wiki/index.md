@@ -29,3 +29,5 @@
 
 - [SuperArm leader to follower progression guide](so-101-leader-to-superarm-recording-guide.md) — # SuperArm leader to follower progression guide
 - [SuperArm follower calibration wizard](superarm-follower-calibration-wizard.md) — # SuperArm follower calibration wizard
+
+- [SuperArm Isaac HIL-SERL](superarm-isaac-hilserl.md)

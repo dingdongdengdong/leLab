@@ -192,6 +192,48 @@ def test_managed_runtime_launches_with_file_token_and_sends_complete_named_targe
     assert not token_path.exists()
 
 
+def test_managed_rl_runtime_selects_verified_isaac_rgb_path(tmp_path):
+    distribution = _distribution(tmp_path)
+    process = FakeProcess()
+    client = FakeClient(
+        hello={
+            "runtime": "isaac_sim",
+            "isaac_sim_version": "6.0.1",
+            "articulation_root": "/superarm_amazinghand",
+            "articulation_root_count": 1,
+            "physical_dof_count": 13,
+            "logical_action_width": 6,
+            "joint_names": list(PHYSICAL_JOINTS),
+        }
+    )
+    process_calls = []
+    runtime = IsaacSimRuntime(
+        tmp_path / "distribution.zip",
+        session_root=tmp_path / "session",
+        image="nvcr.io/nvidia/isaac-sim:6.0.1",
+        rl_display=":100",
+        enable_webrtc=False,
+        distribution_loader=lambda *_args, **_kwargs: distribution,
+        process_factory=lambda args, **kwargs: process_calls.append((args, kwargs)) or process,
+        client_factory=lambda *_args, **_kwargs: client,
+    )
+
+    runtime.connect()
+
+    args, _kwargs = process_calls[0]
+    token_path = Path(args[args.index("--token-file") + 1])
+    run_dir = Path(args[args.index("--run-dir") + 1])
+    assert args[args.index("--image") + 1] == "nvcr.io/nvidia/isaac-sim:6.0.1"
+    assert args[args.index("--rl-display") + 1] == ":100"
+    assert "--no-webrtc" in args
+    assert token_path.stat().st_mode & 0o777 == 0o640
+    assert run_dir.stat().st_mode & 0o777 == 0o770
+    assert run_dir.parent.stat().st_mode & 0o777 == 0o770
+    assert runtime.metadata["isaac_sim_version"] == "6.0.1"
+
+    runtime.close()
+
+
 def test_managed_close_terminates_then_kills_a_stuck_process_group(tmp_path):
     distribution = _distribution(tmp_path)
     process = HungProcess()

@@ -1,0 +1,188 @@
+{
+  "display": ":100",
+  "hello": {
+    "articulation_root": "/superarm_amazinghand/Geometry",
+    "articulation_root_count": 1,
+    "bridge_mode": "managed",
+    "container": {
+      "container_log": "container.log",
+      "container_name": "superarm-isaac-control-af5b404760a5",
+      "host": "127.0.0.1",
+      "image": "nvcr.io/nvidia/isaac-sim:6.0.1",
+      "port": 51399
+    },
+    "distribution_sha256": "3bd316090d17f9903562139983a6c66731717f7246045ebdaf90610bf3e596d3",
+    "host": "127.0.0.1",
+    "isaac_sim_version": "6.0.1",
+    "joint_names": [
+      "joint_rev_1",
+      "joint_rev_2",
+      "joint_rev_3",
+      "joint_rev_4",
+      "joint_rev_5",
+      "finger1_motor1",
+      "finger1_motor2",
+      "finger2_motor1",
+      "finger2_motor2",
+      "finger3_motor1",
+      "finger3_motor2",
+      "finger4_motor1",
+      "finger4_motor2"
+    ],
+    "logical_action_width": 6,
+    "physical_dof_count": 13,
+    "port": 51399,
+    "run_dir": "/tmp/lelab-rl-rgb-smoke/session/run",
+    "runtime": "isaac_sim"
+  },
+  "image": "nvcr.io/nvidia/isaac-sim:6.0.1",
+  "pass": true,
+  "port": 51399,
+  "reset": {
+    "frame": {
+      "channels": 3,
+      "height": 256,
+      "path": "rl-workspace.ppm",
+      "sequence": 1,
+      "width": 256
+    },
+    "image": {
+      "bytes": 21037,
+      "maximum": 234,
+      "mean": [
+        202.0384,
+        203.2888,
+        205.5143
+      ],
+      "minimum": 51,
+      "path": "assets/superarm-isaac-rl-rgb-smoke-20260723/reset-seed-42.png",
+      "sha256": "5b08b274aed2fac0df7a7d2d187e853c1613280098a88e2d613472180d178789",
+      "shape": [
+        256,
+        256,
+        3
+      ],
+      "stddev": [
+        23.3766,
+        21.167,
+        18.0933
+      ]
+    },
+    "is_intervention": false,
+    "state": {
+      "cube_linear_velocity_xyz": [
+        0.0001004050427582115,
+        3.482909596641548e-05,
+        -1.7854443285614252e-05
+      ],
+      "cube_xyz": [
+        0.11917688697576523,
+        0.31572139263153076,
+        0.11999998241662979
+      ],
+      "end_effector_to_cube_xyz": [
+        0.161039587110281,
+        0.02183261513710022,
+        -0.4337858185172081
+      ],
+      "end_effector_xyz": [
+        -0.041862700134515755,
+        0.29388877749443054,
+        0.5537858009338379
+      ],
+      "grasp_state": 0.0,
+      "joint_positions": [
+        -1.5214655491035955e-07,
+        -0.0007766754133626819,
+        -8.194313704734668e-05,
+        -0.0006749074091203511,
+        8.767056897340808e-06
+      ],
+      "joint_velocities": [
+        0.0008563433075323701,
+        -0.0012938480358570814,
+        0.0014317878521978855,
+        0.002658449113368988,
+        -8.181183511624113e-05
+      ]
+    },
+    "state_width": 23
+  },
+  "reset_seconds": 0.798,
+  "startup_seconds": 43.43,
+  "step": {
+    "frame": {
+      "channels": 3,
+      "height": 256,
+      "path": "rl-workspace.ppm",
+      "sequence": 2,
+      "width": 256
+    },
+    "image": {
+      "bytes": 21093,
+      "maximum": 235,
+      "mean": [
+        202.2205,
+        203.4705,
+        205.6788
+      ],
+      "minimum": 38,
+      "path": "assets/superarm-isaac-rl-rgb-smoke-20260723/hold-step.png",
+      "sha256": "c63d8a6749529af513a677066cc2fbdbea44a332ef6d3ac07b3dc0bfcb9c805a",
+      "shape": [
+        256,
+        256,
+        3
+      ],
+      "stddev": [
+        23.1411,
+        20.9444,
+        17.9712
+      ]
+    },
+    "is_intervention": false,
+    "reward": -0.9263870952769088,
+    "state": {
+      "cube_linear_velocity_xyz": [
+        0.0001004050427582115,
+        3.482909596641548e-05,
+        -1.7854443285614252e-05
+      ],
+      "cube_xyz": [
+        0.11917688697576523,
+        0.31572139263153076,
+        0.11999998241662979
+      ],
+      "end_effector_to_cube_xyz": [
+        0.16103899106383324,
+        0.021404892206192017,
+        -0.43377014249563217
+      ],
+      "end_effector_xyz": [
+        -0.04186210408806801,
+        0.29431650042533875,
+        0.553770124912262
+      ],
+      "grasp_state": 0.0,
+      "joint_positions": [
+        -1.5214655491035955e-07,
+        -0.0007766754133626819,
+        -8.194313704734668e-05,
+        -0.0006749074091203511,
+        8.767056897340808e-06
+      ],
+      "joint_velocities": [
+        0.0008563433075323701,
+        -0.0012938480358570814,
+        0.0014317878521978855,
+        0.002658449113368988,
+        -8.181183511624113e-05
+      ]
+    },
+    "state_width": 23,
+    "terminated": false,
+    "truncated": false
+  },
+  "step_seconds": 0.458,
+  "total_seconds": 45.877
+}

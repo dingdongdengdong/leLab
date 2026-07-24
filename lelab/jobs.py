@@ -38,6 +38,7 @@ from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
+from .rl.config import ReinforcementLearningRequest
 from .train import TrainingRequest
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,17 @@ class TrainingMetrics(BaseModel):
     current_lr: float | None = None
     grad_norm: float | None = None
     eta_seconds: float | None = None
+    episode: int | None = None
+    episode_return: float | None = None
+    success_rate: float | None = None
+    actor_fps: float | None = None
+    replay_size: int | None = None
+    actor_loss: float | None = None
+    critic_loss: float | None = None
+    temperature: float | None = None
+    actor_status: str | None = None
+    learner_status: str | None = None
+    isaac_status: str | None = None
 
 
 class LogLine(BaseModel):
@@ -72,7 +84,8 @@ class JobRecord(BaseModel):
     id: str
     name: str
     state: JobState
-    config: TrainingRequest
+    kind: Literal["training", "reinforcement_learning", "imported"] = "training"
+    config: TrainingRequest | ReinforcementLearningRequest
     output_dir: str
     started_at: float
     ended_at: float | None = None
@@ -179,6 +192,14 @@ def parse_metrics_into(line: str, metrics: TrainingMetrics) -> None:
         (only at log_freq cadence, default every 250 steps).
     """
     try:
+        marker = "LELAB_RL_METRIC "
+        if marker in line:
+            payload = json.loads(line.split(marker, 1)[1])
+            aliases = {"return": "episode_return", "buffer_size": "replay_size"}
+            for key, value in payload.items():
+                attr = aliases.get(key, key)
+                if attr in TrainingMetrics.model_fields:
+                    setattr(metrics, attr, value)
         tqdm_match = _TQDM_RE.search(line)
         if tqdm_match:
             try:
@@ -376,6 +397,23 @@ class LocalJobRunner(SubprocessJobRunner):
         cmd = build_training_command(config, output_dir, sys.executable)
         logger.info("Starting job %s: %s", job_id, " ".join(cmd))
         self._spawn(cmd, thread_name=f"job-{job_id}-stdout")
+
+
+class ReinforcementLearningJobRunner(SubprocessJobRunner):
+    def start(self, job_id: str, config: ReinforcementLearningRequest, output_dir: str) -> None:
+        request_path = Path(output_dir).parent / "request.json"
+        request_path.write_text(config.model_dump_json(indent=2) + "\n")
+        cmd = [
+            sys.executable,
+            "-m",
+            "lelab.rl.supervisor",
+            "--request-json",
+            str(request_path),
+            "--output-dir",
+            output_dir,
+        ]
+        logger.info("Starting RL job %s: %s", job_id, " ".join(cmd))
+        self._spawn(cmd, thread_name=f"rl-job-{job_id}-stdout")
 
 
 class TailingJobRunner:
@@ -823,6 +861,7 @@ class JobRegistry:
                 output_dir=lerobot_output_dir,
                 started_at=time.time(),
                 runner=target.runner,
+                kind="training",
                 hf_flavor=target.flavor,
             )
 
@@ -855,6 +894,46 @@ class JobRegistry:
 
             self._persist(record, force=True)
             self._runners[job_id] = runner
+        self._notify_change()
+        return record
+
+    def start_reinforcement_learning(self, config: ReinforcementLearningRequest) -> JobRecord:
+        with self._lock:
+            for existing in self._records.values():
+                if existing.state == "running" and existing.runner == "local":
+                    raise JobAlreadyRunningError(existing.id)
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            job_id = f"sac_superarm_isaac_{timestamp}"
+            job_dir = _job_dir(self._output_root, job_id)
+            output_dir = str(job_dir / "run")
+            record = JobRecord(
+                id=job_id,
+                name="SAC · SuperArm Isaac Pick & Lift",
+                kind="reinforcement_learning",
+                state="running",
+                config=config,
+                output_dir=output_dir,
+                started_at=time.time(),
+                runner="local",
+                metrics=TrainingMetrics(total_steps=config.training_steps),
+            )
+            job_dir.mkdir(parents=True, exist_ok=True)
+            self._records[job_id] = record
+            self._persist(record, force=True)
+            runner = ReinforcementLearningJobRunner(
+                record.metrics, log_file_path=_job_log_path(self._output_root, job_id)
+            )
+            try:
+                runner.start(job_id, config, output_dir)
+            except Exception as exc:
+                record.state = "failed"
+                record.ended_at = time.time()
+                record.error_message = f"Failed to start RL runner: {exc}"
+                self._persist(record, force=True)
+                raise
+            record.process_pid = runner.pid()
+            self._runners[job_id] = runner
+            self._persist(record, force=True)
         self._notify_change()
         return record
 
@@ -907,6 +986,7 @@ class JobRegistry:
             started_at=time.time(),
             ended_at=time.time(),
             runner="imported",
+            kind="imported",
             hf_repo_id=hf_repo_id,
         )
         with self._lock:
@@ -1116,6 +1196,8 @@ class JobRegistry:
                 continue
             try:
                 data = json.loads(meta.read_text())
+                if "kind" not in data:
+                    data["kind"] = "imported" if data.get("runner") == "imported" else "training"
                 record = JobRecord.model_validate(data)
             except Exception as exc:
                 logger.warning("Skipping malformed job.json at %s: %s", meta, exc)
