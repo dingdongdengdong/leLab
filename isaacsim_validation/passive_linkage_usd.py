@@ -184,7 +184,7 @@ def author_or_update_passive_linkage_runtime(
     visual-only follower references and measured-pose transforms.
     """
 
-    from pxr import Gf, Sdf, UsdGeom
+    from pxr import Gf, Sdf, Usd, UsdGeom
 
     instances_usda = instances_usda.resolve()
     if not instances_usda.is_file():
@@ -192,7 +192,7 @@ def author_or_update_passive_linkage_runtime(
 
     plan = build_passive_linkage_author_plan(poses)
     wrist = _unique_named_prim(stage, robot_root, "r_wrist_interface")
-    passive_root_path = wrist.GetPath().AppendChild(PASSIVE_VISUAL_ROOT_NAME)
+    passive_root_path = Sdf.Path(f"/LeLab{PASSIVE_VISUAL_ROOT_NAME.title().replace('_', '')}")
     passive_root_prim = stage.GetPrimAtPath(passive_root_path)
     runtime_created = not bool(passive_root_prim)
 
@@ -207,6 +207,7 @@ def author_or_update_passive_linkage_runtime(
                 f"are not all inactive: {deactivated}"
             )
         passive_root = UsdGeom.Xform(passive_root_prim)
+    _set_runtime_parent_pose(passive_root.GetPrim(), wrist, Usd, UsdGeom)
 
     for pose, part in zip(poses, plan["parts"], strict=True):
         finger_path = passive_root.GetPath().AppendChild(f"finger{pose.finger}")
@@ -278,6 +279,24 @@ def _set_runtime_pose(prim, pose: PassiveVisualPose, gf, usd_geom) -> None:
     translate_op.Set(gf.Vec3d(*pose.translate))
     w, x, y, z = pose.orient
     orient_op.Set(gf.Quatd(w, gf.Vec3d(x, y, z)))
+
+
+def _set_runtime_parent_pose(prim, wrist, usd, usd_geom) -> None:
+    xformable = usd_geom.Xformable(prim)
+    transform_op = _named_runtime_op(
+        prim,
+        "xformOp:transform:passiveRuntimeParent",
+        usd_geom,
+    )
+    if transform_op is None:
+        transform_op = xformable.AddTransformOp(
+            precision=usd_geom.XformOp.PrecisionDouble,
+            opSuffix="passiveRuntimeParent",
+        )
+    parent_world = usd_geom.Xformable(wrist).ComputeLocalToWorldTransform(
+        usd.TimeCode.Default()
+    )
+    transform_op.Set(parent_world)
 
 
 def _named_runtime_op(prim, name: str, usd_geom):

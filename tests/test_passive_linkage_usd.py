@@ -136,6 +136,11 @@ def test_live_runtime_authors_once_then_updates_without_saving_or_flattening(
     assert created["visual_part_count"] == updated["visual_part_count"] == 88
     assert sum(len(prim.references) for prim in part_prims) == 88
     assert all(prim.instanceable for prim in part_prims)
+    runtime_root = stage.prims["/LeLabPassiveLinkageVisuals"]
+    assert (
+        runtime_root.xform_ops["xformOp:transform:passiveRuntimeParent"].set_calls
+        == 2
+    )
     assert all(
         prim.xform_ops["xformOp:translate:passiveRuntime"].set_calls == 2
         for prim in part_prims
@@ -380,11 +385,20 @@ class _FakeXformable:
         self.prim.xform_ops[f"xformOp:orient:{opSuffix}"] = op
         return op
 
+    def AddTransformOp(self, *, opSuffix: str = "", **_kwargs) -> _FakeOp:  # noqa: N802, N803 - pxr API
+        op = _FakeOp("transform")
+        self.prim.xform_ops[f"xformOp:transform:{opSuffix}"] = op
+        return op
+
+    def ComputeLocalToWorldTransform(self, _time_code):  # noqa: N802 - mimics pxr API
+        return ("world", str(self.prim.GetPath()))
+
 
 class _FakeXformOp:
     PrecisionDouble = "double"
     TypeTranslate = "translate"
     TypeOrient = "orient"
+    TypeTransform = "transform"
 
     def __new__(cls, attribute: _FakeOp):
         return attribute
@@ -400,7 +414,10 @@ def _install_fake_pxr(monkeypatch: pytest.MonkeyPatch) -> None:
         Path=lambda value: value,
         ValueTypeNames=types.SimpleNamespace(Int="Int", String="String"),
     )
-    pxr.Usd = types.SimpleNamespace(Stage=types.SimpleNamespace(Open=lambda _path: None))
+    pxr.Usd = types.SimpleNamespace(
+        Stage=types.SimpleNamespace(Open=lambda _path: None),
+        TimeCode=types.SimpleNamespace(Default=lambda: "default"),
+    )
     pxr.UsdGeom = types.SimpleNamespace(
         Xform=_FakeXform,
         Xformable=_FakeXformable,
