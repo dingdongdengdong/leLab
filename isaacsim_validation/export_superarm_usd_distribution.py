@@ -252,7 +252,7 @@ simulation-only unless a later hardware validation explicitly changes this contr
 
 This package does not prove real-hardware transport, torque/current tuning, contact
 quality, grasp retention, or a trained ACT/VLA policy. Rounded outer hand shells remain
-excluded for the current frame-first structural validation phase.
+excluded; the live shell-free presentation uses the 88 passive visual followers.
 """.encode()
 
 

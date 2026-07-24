@@ -208,6 +208,9 @@ def test_export_is_relocatable_complete_and_deterministic(tmp_path: Path):
             "real_hardware_max_pose": "half-close",
             "simulation_codes": [0.0, 0.5, 1.0],
         }
+        readme = archive.read(f"{root}/README.md").decode()
+        assert "live shell-free presentation uses the 88 passive visual followers" in readme
+        assert "frame-first structural validation phase" not in readme
         assert not any(name.startswith(f"{root}/runtime/") for name in names)
         for name, source in inputs["visual_images"].items():
             entry = manifest["visual_evidence"][name]
