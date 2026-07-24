@@ -129,12 +129,38 @@ def build_manual_leader_config(record: dict) -> dict[str, Any]:
             raise ValueError("Combined SuperArm config does not define hand_motions.")
         for motion in configured_motions:
             degrees = motion.get("degrees") if isinstance(motion, dict) else None
-            if not isinstance(degrees, int | float):
-                raise ValueError("Each AmazingHand motion must define one fixed servo angle.")
             if robot_backend == "superarm_isaac":
-                targets_by_name = grasp_to_urdf_targets(float(motion["code"]))
-                targets = [targets_by_name[name] for name in hand_joint_names]
+                configured_targets = (
+                    motion.get("joint_targets") if isinstance(motion, dict) else None
+                )
+                if isinstance(configured_targets, list):
+                    if len(configured_targets) != len(hand_joint_names):
+                        raise ValueError(
+                            "Each AmazingHand motion must define all eight joint targets."
+                        )
+                    targets = [float(value) for value in configured_targets]
+                elif isinstance(configured_targets, dict):
+                    try:
+                        targets = [
+                            float(configured_targets[name]) for name in hand_joint_names
+                        ]
+                    except (KeyError, TypeError, ValueError) as exc:
+                        raise ValueError(
+                            "Each AmazingHand motion must define all eight joint targets."
+                        ) from exc
+                elif isinstance(degrees, int | float):
+                    targets_by_name = grasp_to_urdf_targets(float(motion["code"]))
+                    targets = [targets_by_name[name] for name in hand_joint_names]
+                else:
+                    raise ValueError(
+                        "Each AmazingHand Isaac motion must define joint_targets "
+                        "or one fixed servo angle."
+                    )
             else:
+                if not isinstance(degrees, int | float):
+                    raise ValueError(
+                        "Each AmazingHand motion must define one fixed servo angle."
+                    )
                 targets = [
                     degrees_to_mujoco(1 if name.endswith("motor1") else 2, float(degrees))
                     for name in hand_joint_names

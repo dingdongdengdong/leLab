@@ -82,3 +82,70 @@ def test_isaac_manual_contract_uses_positive_hand_targets(tmp_path) -> None:
     assert close["joint_targets"]["finger1_motor1"] == 0.95
     assert close["joint_targets"]["finger1_motor2"] == 1.10
     assert all(value >= 0.0 for value in close["joint_targets"].values())
+
+
+def test_isaac_manual_contract_accepts_superarm_explicit_joint_targets(
+    tmp_path,
+) -> None:
+    from lelab.manual_leader import build_manual_leader_config
+
+    config_path = tmp_path / "source_arm_amazinghand.yaml"
+    config_path.write_text(
+        """
+_type: isaacsim_rpo_arm
+joint_names:
+  - joint_rev_1
+  - joint_rev_2
+  - joint_rev_3
+  - joint_rev_4
+  - joint_rev_5
+  - amazinghand_motion
+physical_joint_names:
+  - joint_rev_1
+  - joint_rev_2
+  - joint_rev_3
+  - joint_rev_4
+  - joint_rev_5
+  - finger1_motor1
+  - finger1_motor2
+  - finger2_motor1
+  - finger2_motor2
+  - finger3_motor1
+  - finger3_motor2
+  - finger4_motor1
+  - finger4_motor2
+arm_limits:
+  joint_rev_1: {min: -3.141593, max: 3.141593}
+  joint_rev_2: {min: -3.141593, max: 3.141593}
+  joint_rev_3: {min: -3.141593, max: 3.141593}
+  joint_rev_4: {min: -3.141593, max: 3.141593}
+  joint_rev_5: {min: -3.141593, max: 3.141593}
+hand_motions:
+  - {name: open, code: 0.0, joint_targets: [0.05, 0.02, 0.05, 0.02, 0.05, 0.02, 0.05, 0.02]}
+  - {name: half_close, code: 0.5, joint_targets: [0.50, 0.56, 0.50, 0.56, 0.50, 0.56, 0.50, 0.56]}
+  - {name: close, code: 1.0, joint_targets: [0.95, 1.10, 0.95, 1.10, 0.95, 1.10, 0.95, 1.10]}
+manual_leader:
+  kind: superarm_amazinghand
+  hand_control: fixed_motions
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    record = {
+        "name": "SuperArm + AmazingHand (Isaac Sim)",
+        "robot_backend": "superarm_isaac",
+        "superarm_config": str(config_path),
+        "follower_config": str(config_path),
+        "superarm_asset_root": str(tmp_path),
+        "isaac_distribution_zip": str(tmp_path / "superarm.zip"),
+    }
+
+    body = build_manual_leader_config(record)
+
+    assert body["start_request"]["superarm_config"] == str(config_path)
+    assert body["sliders"][0]["min"] == -3.141593
+    assert body["sliders"][0]["max"] == 3.141593
+    half = next(
+        motion for motion in body["hand_motions"] if motion["name"] == "half_close"
+    )
+    assert list(half["joint_targets"].values()) == [0.50, 0.56] * 4
