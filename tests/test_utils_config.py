@@ -245,6 +245,110 @@ def test_builtin_isaac_record_requires_a_valid_distribution(tmp_path, monkeypatc
     )
 
 
+def test_builtin_isaac_record_uses_external_superarm_lerobot_config(
+    tmp_path, monkeypatch
+) -> None:
+    from types import SimpleNamespace
+
+    from lelab.superarm.isaac_distribution import CONFIRMED_DISTRIBUTION_SHA256
+    from lelab.utils import config as cfg
+
+    archive = tmp_path / "superarm.zip"
+    archive.write_bytes(b"zip")
+    config_path = tmp_path / "source_arm_amazinghand.yaml"
+    config_path.write_text(
+        """
+_type: isaacsim_rpo_arm
+joint_names:
+  - joint_rev_1
+  - joint_rev_2
+  - joint_rev_3
+  - joint_rev_4
+  - joint_rev_5
+  - amazinghand_motion
+physical_joint_names:
+  - joint_rev_1
+  - joint_rev_2
+  - joint_rev_3
+  - joint_rev_4
+  - joint_rev_5
+  - finger1_motor1
+  - finger1_motor2
+  - finger2_motor1
+  - finger2_motor2
+  - finger3_motor1
+  - finger3_motor2
+  - finger4_motor1
+  - finger4_motor2
+arm_limits:
+  joint_rev_1: {min: -3.141593, max: 3.141593}
+  joint_rev_2: {min: -3.141593, max: 3.141593}
+  joint_rev_3: {min: -3.141593, max: 3.141593}
+  joint_rev_4: {min: -3.141593, max: 3.141593}
+  joint_rev_5: {min: -3.141593, max: 3.141593}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SUPERARM_ISAAC_DISTRIBUTION_ZIP", str(archive))
+    monkeypatch.setenv("SUPERARM_LEROBOT_CONFIG", str(config_path))
+    monkeypatch.setattr(
+        cfg,
+        "validate_and_extract_distribution",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            archive_sha256=CONFIRMED_DISTRIBUTION_SHA256
+        ),
+    )
+
+    isaac = next(
+        record
+        for record in cfg.list_robot_records()
+        if record["robot_backend"] == "superarm_isaac"
+    )
+
+    assert isaac["superarm_config"] == str(config_path)
+    assert isaac["follower_config"] == str(config_path)
+    assert cfg.is_robot_record_clean(isaac) is True
+
+
+def test_builtin_isaac_record_rejects_legacy_right_arm_config(
+    tmp_path, monkeypatch
+) -> None:
+    from types import SimpleNamespace
+
+    from lelab.utils import config as cfg
+
+    archive = tmp_path / "superarm.zip"
+    archive.write_bytes(b"zip")
+    legacy = tmp_path / "rpo_arm_isaacsim.yaml"
+    legacy.write_text(
+        """
+_type: isaacsim_rpo_arm
+joint_names:
+  - right_arm_pitch_joint
+  - right_arm_roll_joint
+  - right_arm_yaw_joint
+  - right_elbow_pitch_joint
+  - right_elbow_yaw_joint
+  - amazinghand_grasp
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SUPERARM_ISAAC_DISTRIBUTION_ZIP", str(archive))
+    monkeypatch.setenv("SUPERARM_LEROBOT_CONFIG", str(legacy))
+    monkeypatch.setattr(
+        cfg,
+        "validate_and_extract_distribution",
+        lambda *_args, **_kwargs: SimpleNamespace(archive_sha256="test"),
+    )
+
+    assert all(
+        record["robot_backend"] != "superarm_isaac"
+        for record in cfg.list_robot_records()
+    )
+
+
 def test_malformed_isaac_distribution_is_omitted_without_breaking_robot_list(
     tmp_path, monkeypatch
 ) -> None:

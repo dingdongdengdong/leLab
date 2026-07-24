@@ -58,6 +58,7 @@ class IsaacSimRuntime:
         enable_webrtc: bool = True,
         image: str | None = None,
         rl_display: str | None = None,
+        arm_limits: dict[str, dict[str, float]] | None = None,
         state_callback: Callable[[dict[str, Any]], None] | None = None,
         process_factory: Callable[..., subprocess.Popen] = subprocess.Popen,
         client_factory: Callable[..., IsaacBridgeClient] = IsaacBridgeClient,
@@ -83,6 +84,7 @@ class IsaacSimRuntime:
         self.enable_webrtc = bool(enable_webrtc)
         self.image = image
         self.rl_display = rl_display
+        self.arm_limits = arm_limits
         if self.rl_display and self.enable_webrtc:
             raise ValueError("RL RGB rendering and WebRTC cannot share one Isaac process")
         self.state_callback = state_callback
@@ -395,7 +397,7 @@ class IsaacSimRuntime:
     def command_logical(self, values: list[float]) -> None:
         if not self.connected or self._client is None:
             raise RuntimeError("Isaac runtime is disconnected")
-        targets = action_to_isaac_targets(values)
+        targets = action_to_isaac_targets(values, arm_limits=self.arm_limits)
         with self._lock:
             self._client.command(targets)
             self._targets = targets

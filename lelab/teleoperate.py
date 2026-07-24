@@ -16,6 +16,7 @@ import logging
 import math
 import threading
 import time
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -217,10 +218,14 @@ def _create_superarm_robot(request: TeleoperateRequest):
 
         if not request.isaac_distribution_zip:
             raise ValueError("SuperArm Isaac requires isaac_distribution_zip")
+        config_path = Path(request.superarm_config or request.follower_config)
+        if not config_path.is_absolute():
+            config_path = Path(request.superarm_asset_root or Path.cwd()) / config_path
         return SuperArmIsaacRobot(
             SuperArmIsaacRobotConfig(
                 id="lelab_web",
                 distribution_zip=request.isaac_distribution_zip,
+                control_config_path=str(config_path),
                 expected_sha256=request.isaac_expected_sha256,
                 bridge_mode=request.isaac_bridge_mode,
                 bridge_host=request.isaac_host,

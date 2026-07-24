@@ -12,7 +12,11 @@ from lerobot.cameras.utils import make_cameras_from_configs
 from lerobot.robots.config import RobotConfig
 from lerobot.robots.robot import Robot
 
-from .actions import CANONICAL_FEATURES, normalize_superarm_action
+from .actions import (
+    CANONICAL_FEATURES,
+    load_superarm_control_config,
+    normalize_superarm_action,
+)
 from .mapping import ARM_JOINTS, HAND_ACTUATORS
 from .service import service
 
@@ -21,6 +25,7 @@ from .service import service
 @dataclass(kw_only=True)
 class SuperArmIsaacRobotConfig(RobotConfig):
     distribution_zip: str
+    control_config_path: str | None = None
     expected_sha256: str | None = None
     bridge_mode: Literal["managed", "external"] = "managed"
     bridge_host: str = "127.0.0.1"
@@ -48,6 +53,10 @@ class SuperArmIsaacRobot(Robot):
         self._connected = False
         self._owns_session = False
         self._logical = [0.0] * len(CANONICAL_FEATURES)
+        self.arm_limits: dict[str, dict[str, float]] | None = None
+        if config.control_config_path:
+            control = load_superarm_control_config(config.control_config_path)
+            self.arm_limits = control["arm_limits"]
 
     @property
     def action_features(self) -> dict[str, type]:
@@ -92,6 +101,8 @@ class SuperArmIsaacRobot(Robot):
                 "isaac_port": self.config.bridge_port,
                 "isaac_external_run_dir": self.config.external_run_dir,
             }
+            if self.arm_limits is not None:
+                session_args["isaac_arm_limits"] = self.arm_limits
             if self.config.expected_sha256 is not None:
                 session_args["isaac_expected_sha256"] = self.config.expected_sha256
             self.runtime_service.start_session("isaac_sim", **session_args)
@@ -147,8 +158,8 @@ class SuperArmIsaacRobot(Robot):
         named = isinstance(action, dict)
         if isinstance(action, np.ndarray):
             action = action.reshape(-1).tolist()
-        values = normalize_superarm_action(action)
-        self.runtime_service.logical_action(values)
+        values = normalize_superarm_action(action, arm_limits=self.arm_limits)
+        self.runtime_service.logical_action(values, arm_limits=self.arm_limits)
         self._logical = values
         if named:
             return dict(zip(CANONICAL_FEATURES, values, strict=True))

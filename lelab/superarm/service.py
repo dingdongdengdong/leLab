@@ -345,6 +345,7 @@ class SuperArmService:
         isaac_host: str = "127.0.0.1",
         isaac_port: int = 8765,
         isaac_external_run_dir: str | Path | None = None,
+        isaac_arm_limits: dict[str, dict[str, float]] | None = None,
     ) -> dict[str, Any]:
         if mode not in {"mujoco", "hybrid_serial", "isaac_sim"}:
             raise ValueError("Runtime must be mujoco, hybrid_serial, or isaac_sim")
@@ -374,6 +375,7 @@ class SuperArmService:
                     port=isaac_port,
                     expected_sha256=isaac_expected_sha256,
                     external_run_dir=isaac_external_run_dir,
+                    arm_limits=isaac_arm_limits,
                     state_callback=state_callback,
                 )
             else:
@@ -518,8 +520,13 @@ class SuperArmService:
         self.publish({"type": "action", **result})
         return result
 
-    def logical_action(self, values: list[float]) -> dict[str, Any]:
-        normalized = normalize_superarm_action(values)
+    def logical_action(
+        self,
+        values: list[float],
+        *,
+        arm_limits: dict[str, dict[str, float]] | None = None,
+    ) -> dict[str, Any]:
+        normalized = normalize_superarm_action(values, arm_limits=arm_limits)
         result = self._dispatch(logical=normalized, source="staged")
         return {**result, "logical_action": normalized}
 

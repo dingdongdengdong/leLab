@@ -250,6 +250,7 @@ def _create_superarm_record_config(request: RecordingRequest) -> RecordConfig:
         robot_config = SuperArmIsaacRobotConfig(
             id="lelab_recording",
             distribution_zip=distribution_zip,
+            control_config_path=str(config_path),
             expected_sha256=request.isaac_expected_sha256,
             bridge_mode=request.isaac_bridge_mode,
             bridge_host=request.isaac_host,

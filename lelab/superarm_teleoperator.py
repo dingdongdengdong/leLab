@@ -106,6 +106,7 @@ class SuperArmTeleoperator(Teleoperator):
                 arm_mapping=self.config.arm_mapping,
                 arm_limits=self.config.arm_limits,
                 gripper_feature=self.config.gripper_feature,
+                motion_hysteresis=self.config.motion_hysteresis,
             )
             self._leader.connect(calibrate=calibrate)
         self._is_connected = True

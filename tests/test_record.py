@@ -355,6 +355,47 @@ def test_manual_superarm_teleoperator_quantizes_sixth_action() -> None:
     teleop.disconnect()
 
 
+def test_so101_superarm_adapter_preserves_configured_motion_hysteresis() -> None:
+    from lelab.superarm.actions import SO101ToSuperArmActionAdapter
+
+    adapter = SO101ToSuperArmActionAdapter(
+        arm_mapping=[
+            {
+                "source": source,
+                "target": f"joint_rev_{index}.pos",
+                "sign": 1.0,
+                "offset_rad": 0.0,
+            }
+            for index, source in enumerate(
+                (
+                    "shoulder_pan.pos",
+                    "shoulder_lift.pos",
+                    "elbow_flex.pos",
+                    "wrist_flex.pos",
+                    "wrist_roll.pos",
+                ),
+                start=1,
+            )
+        ],
+        arm_limits={
+            f"joint_rev_{index}": {"min": -3.141593, "max": 3.141593}
+            for index in range(1, 6)
+        },
+        motion_hysteresis=0.05,
+    )
+    arm = {
+        "shoulder_pan.pos": 0.0,
+        "shoulder_lift.pos": 0.0,
+        "elbow_flex.pos": 0.0,
+        "wrist_flex.pos": 0.0,
+        "wrist_roll.pos": 0.0,
+    }
+
+    assert adapter({**arm, "gripper.pos": 30.0})["amazinghand_motion.pos"] == 0.5
+    assert adapter({**arm, "gripper.pos": 24.0})["amazinghand_motion.pos"] == 0.5
+    assert adapter({**arm, "gripper.pos": 19.0})["amazinghand_motion.pos"] == 0.0
+
+
 def test_recording_device_setup_rolls_back_robot_when_teleoperator_connect_fails() -> None:
     from lelab.record import _connect_recording_devices
 

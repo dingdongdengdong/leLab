@@ -25,6 +25,7 @@ from typing import Literal
 
 import yaml
 
+from lelab.superarm.actions import load_superarm_control_config
 from lelab.superarm.isaac_distribution import (
     CONFIRMED_DISTRIBUTION_SHA256,
     validate_and_extract_distribution,
@@ -425,11 +426,14 @@ def _builtin_superarm_isaac_record() -> dict | None:
             archive,
             expected_sha256=CONFIRMED_DISTRIBUTION_SHA256,
         )
-        config_path = Path(__file__).resolve().parents[1] / "superarm/data/superarm_isaac.yaml"
-        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        configured = os.environ.get("SUPERARM_LEROBOT_CONFIG")
+        config_path = (
+            Path(configured).expanduser()
+            if configured
+            else Path(__file__).resolve().parents[1] / "superarm/data/superarm_isaac.yaml"
+        )
+        raw = load_superarm_control_config(config_path)
     except (OSError, ValueError, zipfile.BadZipFile, yaml.YAMLError):
-        return None
-    if raw.get("_type") != "superarm_isaac":
         return None
     return {
         "name": _BUILTIN_SUPERARM_ISAAC_NAME,
@@ -606,9 +610,7 @@ def is_robot_record_clean(record: dict) -> bool:
         workspace = record.get("superarm_asset_root") or _superarm_asset_root()
         resolved_config = Path(_resolve_superarm_config_path(config_path, workspace))
         try:
-            raw = yaml.safe_load(resolved_config.read_text(encoding="utf-8")) or {}
-            if raw.get("_type") != "superarm_isaac":
-                return False
+            load_superarm_control_config(resolved_config)
             validate_and_extract_distribution(
                 record.get("isaac_distribution_zip") or "",
                 expected_sha256=record.get("isaac_expected_sha256") or None,

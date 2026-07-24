@@ -49,8 +49,8 @@ class FakeService:
         self.runtime = FakeRuntime()
         return {"connected": True, "runtime": mode}
 
-    def logical_action(self, values):
-        targets = action_to_isaac_targets(values)
+    def logical_action(self, values, *, arm_limits=None):
+        targets = action_to_isaac_targets(values, arm_limits=arm_limits)
         self.runtime.last_targets = targets
         return {"accepted": True, "logical_action": list(values)}
 
@@ -269,4 +269,63 @@ def test_isaac_yaml_keeps_the_canonical_six_and_thirteen_joint_contracts():
         "port": 8765,
         "image": "nvcr.io/nvidia/isaac-sim:6.0.0",
         "distribution_env": "SUPERARM_ISAAC_DISTRIBUTION_ZIP",
+    }
+
+
+def test_isaac_robot_uses_external_superarm_lerobot_arm_limits(tmp_path: Path):
+    from lelab.superarm.isaac_robot import SuperArmIsaacRobot, SuperArmIsaacRobotConfig
+
+    config_path = tmp_path / "source_arm_amazinghand.yaml"
+    config_path.write_text(
+        """
+_type: isaacsim_rpo_arm
+joint_names:
+  - joint_rev_1
+  - joint_rev_2
+  - joint_rev_3
+  - joint_rev_4
+  - joint_rev_5
+  - amazinghand_motion
+physical_joint_names:
+  - joint_rev_1
+  - joint_rev_2
+  - joint_rev_3
+  - joint_rev_4
+  - joint_rev_5
+  - finger1_motor1
+  - finger1_motor2
+  - finger2_motor1
+  - finger2_motor2
+  - finger3_motor1
+  - finger3_motor2
+  - finger4_motor1
+  - finger4_motor2
+arm_limits:
+  joint_rev_1: {min: -3.141593, max: 3.141593, default: 0.0, step: 0.01}
+  joint_rev_2: {min: -3.141593, max: 3.141593, default: 0.0, step: 0.01}
+  joint_rev_3: {min: -3.141593, max: 3.141593, default: 0.0, step: 0.01}
+  joint_rev_4: {min: -3.141593, max: 3.141593, default: 0.0, step: 0.01}
+  joint_rev_5: {min: -3.141593, max: 3.141593, default: 0.0, step: 0.01}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    service = FakeService()
+    robot = SuperArmIsaacRobot(
+        SuperArmIsaacRobotConfig(
+            distribution_zip="/server/superarm.zip",
+            control_config_path=str(config_path),
+        ),
+        runtime_service=service,
+    )
+
+    robot.connect()
+    sent = robot.send_action([2.5, -2.5, 0.2, -0.2, 0.05, 0.5])
+
+    assert sent[:2].tolist() == pytest.approx([2.5, -2.5])
+    assert service.runtime.last_targets["joint_rev_1"] == pytest.approx(2.5)
+    assert service.runtime.last_targets["joint_rev_2"] == pytest.approx(-2.5)
+    assert service.start_calls[0][1]["isaac_arm_limits"]["joint_rev_1"] == {
+        "min": -3.141593,
+        "max": 3.141593,
     }
