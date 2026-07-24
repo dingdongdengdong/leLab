@@ -105,6 +105,44 @@ def test_author_snapshot_keeps_original_bytes_when_flatten_export_fails(
     assert snapshot.read_bytes() == original
 
 
+def test_live_runtime_authors_once_then_updates_without_saving_or_flattening(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from isaacsim_validation.passive_linkage import solve_passive_linkage
+    from isaacsim_validation.passive_linkage_usd import (
+        author_or_update_passive_linkage_runtime,
+    )
+
+    _install_fake_pxr(monkeypatch)
+    stage = _FakeStage(tmp_path / "live.usda", fail_export=False)
+    instances = tmp_path / "zip_hand_payloads" / "instances.usda"
+    instances.parent.mkdir()
+    instances.write_text("#usda 1.0\n", encoding="utf-8")
+    open_poses = solve_passive_linkage(
+        {f"finger{finger}_motor{motor}": 0.05 for finger in range(1, 5) for motor in range(1, 3)}
+    )
+    half_poses = solve_passive_linkage(
+        {f"finger{finger}_motor{motor}": 0.55 for finger in range(1, 5) for motor in range(1, 3)}
+    )
+
+    created = author_or_update_passive_linkage_runtime(stage, "/Robot", open_poses, instances)
+    updated = author_or_update_passive_linkage_runtime(stage, "/Robot", half_poses, instances)
+
+    part_prims = [prim for prim in stage.prims.values() if "/part_" in str(prim.GetPath())]
+    assert created["runtime_created"] is True
+    assert created["runtime_updated"] is False
+    assert updated["runtime_created"] is False
+    assert updated["runtime_updated"] is True
+    assert created["visual_part_count"] == updated["visual_part_count"] == 88
+    assert sum(len(prim.references) for prim in part_prims) == 88
+    assert all(prim.instanceable for prim in part_prims)
+    assert all(prim.xform_ops["translate"].set_calls == 2 for prim in part_prims)
+    assert all(prim.xform_ops["orient"].set_calls == 2 for prim in part_prims)
+    assert stage.flatten_calls == 0
+    assert stage.root_layer.save_calls == 0
+    assert sum(not prim.active for prim in stage.prims.values()) == 8
+
+
 def test_source_path_leak_validation_rejects_absolute_assets_but_allows_flattened_prototypes(
     tmp_path: Path,
 ) -> None:
@@ -191,6 +229,10 @@ class _FakePrim:
         self.fail_attribute_set = False
         self.references: list[tuple[str, str]] = []
         self.attributes: dict[str, _FakeAttribute] = {}
+        self.xform_ops: dict[str, _FakeOp] = {}
+
+    def __bool__(self) -> bool:
+        return True
 
     def GetName(self) -> str:  # noqa: N802 - mimics pxr API
         return str(self.path).rsplit("/", 1)[-1]
@@ -206,6 +248,9 @@ class _FakePrim:
 
     def SetActive(self, active: bool) -> None:  # noqa: N802 - mimics pxr API
         self.active = active
+
+    def IsActive(self) -> bool:  # noqa: N802 - mimics pxr API
+        return self.active
 
     def GetReferences(self):  # noqa: N802 - mimics pxr API
         return self
@@ -245,6 +290,7 @@ class _FakeStage:
     def __init__(self, path: Path, *, fail_export: bool):
         self.root_layer = _FakeRootLayer(path)
         self.fail_export = fail_export
+        self.flatten_calls = 0
         self.prims: dict[str, _FakePrim] = {
             "/Robot": _FakePrim("/Robot"),
             "/Robot/r_wrist_interface": _FakePrim("/Robot/r_wrist_interface"),
@@ -264,7 +310,11 @@ class _FakeStage:
         return list(self.prims.values())
 
     def Flatten(self) -> _FakeFlattened:  # noqa: N802 - mimics pxr API
+        self.flatten_calls += 1
         return _FakeFlattened(self.fail_export)
+
+    def GetPrimAtPath(self, path: _FakePath):  # noqa: N802 - mimics pxr API
+        return self.prims.get(str(path))
 
     def define_prim(self, path: _FakePath) -> _FakePrim:
         prim = self.prims.get(str(path))
@@ -290,19 +340,36 @@ class _FakeXform:
 
 
 class _FakeOp:
-    def Set(self, _value) -> None:  # noqa: N802 - mimics pxr API
-        return None
+    def __init__(self, op_type: str):
+        self.op_type = op_type
+        self.value = None
+        self.set_calls = 0
+
+    def GetOpType(self) -> str:  # noqa: N802 - mimics pxr API
+        return self.op_type
+
+    def Set(self, value) -> bool:  # noqa: N802 - mimics pxr API
+        self.value = value
+        self.set_calls += 1
+        return True
 
 
 class _FakeXformable:
-    def __init__(self, _prim: _FakePrim):
-        pass
+    def __init__(self, prim: _FakePrim):
+        self.prim = prim
+
+    def GetOrderedXformOps(self):  # noqa: N802 - mimics pxr API
+        return list(self.prim.xform_ops.values())
 
     def AddTranslateOp(self, **_kwargs) -> _FakeOp:  # noqa: N802 - mimics pxr API
-        return _FakeOp()
+        op = _FakeOp("translate")
+        self.prim.xform_ops["translate"] = op
+        return op
 
     def AddOrientOp(self, **_kwargs) -> _FakeOp:  # noqa: N802 - mimics pxr API
-        return _FakeOp()
+        op = _FakeOp("orient")
+        self.prim.xform_ops["orient"] = op
+        return op
 
 
 def _install_fake_pxr(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -319,6 +386,10 @@ def _install_fake_pxr(monkeypatch: pytest.MonkeyPatch) -> None:
     pxr.UsdGeom = types.SimpleNamespace(
         Xform=_FakeXform,
         Xformable=_FakeXformable,
-        XformOp=types.SimpleNamespace(PrecisionDouble="double"),
+        XformOp=types.SimpleNamespace(
+            PrecisionDouble="double",
+            TypeTranslate="translate",
+            TypeOrient="orient",
+        ),
     )
     monkeypatch.setitem(sys.modules, "pxr", pxr)

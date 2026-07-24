@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 --asset-root DIR --entrypoint FILE --run-dir DIR --host 127.0.0.1 --port PORT --token-file FILE [--image IMAGE] [--rl-display :N] [--no-webrtc]" >&2
+  echo "usage: $0 --asset-root DIR --entrypoint FILE --run-dir DIR --host 127.0.0.1 --port PORT --token-file FILE [--image IMAGE] [--rl-display :N] [--no-webrtc] [--passive-linkage-visuals]" >&2
   exit 2
 }
 
@@ -15,6 +15,7 @@ token_file=""
 enable_webrtc="1"
 image=${ISAAC_SIM_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.0}
 rl_display=""
+passive_linkage_visuals="0"
 while (($#)); do
   case "$1" in
     --asset-root) asset_root=${2:-}; shift 2 ;;
@@ -26,6 +27,7 @@ while (($#)); do
     --image) image=${2:-}; shift 2 ;;
     --rl-display) rl_display=${2:-}; shift 2 ;;
     --no-webrtc) enable_webrtc="0"; shift ;;
+    --passive-linkage-visuals) passive_linkage_visuals="1"; shift ;;
     *) usage ;;
   esac
 done
@@ -55,6 +57,20 @@ run_dir=$(realpath "$run_dir")
 token_file=$(realpath "$token_file")
 [[ -d "$asset_root" && -f "$entrypoint" && -d "$run_dir" && -f "$token_file" ]] || usage
 case "$entrypoint" in "$asset_root"/*) ;; *) echo "entrypoint must be beneath asset root" >&2; exit 2 ;; esac
+if [[ "$passive_linkage_visuals" == "1" ]]; then
+  [[ -f "$asset_root/python/superarm_isaac_runtime/passive_linkage.py" ]] || {
+    echo "passive-linkage solver is missing from the distribution" >&2
+    exit 2
+  }
+  [[ -f "$asset_root/python/superarm_isaac_runtime/passive_linkage_usd.py" ]] || {
+    echo "passive-linkage USD runtime is missing from the distribution" >&2
+    exit 2
+  }
+  [[ -f "$asset_root/usd/superarm_amazinghand/zip_hand_payloads/instances.usda" ]] || {
+    echo "passive-linkage instances.usda is missing from the distribution" >&2
+    exit 2
+  }
+fi
 case "$token_file" in
   "$run_dir"|"$run_dir"/*)
     echo "token file must remain outside the read-write run directory" >&2
@@ -149,6 +165,9 @@ docker_args=(
   -v "$token_file:/run/secrets/isaac_bridge_token:ro"
 )
 bridge_args=()
+if [[ "$passive_linkage_visuals" == "1" ]]; then
+  bridge_args+=(--passive-linkage-visuals)
+fi
 if [[ -n "$rl_display" ]]; then
   cache_root=${ISAAC_SIM_RL_CACHE_ROOT:-"$HOME/.cache/lelab/isaac_sim/6.0.1"}
   cache_dirs=(omni-user omni-cache kit ov glcache compute)

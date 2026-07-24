@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from isaacsim_validation.contracts import PHYSICAL_JOINTS
+from lelab.superarm.isaac_distribution import PASSIVE_VISUAL_PROFILE
 from lelab.superarm.isaac_runtime import IsaacSimRuntime
 
 
@@ -47,6 +48,9 @@ class FakeClient:
             "physical_dof_count": 13,
             "logical_action_width": 6,
             "joint_names": list(reversed(PHYSICAL_JOINTS)),
+            "visual_profile": PASSIVE_VISUAL_PROFILE,
+            "passive_follower_count": 88,
+            "outer_shells_included": False,
         }
         self.commands = []
         self.shutdown_calls = 0
@@ -123,6 +127,8 @@ def _distribution(tmp_path: Path):
         entrypoint=entrypoint,
         archive_sha256="a" * 64,
         robot_contract={"physical_dof_count": 13, "logical_action_width": 6},
+        visual_profile=PASSIVE_VISUAL_PROFILE,
+        passive_runtime_root=root / "python",
     )
 
 
@@ -154,6 +160,7 @@ def test_managed_runtime_launches_with_file_token_and_sends_complete_named_targe
     assert args[0].endswith("run_isaacsim60_control_bridge.sh")
     assert args[args.index("--asset-root") + 1] == str(distribution.root)
     assert args[args.index("--entrypoint") + 1] == str(distribution.entrypoint)
+    assert "--passive-linkage-visuals" in args
     token_path = Path(args[args.index("--token-file") + 1])
     run_dir = Path(args[args.index("--run-dir") + 1])
     assert token_path.is_file()
@@ -204,6 +211,9 @@ def test_managed_rl_runtime_selects_verified_isaac_rgb_path(tmp_path):
             "physical_dof_count": 13,
             "logical_action_width": 6,
             "joint_names": list(PHYSICAL_JOINTS),
+            "visual_profile": PASSIVE_VISUAL_PROFILE,
+            "passive_follower_count": 88,
+            "outer_shells_included": False,
         }
     )
     process_calls = []
@@ -280,6 +290,18 @@ def test_managed_close_cleans_up_without_shutdown_after_transport_disconnect(tmp
         {"runtime": "isaac_sim", "physical_dof_count": 12, "logical_action_width": 6, "joint_names": list(PHYSICAL_JOINTS)},
         {"runtime": "isaac_sim", "physical_dof_count": 13, "logical_action_width": 6, "joint_names": [*PHYSICAL_JOINTS[:-1], "wrong"]},
         {"runtime": "isaac_sim", "physical_dof_count": 13, "logical_action_width": 6, "joint_names": [*PHYSICAL_JOINTS, PHYSICAL_JOINTS[-1]]},
+        {
+            "runtime": "isaac_sim",
+            "isaac_sim_version": "6.0.0",
+            "articulation_root": "/superarm_amazinghand",
+            "articulation_root_count": 1,
+            "physical_dof_count": 13,
+            "logical_action_width": 6,
+            "joint_names": list(PHYSICAL_JOINTS),
+            "visual_profile": "wrong/v1",
+            "passive_follower_count": 88,
+            "outer_shells_included": False,
+        },
     ],
 )
 def test_runtime_rejects_inexact_hello_contract(tmp_path, hello):

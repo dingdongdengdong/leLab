@@ -94,7 +94,16 @@ def _write_inputs(root: Path) -> dict[str, Path]:
     runtime_solver = root / "passive_linkage.py"
     runtime_solver.write_text("def solve_passive_linkage(measured): return ()\n", encoding="utf-8")
     runtime_usd = root / "passive_linkage_usd.py"
-    runtime_usd.write_text("def author_passive_linkage_snapshot(*args): return {}\n", encoding="utf-8")
+    runtime_usd.write_text(
+        "\n".join(
+            (
+                "def author_passive_linkage_snapshot(*args): return {}",
+                "def author_or_update_passive_linkage_runtime(*args): return {}",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
     runtime_data = root / "amazinghand_passive_linkage_keyframes.json"
     runtime_data.write_text('{"manifest_version": 1}\n', encoding="utf-8")
 
@@ -147,9 +156,10 @@ def test_export_is_relocatable_complete_and_deterministic(tmp_path: Path):
             f"{root}/LICENSE-AmazingHandControl",
             f"{root}/usd/superarm_amazinghand/superarm_amazinghand.usda",
             f"{root}/usd/superarm_amazinghand/payloads/base.usda",
-            f"{root}/runtime/passive_linkage.py",
-            f"{root}/runtime/passive_linkage_usd.py",
-            f"{root}/runtime/data/amazinghand_passive_linkage_keyframes.json",
+            f"{root}/python/superarm_isaac_runtime/__init__.py",
+            f"{root}/python/superarm_isaac_runtime/passive_linkage.py",
+            f"{root}/python/superarm_isaac_runtime/passive_linkage_usd.py",
+            f"{root}/python/superarm_isaac_runtime/data/amazinghand_passive_linkage_keyframes.json",
             f"{root}/validation/isaac-report.json",
             f"{root}/validation/asset-validator.json",
             f"{root}/validation/passive_linkage_contact_sheet.png",
@@ -161,7 +171,7 @@ def test_export_is_relocatable_complete_and_deterministic(tmp_path: Path):
         assert expected <= set(names)
 
         manifest = json.loads(archive.read(f"{root}/manifest.json"))
-        assert manifest["schema"] == "superarm.isaac_sim.usd_distribution/v1"
+        assert manifest["schema"] == "superarm.isaac_sim.usd_distribution/v2"
         assert manifest["entrypoint"] == "usd/superarm_amazinghand/superarm_amazinghand.usda"
         assert manifest["runtime"]["isaac_sim_version"] == "6.0.0"
         assert manifest["robot_contract"] == {
@@ -175,6 +185,30 @@ def test_export_is_relocatable_complete_and_deterministic(tmp_path: Path):
         assert manifest["validation"]["strict_validator_passed"] is True
         assert manifest["visual_contract"]["outer_shells_included"] is False
         assert manifest["visual_contract"]["passive_follower_count"] == 88
+        assert manifest["visual_contract"]["profile"] == (
+            "superarm_isaac60_passive_linkage_no_shell/v1"
+        )
+        assert manifest["visual_contract"]["runtime"] == {
+            "instances": "usd/superarm_amazinghand/zip_hand_payloads/instances.usda",
+            "keyframes": (
+                "python/superarm_isaac_runtime/data/"
+                "amazinghand_passive_linkage_keyframes.json"
+            ),
+            "package": "superarm_isaac_runtime",
+            "python_root": "python",
+            "solver": "superarm_isaac_runtime.passive_linkage:solve_passive_linkage",
+            "usd_author": (
+                "superarm_isaac_runtime.passive_linkage_usd:"
+                "author_or_update_passive_linkage_runtime"
+            ),
+        }
+        assert manifest["grasp_contract"] == {
+            "full_close_simulation_only": True,
+            "real_hardware_max_code": 0.5,
+            "real_hardware_max_pose": "half-close",
+            "simulation_codes": [0.0, 0.5, 1.0],
+        }
+        assert not any(name.startswith(f"{root}/runtime/") for name in names)
         for name, source in inputs["visual_images"].items():
             entry = manifest["visual_evidence"][name]
             assert entry == {

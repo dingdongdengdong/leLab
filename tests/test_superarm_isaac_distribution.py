@@ -24,6 +24,8 @@ def _valid_distribution(
     schema: str = DISTRIBUTION_SCHEMA,
     contract: dict[str, int] | None = None,
     hand_joint_names: list[str] | None = None,
+    visual_contract: dict | None = None,
+    grasp_contract: dict | None = None,
 ) -> Path:
     root = "superarm_test_distribution"
     entrypoint = "usd/superarm_amazinghand/superarm_amazinghand.usda"
@@ -31,6 +33,15 @@ def _valid_distribution(
         entrypoint: b'#usda 1.0\n(defaultPrim = "superarm_amazinghand")\n',
         "usd/superarm_amazinghand/payloads/base.usda": b'#usda 1.0\ndef Xform "robot" {}\n',
         "README.md": b"test distribution\n",
+        "python/superarm_isaac_runtime/__init__.py": b"",
+        "python/superarm_isaac_runtime/passive_linkage.py": b"def solve_passive_linkage(*args): return ()\n",
+        "python/superarm_isaac_runtime/passive_linkage_usd.py": (
+            b"def author_or_update_passive_linkage_runtime(*args): return {}\n"
+        ),
+        "python/superarm_isaac_runtime/data/amazinghand_passive_linkage_keyframes.json": (
+            b'{"manifest_version": 1}\n'
+        ),
+        "usd/superarm_amazinghand/zip_hand_payloads/instances.usda": b"#usda 1.0\n",
         **{
             f"validation/visuals/{name}.png": f"PNG:{name}".encode()
             for name in ("whole", "open", "half-close", "close")
@@ -77,6 +88,35 @@ def _valid_distribution(
             }
             for name in ("whole", "open", "half-close", "close")
         },
+        "visual_contract": visual_contract
+        or {
+            "profile": "superarm_isaac60_passive_linkage_no_shell/v1",
+            "mode": "live_passive_linkage_no_shells",
+            "outer_shells_included": False,
+            "passive_follower_count": 88,
+            "passive_followers_are_physics_bodies": False,
+            "runtime": {
+                "python_root": "python",
+                "package": "superarm_isaac_runtime",
+                "solver": "superarm_isaac_runtime.passive_linkage:solve_passive_linkage",
+                "usd_author": (
+                    "superarm_isaac_runtime.passive_linkage_usd:"
+                    "author_or_update_passive_linkage_runtime"
+                ),
+                "keyframes": (
+                    "python/superarm_isaac_runtime/data/"
+                    "amazinghand_passive_linkage_keyframes.json"
+                ),
+                "instances": "usd/superarm_amazinghand/zip_hand_payloads/instances.usda",
+            },
+        },
+        "grasp_contract": grasp_contract
+        or {
+            "simulation_codes": [0.0, 0.5, 1.0],
+            "real_hardware_max_code": 0.5,
+            "real_hardware_max_pose": "half-close",
+            "full_close_simulation_only": True,
+        },
     }
     files["manifest.json"] = (json.dumps(manifest, sort_keys=True) + "\n").encode()
     files["SHA256SUMS"] = "".join(
@@ -105,6 +145,8 @@ def test_distribution_is_verified_and_extracted_by_archive_digest(tmp_path: Path
     assert first.entrypoint.is_file()
     assert first.robot_contract["physical_dof_count"] == 13
     assert first.robot_contract["logical_action_width"] == 6
+    assert first.visual_profile == "superarm_isaac60_passive_linkage_no_shell/v1"
+    assert first.passive_runtime_root == first.root / "python"
 
 
 def test_distribution_can_require_a_trusted_archive_digest(tmp_path: Path):
@@ -240,6 +282,38 @@ def test_distribution_rejects_self_consistent_archive_with_incomplete_visual_con
 
     with pytest.raises(ValueError, match="visual evidence"):
         validate_and_extract_distribution(rewritten, cache_root=tmp_path / "cache")
+
+
+def test_distribution_rejects_incomplete_live_passive_visual_contract(tmp_path: Path):
+    source = _valid_distribution(
+        tmp_path / "distribution.zip",
+        visual_contract={
+            "profile": "superarm_isaac60_passive_linkage_no_shell/v1",
+            "mode": "live_passive_linkage_no_shells",
+            "outer_shells_included": False,
+            "passive_follower_count": 8,
+            "passive_followers_are_physics_bodies": False,
+            "runtime": {},
+        },
+    )
+
+    with pytest.raises(ValueError, match="passive visual contract"):
+        validate_and_extract_distribution(source, cache_root=tmp_path / "cache")
+
+
+def test_distribution_rejects_hardware_grasp_beyond_half_close(tmp_path: Path):
+    source = _valid_distribution(
+        tmp_path / "distribution.zip",
+        grasp_contract={
+            "simulation_codes": [0.0, 0.5, 1.0],
+            "real_hardware_max_code": 1.0,
+            "real_hardware_max_pose": "close",
+            "full_close_simulation_only": False,
+        },
+    )
+
+    with pytest.raises(ValueError, match="hardware grasp contract"):
+        validate_and_extract_distribution(source, cache_root=tmp_path / "cache")
 
 
 @pytest.mark.parametrize(

@@ -171,6 +171,105 @@ def author_passive_linkage_snapshot(
             temporary_path.unlink()
 
 
+def author_or_update_passive_linkage_runtime(
+    stage,
+    robot_root: str,
+    poses: Sequence[PassiveVisualPose],
+    instances_usda: Path,
+) -> dict[str, Any]:
+    """Create live passive followers once, then update only their transforms.
+
+    This runtime path deliberately does not flatten or save the stage. The
+    distributed USD stays immutable while Isaac's session layer carries the
+    visual-only follower references and measured-pose transforms.
+    """
+
+    from pxr import Gf, Sdf, UsdGeom
+
+    instances_usda = instances_usda.resolve()
+    if not instances_usda.is_file():
+        raise FileNotFoundError(f"passive linkage instances.usda is missing: {instances_usda}")
+
+    plan = build_passive_linkage_author_plan(poses)
+    wrist = _unique_named_prim(stage, robot_root, "r_wrist_interface")
+    passive_root_path = wrist.GetPath().AppendChild(PASSIVE_VISUAL_ROOT_NAME)
+    passive_root_prim = stage.GetPrimAtPath(passive_root_path)
+    runtime_created = not bool(passive_root_prim)
+
+    if runtime_created:
+        deactivated = _deactivate_frame_first_core_refs(stage, robot_root)
+        passive_root = UsdGeom.Xform.Define(stage, passive_root_path)
+    else:
+        deactivated = _count_inactive_frame_first_core_refs(stage, robot_root)
+        if deactivated != 8:
+            raise RuntimeError(
+                "live passive linkage exists but the eight frame-first core refs "
+                f"are not all inactive: {deactivated}"
+            )
+        passive_root = UsdGeom.Xform(passive_root_prim)
+
+    for pose, part in zip(poses, plan["parts"], strict=True):
+        finger_path = passive_root.GetPath().AppendChild(f"finger{pose.finger}")
+        part_path = finger_path.AppendChild(f"part_{pose.source_index:03d}")
+        if runtime_created:
+            UsdGeom.Xform.Define(stage, finger_path)
+            prim = UsdGeom.Xform.Define(stage, part_path).GetPrim()
+            _set_custom_attr(
+                prim,
+                "passive_source_index",
+                Sdf.ValueTypeNames.Int,
+                pose.source_index,
+            )
+            _set_custom_attr(
+                prim,
+                "passive_source_prim",
+                Sdf.ValueTypeNames.String,
+                pose.source_prim,
+            )
+            _set_custom_attr(
+                prim,
+                "passive_reference_prim",
+                Sdf.ValueTypeNames.String,
+                part["reference_prim"],
+            )
+            prim.GetReferences().AddReference(
+                str(instances_usda),
+                Sdf.Path(part["reference_prim"]),
+            )
+            prim.SetInstanceable(True)
+        else:
+            prim = stage.GetPrimAtPath(part_path)
+            if not bool(prim):
+                raise RuntimeError(f"live passive linkage part is missing: {part_path}")
+        _set_runtime_pose(UsdGeom.Xformable(prim), pose, Gf, UsdGeom)
+
+    return {
+        **plan,
+        "deactivated_frame_first_core_ref_count": deactivated,
+        "runtime_created": runtime_created,
+        "runtime_updated": not runtime_created,
+        "source_usd_saved": False,
+        "source_usd_flattened": False,
+    }
+
+
+def _set_runtime_pose(xformable, pose: PassiveVisualPose, gf, usd_geom) -> None:
+    translate_op = None
+    orient_op = None
+    for op in xformable.GetOrderedXformOps():
+        if op.GetOpType() == usd_geom.XformOp.TypeTranslate:
+            translate_op = op
+        elif op.GetOpType() == usd_geom.XformOp.TypeOrient:
+            orient_op = op
+    if translate_op is None:
+        translate_op = xformable.AddTranslateOp(precision=usd_geom.XformOp.PrecisionDouble)
+    if orient_op is None:
+        orient_op = xformable.AddOrientOp(precision=usd_geom.XformOp.PrecisionDouble)
+    translate_op.Set(gf.Vec3d(*pose.translate))
+    w, x, y, z = pose.orient
+    orient_op.Set(gf.Quatd(w, gf.Vec3d(x, y, z)))
+
+
 def validate_no_source_path_leaks(snapshot_text: str, instances_usda: Path) -> None:
     """Reject external source paths while allowing asset-free flattened prototype refs."""
 
@@ -207,6 +306,14 @@ def _deactivate_frame_first_core_refs(stage, robot_root: str) -> int:
     for prim in matches:
         prim.SetActive(False)
     return len(matches)
+
+
+def _count_inactive_frame_first_core_refs(stage, robot_root: str) -> int:
+    return sum(
+        not prim.IsActive()
+        for prim in _iter_prims_under(stage, robot_root)
+        if prim.GetName() in FRAME_FIRST_CORE_REF_NAMES
+    )
 
 
 def _validate_flattened_snapshot(stage, robot_root: str) -> dict[str, Any]:
