@@ -25,7 +25,10 @@ from typing import Literal
 
 import yaml
 
-from lelab.superarm.isaac_distribution import validate_and_extract_distribution
+from lelab.superarm.isaac_distribution import (
+    CONFIRMED_DISTRIBUTION_SHA256,
+    validate_and_extract_distribution,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -418,7 +421,10 @@ def _builtin_superarm_isaac_record() -> dict | None:
     if not archive.is_file():
         return None
     try:
-        distribution = validate_and_extract_distribution(archive)
+        distribution = validate_and_extract_distribution(
+            archive,
+            expected_sha256=CONFIRMED_DISTRIBUTION_SHA256,
+        )
         config_path = Path(__file__).resolve().parents[1] / "superarm/data/superarm_isaac.yaml"
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     except (OSError, ValueError, zipfile.BadZipFile, yaml.YAMLError):

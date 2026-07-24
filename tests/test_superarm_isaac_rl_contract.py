@@ -100,6 +100,11 @@ def test_request_defaults_and_resource_validation(tmp_path: Path) -> None:
     request = ReinforcementLearningRequest(distribution_zip=str(tmp_path / "robot.zip"))
     assert request.distribution_sha256 == DEFAULT_DISTRIBUTION_SHA256
     assert request.episode_length_steps == 150
+    with pytest.raises(ValueError, match="confirmed passive/no-shell V3"):
+        ReinforcementLearningRequest(
+            distribution_zip=str(tmp_path / "robot.zip"),
+            distribution_sha256="0" * 64,
+        )
     with pytest.raises(ValueError, match="different"):
         ReinforcementLearningRequest(
             distribution_zip=str(tmp_path / "robot.zip"), learner_port=50051, bridge_port=50051
@@ -203,3 +208,4 @@ def test_rl_readiness_requires_verified_isaac_image_and_x11_display(tmp_path, mo
     assert inspected == [["docker", "image", "inspect", "nvcr.io/nvidia/isaac-sim:6.0.1"]]
     assert result["checks"]["isaac_sim_6_0_1_image"] is True
     assert result["checks"]["rl_x11_display"] is True
+    assert result["distribution_zip"] == str(distribution)

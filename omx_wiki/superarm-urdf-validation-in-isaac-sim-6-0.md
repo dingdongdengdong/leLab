@@ -132,10 +132,13 @@ Fresh exact-archive managed-control evidence is at
 `/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/v3-passive-control-smoke-20260724/report.json`.
 Isaac Sim 6.0.0 accepted the V3 checksum and visual profile, reported 88
 followers with no outer shells, and settled the eight hand motors at the
-half-close targets. The separate Isaac Sim 6.0.1 RL RGB attempt reached a
-settled reset but returned an empty Replicator frame; its explicit blocked
-verdict is at
-`/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/v3-passive-runtime-smoke-20260724/verdict.json`.
+half-close targets. A separate Isaac Sim 6.0.1 RL RGB smoke now passes after
+moving live passive-follower authoring behind successful PhysX articulation
+validation and waiting for four valid camera frames after each visual update.
+The reviewed open and half-close task frames preserve the attached arm and show
+the shell-free hand changing state. Evidence is at
+`/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/v3-passive-runtime-smoke-verified-20260724/`
+and in `omx_wiki/assets/superarm-isaac-rl-v3-*-20260724.*`.
 
 ## Proof boundaries
 

@@ -77,6 +77,7 @@ def check_rl_readiness(
     return {
         "ready": all(checks.values()),
         "checks": checks,
+        "distribution_zip": str(path),
         "distribution_sha256": checksum,
         "isaac_image": image,
         "display": display,

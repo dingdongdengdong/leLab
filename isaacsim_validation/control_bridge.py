@@ -350,14 +350,11 @@ def simulation_app_launch(args: argparse.Namespace) -> tuple[dict[str, Any], str
     """Build the Isaac launch contract without importing Isaac on the host."""
 
     if getattr(args, "replicator_rgb", False):
-        extra_args = ["--/exts/isaacsim.core.throttling/enable_async=false"]
-        if getattr(args, "passive_linkage_visuals", False):
-            extra_args.append("--/app/useFabricSceneDelegate=true")
         return {
             "headless": False,
             "renderer": "RayTracedLighting",
             "enable_cameras": True,
-            "extra_args": extra_args,
+            "extra_args": ["--/exts/isaacsim.core.throttling/enable_async=false"],
         }, ""
 
     config: dict[str, Any] = {
@@ -369,8 +366,6 @@ def simulation_app_launch(args: argparse.Namespace) -> tuple[dict[str, Any], str
         "window_height": 720,
     }
     if not args.webrtc:
-        if getattr(args, "passive_linkage_visuals", False):
-            config["extra_args"] = ["--/app/useFabricSceneDelegate=true"]
         return config, ""
 
     prefix = "/exts/omni.kit.livestream.app/primaryStream"
@@ -380,8 +375,6 @@ def simulation_app_launch(args: argparse.Namespace) -> tuple[dict[str, Any], str
         f'--{prefix}/streamType="webrtc"',
         f"--{prefix}/targetFps=30",
     ]
-    if getattr(args, "passive_linkage_visuals", False):
-        extra_args.append("--/app/useFabricSceneDelegate=true")
     if args.webrtc_public_ip:
         extra_args.append(f'--{prefix}/publicIp="{args.webrtc_public_ip}"')
     config.update({"hide_ui": False, "extra_args": extra_args})
@@ -402,20 +395,14 @@ def _run_isaac(args: argparse.Namespace, token: str) -> None:
 
 def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None:
     app.update()
-    import isaacsim.core.experimental.utils.backend as backend_utils
     import numpy as np
     import omni.timeline
     import omni.usd
     from isaacsim.core.api import World
     from isaacsim.core.api.objects import DynamicCuboid, FixedCuboid
-    from isaacsim.core.experimental.prims import Articulation, XformPrim
+    from isaacsim.core.experimental.prims import Articulation
     from isaacsim.core.rendering_manager import ViewportManager
-    from isaacsim.core.simulation_manager import SimulationManager
     from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics
-
-    rep = None
-    if args.replicator_rgb:
-        import omni.replicator.core as rep
 
     solve_passive_linkage = None
     author_or_update_passive_linkage_runtime = None
@@ -475,7 +462,6 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             self.root_path = str(self.root.GetPath())
             self.passive_visual_contract: dict[str, Any] | None = None
             self._last_passive_positions: tuple[float, ...] | None = None
-            self._author_initial_passive_linkage()
             self.world = World(stage_units_in_meters=1.0, physics_dt=1.0 / 120.0, rendering_dt=1.0 / 30.0)
             self.timeline = omni.timeline.get_timeline_interface()
             self.timeline.play()
@@ -548,7 +534,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                     f"extra={sorted(actual - expected)}"
                 )
             self.indices = {name: int(self.art.dof_names.index(name)) for name in PHYSICAL_JOINTS}
-            self._initialize_passive_runtime_views()
+            self._author_initial_passive_linkage()
             positions = flat(self.art.get_dof_positions())
             self.targets = {name: positions[self.indices[name]] for name in PHYSICAL_JOINTS}
             self.physics_step = 2
@@ -616,34 +602,14 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 self.rl_contact_proxy_paths.append(str(proxy_path))
 
         def _initialize_rl_runtime(self) -> None:
-            self._workspace_camera = None
-            self._workspace_render_product = None
-            self._workspace_rgb = None
-            if args.replicator_rgb:
-                timeline_was_playing = self.timeline.is_playing()
-                if timeline_was_playing:
-                    self.timeline.stop()
-                print(json.dumps({"event": "rl_replicator_configuring"}), flush=True)
-                rep.orchestrator.set_capture_on_play(False)
-                print(json.dumps({"event": "rl_render_product_creating"}), flush=True)
-                self._workspace_render_product = rep.create.render_product(
-                    self.workspace_camera_path,
-                    (256, 256),
-                )
-                print(json.dumps({"event": "rl_render_product_created"}), flush=True)
-                self._workspace_rgb = rep.AnnotatorRegistry.get_annotator("rgb")
-                self._workspace_rgb.attach(self._workspace_render_product)
-                print(json.dumps({"event": "rl_rgb_annotator_attached"}), flush=True)
-                if timeline_was_playing:
-                    self.timeline.play()
-            else:
-                from isaacsim.sensors.camera import Camera
+            from isaacsim.sensors.camera import Camera
 
-                self._workspace_camera = Camera(
-                    prim_path=self.workspace_camera_path,
-                    resolution=(256, 256),
-                )
-                self._workspace_camera.initialize()
+            self._workspace_camera = Camera(
+                prim_path=self.workspace_camera_path,
+                resolution=(256, 256),
+            )
+            self._workspace_camera.initialize()
+            print(json.dumps({"event": "rl_camera_initialized"}), flush=True)
             self._frame_path = args.run_dir / RL_FRAME_NAME
             self._frame_sequence = 0
             self._rl_step_count = 0
@@ -681,29 +647,6 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 args.passive_instances,
             )
 
-        def _initialize_passive_runtime_views(self) -> None:
-            self._passive_xforms = None
-            self._passive_root_xform = None
-            self._passive_wrist = None
-            if not args.passive_linkage_visuals:
-                return
-            contract = self.passive_visual_contract or {}
-            paths = contract.get("runtime_xform_paths")
-            root_path = contract.get("runtime_root_path")
-            if not isinstance(paths, list) or len(paths) != 88 or not isinstance(root_path, str):
-                raise RuntimeError("passive visual runtime did not author its exact 88-path contract")
-            wrists = [
-                prim
-                for prim in self.stage.TraverseAll()
-                if prim.GetName() == "r_wrist_interface"
-                and str(prim.GetPath()).startswith(self.root_path.rstrip("/") + "/")
-            ]
-            if len(wrists) != 1:
-                raise RuntimeError(f"expected one passive visual wrist, found {len(wrists)}")
-            self._passive_wrist = wrists[0]
-            self._passive_xforms = XformPrim(paths, resolve_paths=False)
-            self._passive_root_xform = XformPrim(root_path, resolve_paths=False)
-
         def _update_passive_linkage(
             self,
             *,
@@ -735,94 +678,52 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 return
             measured = dict(zip(HAND_JOINTS, measured_values, strict=True))
             poses = solve_passive_linkage(measured)
-            if (
-                self._passive_xforms is None
-                or self._passive_root_xform is None
-                or self._passive_wrist is None
-            ):
-                raise RuntimeError("passive visual runtime views are not initialized")
-            translations = np.asarray([pose.translate for pose in poses], dtype=np.float32)
-            orientations = np.asarray([pose.orient for pose in poses], dtype=np.float32)
-            wrist_matrix = UsdGeom.Xformable(
-                self._passive_wrist
-            ).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
-            wrist_quaternion = wrist_matrix.RemoveScaleShear().ExtractRotationQuat()
-            wrist_position = np.asarray(wrist_matrix.ExtractTranslation(), dtype=np.float32)
-            wrist_orientation = np.asarray(
-                [wrist_quaternion.GetReal(), *wrist_quaternion.GetImaginary()],
-                dtype=np.float32,
+            contract = author_or_update_passive_linkage_runtime(
+                self.stage,
+                self.root_path,
+                poses,
+                args.passive_instances,
             )
-            with backend_utils.use_backend(
-                "usdrt",
-                raise_on_unsupported=True,
-                raise_on_fallback=True,
-            ):
-                self._passive_root_xform.set_world_poses(
-                    positions=wrist_position,
-                    orientations=wrist_orientation,
-                )
-                self._passive_xforms.set_local_poses(
-                    translations=translations,
-                    orientations=orientations,
-                )
+            paths = contract.get("runtime_xform_paths")
+            if not isinstance(paths, list) or len(paths) != 88:
+                raise RuntimeError("passive visual runtime did not update its exact 88-path contract")
+            self.passive_visual_contract = contract
             self._last_passive_positions = measured_values
 
         def _capture_rl_frame(self) -> dict[str, Any]:
-            if args.replicator_rgb:
-                print(json.dumps({"event": "rl_rgb_capture_start"}), flush=True)
-                saved_positions = np.asarray(flat(self.art.get_dof_positions()), dtype=np.float32)
-                saved_velocities = np.asarray(flat(self.art.get_dof_velocities()), dtype=np.float32)
-                saved_targets = np.asarray(
-                    [self.targets[name] for name in PHYSICAL_JOINTS],
-                    dtype=np.float32,
-                )
-                cube_position, cube_orientation = self.cube.get_world_pose()
-                cube_linear_velocity = np.asarray(
-                    self.cube.get_linear_velocity(),
-                    dtype=np.float32,
-                )
-                cube_angular_velocity = np.asarray(
-                    self.cube.get_angular_velocity(),
-                    dtype=np.float32,
-                )
-                timeline_was_playing = self.timeline.is_playing()
-                if timeline_was_playing:
-                    self.timeline.stop()
-                try:
-                    print(json.dumps({"event": "rl_rgb_orchestrator_step"}), flush=True)
-                    rep.orchestrator.step(delta_time=0.0, rt_subframes=8, pause_timeline=False)
-                    print(json.dumps({"event": "rl_rgb_orchestrator_complete"}), flush=True)
-                    frame = np.asarray(self._workspace_rgb.get_data())
-                    print(
-                        json.dumps({"event": "rl_rgb_data_ready", "shape": list(frame.shape)}),
-                        flush=True,
-                    )
-                finally:
-                    if timeline_was_playing:
-                        self.timeline.play()
-                        SimulationManager.invalidate_physics()
-                        SimulationManager.initialize_physics()
-                        self.art = Articulation(self.root_path)
-                        if not self.art.is_physics_tensor_entity_valid():
-                            raise RuntimeError("Isaac physics tensor did not recover after RGB capture")
-                        self.art.set_dof_positions(saved_positions)
-                        self.art.set_dof_velocities(saved_velocities)
-                        self.art.set_dof_position_targets(saved_targets)
-                        self.cube.set_world_pose(
-                            position=np.asarray(cube_position, dtype=np.float32),
-                            orientation=np.asarray(cube_orientation, dtype=np.float32),
-                        )
-                        self.cube.set_linear_velocity(cube_linear_velocity)
-                        self.cube.set_angular_velocity(cube_angular_velocity)
-            else:
-                frame = None
-                for _ in range(12):
+            saved_positions = np.asarray(flat(self.art.get_dof_positions()), dtype=np.float32)
+            saved_velocities = np.asarray(flat(self.art.get_dof_velocities()), dtype=np.float32)
+            saved_targets = np.asarray(
+                [self.targets[name] for name in PHYSICAL_JOINTS],
+                dtype=np.float32,
+            )
+            cube_position, cube_orientation = self.cube.get_world_pose()
+            cube_linear_velocity = np.asarray(self.cube.get_linear_velocity(), dtype=np.float32)
+            cube_angular_velocity = np.asarray(self.cube.get_angular_velocity(), dtype=np.float32)
+            frame = None
+            valid_frames = 0
+            try:
+                for _ in range(32 if args.replicator_rgb else 12):
                     self.world.step(render=True)
-                    app.update()
+                    if not args.replicator_rgb:
+                        app.update()
                     self.physics_step += 1
-                    frame = self._workspace_camera.get_rgba()
-                    if frame is not None and np.asarray(frame).shape[:2] == (256, 256):
+                    candidate = self._workspace_camera.get_rgba()
+                    if candidate is not None and np.asarray(candidate).shape[:2] == (256, 256):
+                        frame = candidate
+                        valid_frames += 1
+                    if valid_frames >= 4:
                         break
+            finally:
+                self.art.set_dof_positions(saved_positions)
+                self.art.set_dof_velocities(saved_velocities)
+                self.art.set_dof_position_targets(saved_targets)
+                self.cube.set_world_pose(
+                    position=np.asarray(cube_position, dtype=np.float32),
+                    orientation=np.asarray(cube_orientation, dtype=np.float32),
+                )
+                self.cube.set_linear_velocity(cube_linear_velocity)
+                self.cube.set_angular_velocity(cube_angular_velocity)
             if frame is None:
                 raise RuntimeError("workspace camera did not produce an RGB frame")
             if hasattr(frame, "numpy"):
@@ -1020,13 +921,9 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
             )
 
         def close(self) -> None:
-            if self._workspace_rgb is not None and self._workspace_render_product is not None:
+            if self._workspace_camera is not None:
                 with suppress(Exception):
-                    self._workspace_rgb.detach(self._workspace_render_product)
-                with suppress(Exception):
-                    self._workspace_render_product.destroy()
-                with suppress(Exception):
-                    rep.orchestrator.wait_until_complete()
+                    self._workspace_camera.destroy()
             self.timeline.stop()
 
     runtime: IsaacRuntime | None = None

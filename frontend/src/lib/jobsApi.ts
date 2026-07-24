@@ -109,15 +109,16 @@ export interface JobRecord {
 export interface RlReadiness {
   ready: boolean;
   checks: Record<string, boolean>;
+  distribution_zip: string;
   distribution_sha256: string | null;
 }
 
 export async function getRlReadiness(baseUrl: string, fetcher: Fetcher, config: ReinforcementLearningRequest) {
   const query = new URLSearchParams({
-    distribution_zip: config.distribution_zip,
     learner_port: String(config.learner_port),
     bridge_port: String(config.bridge_port),
   });
+  if (config.distribution_zip) query.set("distribution_zip", config.distribution_zip);
   return apiRequest<RlReadiness>(baseUrl, fetcher, `/system/rl-readiness?${query}`, { action: "Check RL readiness" });
 }
 

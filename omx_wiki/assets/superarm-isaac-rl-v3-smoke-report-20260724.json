@@ -1,0 +1,57 @@
+{
+  "archive": "/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/distributions/superarm_amazinghand_isaac60_passive_linkage_no_shell_distribution_20260724_v3.zip",
+  "archive_sha256": "c356d1157318b72532b82d73270ef06b5b11ed5b8a90641ea4e431941e4554f7",
+  "half_close": {
+    "frame": "/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/v3-passive-runtime-smoke-verified-20260724/half-close.png",
+    "frame_bytes": 22033,
+    "grasp_state": 0.5,
+    "is_intervention": false
+  },
+  "hello": {
+    "articulation_root": "/superarm_amazinghand/Geometry",
+    "articulation_root_count": 1,
+    "bridge_mode": "managed",
+    "container": {
+      "container_log": "container.log",
+      "container_name": "superarm-isaac-control-632c86e9aa0b",
+      "host": "127.0.0.1",
+      "image": "nvcr.io/nvidia/isaac-sim:6.0.1",
+      "port": 8889
+    },
+    "distribution_sha256": "c356d1157318b72532b82d73270ef06b5b11ed5b8a90641ea4e431941e4554f7",
+    "host": "127.0.0.1",
+    "isaac_sim_version": "6.0.1",
+    "joint_names": [
+      "joint_rev_1",
+      "joint_rev_2",
+      "joint_rev_3",
+      "joint_rev_4",
+      "joint_rev_5",
+      "finger1_motor1",
+      "finger1_motor2",
+      "finger2_motor1",
+      "finger2_motor2",
+      "finger3_motor1",
+      "finger3_motor2",
+      "finger4_motor1",
+      "finger4_motor2"
+    ],
+    "logical_action_width": 6,
+    "outer_shells_included": false,
+    "passive_follower_count": 88,
+    "physical_dof_count": 13,
+    "port": 8889,
+    "run_dir": "/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/v3-passive-runtime-smoke-verified-20260724/isaac/run",
+    "runtime": "isaac_sim",
+    "visual_profile": "superarm_isaac60_passive_linkage_no_shell/v1"
+  },
+  "reset": {
+    "frame": "/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/v3-passive-runtime-smoke-verified-20260724/reset-open.png",
+    "frame_bytes": 22167,
+    "is_intervention": false,
+    "state_width": 23
+  },
+  "startup_seconds": 31.108458110000356,
+  "status": "PASS",
+  "total_seconds": 42.128720196007635
+}

@@ -332,3 +332,9 @@
 ## 2026-07-23 — SuperArm Isaac HIL-SERL
 
 Added the simulation-only SAC actor/learner page and recorded the camera-gated runtime verification truth in [SuperArm Isaac HIL-SERL](superarm-isaac-hilserl.md).
+
+## 2026-07-24 — Locked V3 shell-free RL runtime
+
+Removed competing Isaac distribution ZIPs, locked RL configuration to the confirmed passive/no-shell V3 checksum, and replaced the failed manual Replicator/Fabric capture path with the Isaac Camera wrapper. Live isolation showed that authoring the 88 passive followers before PhysX initialization fragmented the arm; post-articulation authoring plus a four-valid-frame freshness gate produced reviewed open and half-close task PNGs with the full arm attached. Real-hardware grasp remains capped at half-close (`0.5`); full close is simulation-only.
+
+The follow-up repeated-reset and 300-frame hold gate also passed: identical seeded state, strictly increasing frame sequences, median step latency `0.2197 s`, p95 `0.2803 s`, maximum arm hold error `0.001191 rad`, and cube drift `0.0000181 m`.

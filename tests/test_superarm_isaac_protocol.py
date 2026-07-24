@@ -394,19 +394,23 @@ def test_control_bridge_import_is_host_safe_and_runtime_import_order_is_guarded(
     capture_index = source.index("def capture(self, view: str, name: str)", runtime_index)
     close_index = source.index("def close(self)", capture_index)
     assert "live Isaac capture is disabled" in source[capture_index:close_index]
-    replicator_import_index = source.index("import omni.replicator.core as rep", runtime_index)
-    assert replicator_import_index > app_index
-    assert "rep.orchestrator.set_capture_on_play(False)" in source[runtime_index:]
-    assert "rep.create.render_product(" in source[runtime_index:]
-    assert 'rep.AnnotatorRegistry.get_annotator("rgb")' in source[runtime_index:]
-    assert (
-        "rep.orchestrator.step(delta_time=0.0, rt_subframes=8, pause_timeline=False)"
-        in source[runtime_index:]
-    )
+    assert "import omni.replicator.core as rep" not in source[runtime_index:]
+    assert "from isaacsim.sensors.camera import Camera" in source[runtime_index:]
+    assert "self._workspace_camera.initialize()" in source[runtime_index:]
+    assert "self._workspace_camera.get_rgba()" in source[runtime_index:]
+    assert "self._workspace_camera.destroy()" in source[runtime_index:]
     assert "saved_positions = np.asarray(flat(self.art.get_dof_positions())" in source[runtime_index:]
-    assert "self.timeline.stop()" in source[runtime_index:]
-    assert "SimulationManager.invalidate_physics()" in source[runtime_index:]
-    assert "SimulationManager.initialize_physics()" in source[runtime_index:]
+    assert "backend_utils.use_backend" not in source[runtime_index:]
+    assert "useFabricSceneDelegate" not in source[runtime_index:]
+    assert "contract = author_or_update_passive_linkage_runtime(" in source[runtime_index:]
+    physics_ready_index = source.index(
+        'print(json.dumps({"event": "rl_articulation_valid"})',
+        runtime_index,
+    )
+    passive_author_index = source.index("self._author_initial_passive_linkage()", runtime_index)
+    assert physics_ready_index < passive_author_index
+    assert "valid_frames += 1" in source[runtime_index:]
+    assert "if valid_frames >= 4:" in source[runtime_index:]
     assert "self.art.set_dof_positions(saved_positions)" in source[runtime_index:]
     assert "self.cube.set_linear_velocity(cube_linear_velocity)" in source[runtime_index:]
     assert "UsdLux.DomeLight.Define(\n                    self.stage" in source[runtime_index:]
@@ -756,6 +760,7 @@ def test_control_launcher_has_exact_isolation_and_lifecycle_contract():
         ":/root/.cache/nvidia/GLCache",
         ":/root/.nv/ComputeCache",
         "-v /tmp/.X11-unix:/tmp/.X11-unix:rw",
+        'xdpyinfo -display "$rl_display"',
         "--replicator-rgb",
         "--passive-linkage-visuals",
         "superarm_isaac_runtime",

@@ -8,7 +8,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-DEFAULT_DISTRIBUTION_SHA256 = "c356d1157318b72532b82d73270ef06b5b11ed5b8a90641ea4e431941e4554f7"
+from lelab.superarm.isaac_distribution import CONFIRMED_DISTRIBUTION_SHA256
+
+DEFAULT_DISTRIBUTION_SHA256 = CONFIRMED_DISTRIBUTION_SHA256
 DEFAULT_TASK = "SuperArmIsaacPickLift-v0"
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
@@ -41,6 +43,8 @@ class ReinforcementLearningRequest(BaseModel):
         normalized = value.strip().lower()
         if not _SHA256_RE.fullmatch(normalized):
             raise ValueError("distribution_sha256 must be 64 lowercase hexadecimal characters")
+        if normalized != CONFIRMED_DISTRIBUTION_SHA256:
+            raise ValueError("distribution_sha256 must identify the confirmed passive/no-shell V3")
         return normalized
 
     @field_validator("distribution_zip")

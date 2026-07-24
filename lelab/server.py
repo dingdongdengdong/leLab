@@ -520,11 +520,14 @@ async def create_training_job(req: Request):
 
 @app.get("/system/rl-readiness")
 def get_rl_readiness(
-    distribution_zip: str,
+    distribution_zip: str = "",
     learner_port: int = 50051,
     bridge_port: int = 8765,
 ):
-    result = check_rl_readiness(distribution_zip, learner_port, bridge_port)
+    resolved_distribution = distribution_zip or os.environ.get(
+        "SUPERARM_ISAAC_DISTRIBUTION_ZIP", ""
+    )
+    result = check_rl_readiness(resolved_distribution, learner_port, bridge_port)
     running = any(job.state == "running" and job.runner == "local" for job in job_registry.list(100))
     result["checks"]["no_competing_job"] = not running
     result["ready"] = result["ready"] and not running

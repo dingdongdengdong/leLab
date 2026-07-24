@@ -206,6 +206,7 @@ def test_list_robot_records_prioritizes_combined_superarm_when_assets_exist(
 def test_builtin_isaac_record_requires_a_valid_distribution(tmp_path, monkeypatch) -> None:
     from types import SimpleNamespace
 
+    from lelab.superarm.isaac_distribution import CONFIRMED_DISTRIBUTION_SHA256
     from lelab.utils import config as cfg
 
     archive = tmp_path / "superarm.zip"
@@ -215,7 +216,7 @@ def test_builtin_isaac_record_requires_a_valid_distribution(tmp_path, monkeypatc
 
     def validate(*_args, **kwargs):
         validation_calls.append(kwargs)
-        return SimpleNamespace(archive_sha256="a" * 64)
+        return SimpleNamespace(archive_sha256=CONFIRMED_DISTRIBUTION_SHA256)
 
     monkeypatch.setattr(cfg, "validate_and_extract_distribution", validate)
 
@@ -229,7 +230,10 @@ def test_builtin_isaac_record_requires_a_valid_distribution(tmp_path, monkeypatc
     assert isaac["isaac_host"] == "127.0.0.1"
     assert isaac["isaac_port"] == 8765
     assert cfg.is_robot_record_clean(isaac) is True
-    assert validation_calls[-1]["expected_sha256"] == "a" * 64
+    assert all(
+        call["expected_sha256"] == CONFIRMED_DISTRIBUTION_SHA256
+        for call in validation_calls
+    )
 
     monkeypatch.setattr(
         cfg,

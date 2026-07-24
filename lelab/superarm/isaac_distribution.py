@@ -16,6 +16,9 @@ from typing import Any
 from isaacsim_validation.contracts import ARM_JOINTS, HAND_JOINTS, PHYSICAL_JOINTS
 
 DISTRIBUTION_SCHEMA = "superarm.isaac_sim.usd_distribution/v2"
+CONFIRMED_DISTRIBUTION_SHA256 = (
+    "c356d1157318b72532b82d73270ef06b5b11ed5b8a90641ea4e431941e4554f7"
+)
 PASSIVE_VISUAL_PROFILE = "superarm_isaac60_passive_linkage_no_shell/v1"
 PASSIVE_RUNTIME_CONTRACT = {
     "python_root": "python",

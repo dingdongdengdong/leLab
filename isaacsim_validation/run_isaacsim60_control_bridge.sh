@@ -49,6 +49,10 @@ if [[ -n "$rl_display" ]]; then
     echo "RL X11 display socket not found: /tmp/.X11-unix/X$display_number" >&2
     exit 2
   }
+  xdpyinfo -display "$rl_display" >/dev/null 2>&1 || {
+    echo "RL X11 display is not responding: $rl_display" >&2
+    exit 2
+  }
 fi
 
 asset_root=$(realpath "$asset_root")

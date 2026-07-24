@@ -11,13 +11,12 @@ import {
 } from "@/lib/jobsApi";
 
 const SHA = "c356d1157318b72532b82d73270ef06b5b11ed5b8a90641ea4e431941e4554f7";
-const DEFAULT_ZIP = "/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/distributions/superarm_amazinghand_isaac60_passive_linkage_no_shell_distribution_20260724_v3.zip";
 const initial: ReinforcementLearningRequest = {
   task: "SuperArmIsaacPickLift-v0", runner: "local", seed: 1000,
   episode_length_steps: 150, training_steps: 20000,
   online_buffer_capacity: 100000, learning_starts: 100, batch_size: 256,
   actor_lr: 0.0003, critic_lr: 0.0003, temperature_lr: 0.0003,
-  checkpoint_frequency: 5000, distribution_zip: DEFAULT_ZIP,
+  checkpoint_frequency: 5000, distribution_zip: "",
   distribution_sha256: SHA, learner_port: 50051, bridge_port: 8765,
   camera_preview: true,
 };
@@ -37,7 +36,15 @@ export default function ReinforcementLearning() {
 
   useEffect(() => {
     if (!jobId) {
-      getRlReadiness(baseUrl, fetchWithHeaders, config).then((r) => { setReady(r.ready); setChecks(r.checks); }).catch(() => setReady(false));
+      getRlReadiness(baseUrl, fetchWithHeaders, config).then((r) => {
+        setReady(r.ready);
+        setChecks(r.checks);
+        setConfig((old) => ({
+          ...old,
+          distribution_zip: r.distribution_zip,
+          distribution_sha256: r.distribution_sha256 ?? old.distribution_sha256,
+        }));
+      }).catch(() => setReady(false));
       return;
     }
     const poll = () => {
@@ -68,8 +75,8 @@ export default function ReinforcementLearning() {
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-4">
           <h2 className="text-xl font-semibold">Configuration</h2>
           <label className="block text-sm">Task<Input value={config.task} disabled /></label>
-          <label className="block text-sm">Isaac distribution<Input value={config.distribution_zip} onChange={(e) => setConfig({...config, distribution_zip:e.target.value})} /></label>
-          <label className="block text-sm">Validated checksum<Input value={config.distribution_sha256} onChange={(e) => setConfig({...config, distribution_sha256:e.target.value})} /></label>
+          <label className="block text-sm">Confirmed Isaac distribution<Input value={config.distribution_zip} readOnly /></label>
+          <label className="block text-sm">Locked checksum<Input value={config.distribution_sha256} readOnly /></label>
           <div className="grid grid-cols-2 gap-3">{fields.map(([key,label]) => <label key={key} className="text-sm">{label}<Input type="number" value={String(config[key])} onChange={(e) => setNumber(key,e.target.value)} /></label>)}</div>
           <Button disabled={!ready} className="w-full bg-yellow-400 text-slate-950 hover:bg-yellow-300" onClick={async () => { const created=await startReinforcementLearningJob(baseUrl,fetchWithHeaders,config); navigate(`/reinforcement-learning/${created.id}`); }}><Play className="mr-2 h-4 w-4" />Start autonomous SAC</Button>
         </section>

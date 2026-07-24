@@ -68,6 +68,34 @@ def test_health_endpoint_returns_dict(client: TestClient) -> None:
     assert isinstance(body, dict)
 
 
+def test_rl_readiness_uses_server_distribution_when_client_path_is_omitted(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from lelab import server
+
+    captured = {}
+
+    def fake_check(distribution_zip, learner_port, bridge_port):
+        captured.update(
+            distribution_zip=distribution_zip,
+            learner_port=learner_port,
+            bridge_port=bridge_port,
+        )
+        return {"ready": True, "checks": {}, "distribution_zip": distribution_zip}
+
+    monkeypatch.setenv("SUPERARM_ISAAC_DISTRIBUTION_ZIP", "/server/confirmed-v3.zip")
+    monkeypatch.setattr(server, "check_rl_readiness", fake_check)
+    response = client.get("/system/rl-readiness")
+    assert response.status_code == 200
+    assert captured == {
+        "distribution_zip": "/server/confirmed-v3.zip",
+        "learner_port": 50051,
+        "bridge_port": 8765,
+    }
+    assert response.json()["distribution_zip"] == "/server/confirmed-v3.zip"
+
+
 def test_manual_leader_config_exposes_superarm_slider_contract(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

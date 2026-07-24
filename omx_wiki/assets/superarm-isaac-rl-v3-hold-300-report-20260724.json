@@ -1,0 +1,61 @@
+{
+  "archive": "/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/distributions/superarm_amazinghand_isaac60_passive_linkage_no_shell_distribution_20260724_v3.zip",
+  "archive_sha256": "c356d1157318b72532b82d73270ef06b5b11ed5b8a90641ea4e431941e4554f7",
+  "final_frame": "/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/v3-passive-rl-300-hold-verified-20260724/hold-step-300.png",
+  "final_frame_sequence": 302,
+  "final_frame_sha256": "88f71e396cd7afb28c19fbf5f69414fd7d640cc8778dd829e67cf73f9c78114e",
+  "hello": {
+    "articulation_root": "/superarm_amazinghand/Geometry",
+    "articulation_root_count": 1,
+    "bridge_mode": "managed",
+    "container": {
+      "container_log": "container.log",
+      "container_name": "superarm-isaac-control-2fa156bdb367",
+      "host": "127.0.0.1",
+      "image": "nvcr.io/nvidia/isaac-sim:6.0.1",
+      "port": 8890
+    },
+    "distribution_sha256": "c356d1157318b72532b82d73270ef06b5b11ed5b8a90641ea4e431941e4554f7",
+    "host": "127.0.0.1",
+    "isaac_sim_version": "6.0.1",
+    "joint_names": [
+      "joint_rev_1",
+      "joint_rev_2",
+      "joint_rev_3",
+      "joint_rev_4",
+      "joint_rev_5",
+      "finger1_motor1",
+      "finger1_motor2",
+      "finger2_motor1",
+      "finger2_motor2",
+      "finger3_motor1",
+      "finger3_motor2",
+      "finger4_motor1",
+      "finger4_motor2"
+    ],
+    "logical_action_width": 6,
+    "outer_shells_included": false,
+    "passive_follower_count": 88,
+    "physical_dof_count": 13,
+    "port": 8890,
+    "run_dir": "/home/dong/july/superarm_ws.omx-artifacts/lelab-isaacsim-control/v3-passive-rl-300-hold-verified-20260724/isaac/run",
+    "runtime": "isaac_sim",
+    "visual_profile": "superarm_isaac60_passive_linkage_no_shell/v1"
+  },
+  "hold_steps_completed": 300,
+  "hold_steps_requested": 300,
+  "is_intervention": false,
+  "latency_seconds": {
+    "max": 0.3500466069963295,
+    "mean": 0.22837293641656287,
+    "median": 0.21970079249877017,
+    "min": 0.20810069399885833,
+    "p95": 0.28031556999485474
+  },
+  "max_arm_hold_error_rad": 0.0011906427098438144,
+  "max_cube_drift_m": 1.802055034406159e-05,
+  "repeated_seed_reset_max_abs_error": 0.0,
+  "startup_seconds": 31.10852684400743,
+  "status": "PASS",
+  "total_seconds": 110.81235268700402
+}
