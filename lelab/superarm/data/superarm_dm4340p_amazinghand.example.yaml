@@ -37,3 +37,6 @@ arm_position_kd: [-1.0, -1.0, -1.0, -1.0, -1.0]
 hand_port: /dev/ttyACM0
 hand_baudrate: 1000000
 hand_speed: 3  # integer in [1, 6]
+# Physical safety boundary: the real hand is validated only through half-close.
+# Full close (1.0) remains simulation-only.
+hand_max_motion_code: 0.5
