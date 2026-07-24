@@ -350,11 +350,14 @@ def simulation_app_launch(args: argparse.Namespace) -> tuple[dict[str, Any], str
     """Build the Isaac launch contract without importing Isaac on the host."""
 
     if getattr(args, "replicator_rgb", False):
+        extra_args = ["--/exts/isaacsim.core.throttling/enable_async=false"]
+        if getattr(args, "passive_linkage_visuals", False):
+            extra_args.append("--/app/useFabricSceneDelegate=true")
         return {
             "headless": False,
             "renderer": "RayTracedLighting",
             "enable_cameras": True,
-            "extra_args": ["--/exts/isaacsim.core.throttling/enable_async=false"],
+            "extra_args": extra_args,
         }, ""
 
     config: dict[str, Any] = {
@@ -366,6 +369,8 @@ def simulation_app_launch(args: argparse.Namespace) -> tuple[dict[str, Any], str
         "window_height": 720,
     }
     if not args.webrtc:
+        if getattr(args, "passive_linkage_visuals", False):
+            config["extra_args"] = ["--/app/useFabricSceneDelegate=true"]
         return config, ""
 
     prefix = "/exts/omni.kit.livestream.app/primaryStream"
@@ -375,6 +380,8 @@ def simulation_app_launch(args: argparse.Namespace) -> tuple[dict[str, Any], str
         f'--{prefix}/streamType="webrtc"',
         f"--{prefix}/targetFps=30",
     ]
+    if getattr(args, "passive_linkage_visuals", False):
+        extra_args.append("--/app/useFabricSceneDelegate=true")
     if args.webrtc_public_ip:
         extra_args.append(f'--{prefix}/publicIp="{args.webrtc_public_ip}"')
     config.update({"hide_ui": False, "extra_args": extra_args})
@@ -395,12 +402,13 @@ def _run_isaac(args: argparse.Namespace, token: str) -> None:
 
 def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None:
     app.update()
+    import isaacsim.core.experimental.utils.backend as backend_utils
     import numpy as np
     import omni.timeline
     import omni.usd
     from isaacsim.core.api import World
     from isaacsim.core.api.objects import DynamicCuboid, FixedCuboid
-    from isaacsim.core.experimental.prims import Articulation
+    from isaacsim.core.experimental.prims import Articulation, XformPrim
     from isaacsim.core.rendering_manager import ViewportManager
     from isaacsim.core.simulation_manager import SimulationManager
     from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics
@@ -540,6 +548,7 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                     f"extra={sorted(actual - expected)}"
                 )
             self.indices = {name: int(self.art.dof_names.index(name)) for name in PHYSICAL_JOINTS}
+            self._initialize_passive_runtime_views()
             positions = flat(self.art.get_dof_positions())
             self.targets = {name: positions[self.indices[name]] for name in PHYSICAL_JOINTS}
             self.physics_step = 2
@@ -672,6 +681,29 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 args.passive_instances,
             )
 
+        def _initialize_passive_runtime_views(self) -> None:
+            self._passive_xforms = None
+            self._passive_root_xform = None
+            self._passive_wrist = None
+            if not args.passive_linkage_visuals:
+                return
+            contract = self.passive_visual_contract or {}
+            paths = contract.get("runtime_xform_paths")
+            root_path = contract.get("runtime_root_path")
+            if not isinstance(paths, list) or len(paths) != 88 or not isinstance(root_path, str):
+                raise RuntimeError("passive visual runtime did not author its exact 88-path contract")
+            wrists = [
+                prim
+                for prim in self.stage.TraverseAll()
+                if prim.GetName() == "r_wrist_interface"
+                and str(prim.GetPath()).startswith(self.root_path.rstrip("/") + "/")
+            ]
+            if len(wrists) != 1:
+                raise RuntimeError(f"expected one passive visual wrist, found {len(wrists)}")
+            self._passive_wrist = wrists[0]
+            self._passive_xforms = XformPrim(paths, resolve_paths=False)
+            self._passive_root_xform = XformPrim(root_path, resolve_paths=False)
+
         def _update_passive_linkage(
             self,
             *,
@@ -703,44 +735,36 @@ def _run_isaac_after_app(args: argparse.Namespace, token: str, app: Any) -> None
                 return
             measured = dict(zip(HAND_JOINTS, measured_values, strict=True))
             poses = solve_passive_linkage(measured)
-            saved_positions = np.asarray(positions, dtype=np.float32)
-            saved_velocities = np.asarray(flat(self.art.get_dof_velocities()), dtype=np.float32)
-            saved_targets = np.asarray(
-                [self.targets[name] for name in PHYSICAL_JOINTS],
+            if (
+                self._passive_xforms is None
+                or self._passive_root_xform is None
+                or self._passive_wrist is None
+            ):
+                raise RuntimeError("passive visual runtime views are not initialized")
+            translations = np.asarray([pose.translate for pose in poses], dtype=np.float32)
+            orientations = np.asarray([pose.orient for pose in poses], dtype=np.float32)
+            wrist_matrix = UsdGeom.Xformable(
+                self._passive_wrist
+            ).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+            wrist_quaternion = wrist_matrix.RemoveScaleShear().ExtractRotationQuat()
+            wrist_position = np.asarray(wrist_matrix.ExtractTranslation(), dtype=np.float32)
+            wrist_orientation = np.asarray(
+                [wrist_quaternion.GetReal(), *wrist_quaternion.GetImaginary()],
                 dtype=np.float32,
             )
-            cube_position, cube_orientation = self.cube.get_world_pose()
-            cube_linear_velocity = np.asarray(self.cube.get_linear_velocity(), dtype=np.float32)
-            cube_angular_velocity = np.asarray(self.cube.get_angular_velocity(), dtype=np.float32)
-            timeline_was_playing = self.timeline.is_playing()
-            if timeline_was_playing:
-                self.timeline.stop()
-            SimulationManager.invalidate_physics()
-            try:
-                self.passive_visual_contract = author_or_update_passive_linkage_runtime(
-                    self.stage,
-                    self.root_path,
-                    poses,
-                    args.passive_instances,
+            with backend_utils.use_backend(
+                "usdrt",
+                raise_on_unsupported=True,
+                raise_on_fallback=True,
+            ):
+                self._passive_root_xform.set_world_poses(
+                    positions=wrist_position,
+                    orientations=wrist_orientation,
                 )
-            finally:
-                if timeline_was_playing:
-                    self.timeline.play()
-                SimulationManager.initialize_physics()
-                self.art = Articulation(self.root_path)
-                if not self.art.is_physics_tensor_entity_valid():
-                    raise RuntimeError(
-                        "Isaac physics tensor did not recover after passive visual update"
-                    )
-                self.art.set_dof_positions(saved_positions)
-                self.art.set_dof_velocities(saved_velocities)
-                self.art.set_dof_position_targets(saved_targets)
-                self.cube.set_world_pose(
-                    position=np.asarray(cube_position, dtype=np.float32),
-                    orientation=np.asarray(cube_orientation, dtype=np.float32),
+                self._passive_xforms.set_local_poses(
+                    translations=translations,
+                    orientations=orientations,
                 )
-                self.cube.set_linear_velocity(cube_linear_velocity)
-                self.cube.set_angular_velocity(cube_angular_velocity)
             self._last_passive_positions = measured_values
 
         def _capture_rl_frame(self) -> dict[str, Any]:

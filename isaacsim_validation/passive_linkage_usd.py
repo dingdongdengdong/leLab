@@ -209,9 +209,11 @@ def author_or_update_passive_linkage_runtime(
         passive_root = UsdGeom.Xform(passive_root_prim)
     _set_runtime_parent_pose(passive_root.GetPrim(), wrist, Usd, UsdGeom)
 
+    runtime_xform_paths: list[str] = []
     for pose, part in zip(poses, plan["parts"], strict=True):
         finger_path = passive_root.GetPath().AppendChild(f"finger{pose.finger}")
         part_path = finger_path.AppendChild(f"part_{pose.source_index:03d}")
+        runtime_xform_paths.append(str(part_path))
         if runtime_created:
             UsdGeom.Xform.Define(stage, finger_path)
             prim = UsdGeom.Xform.Define(stage, part_path).GetPrim()
@@ -249,6 +251,8 @@ def author_or_update_passive_linkage_runtime(
         "deactivated_frame_first_core_ref_count": deactivated,
         "runtime_created": runtime_created,
         "runtime_updated": not runtime_created,
+        "runtime_root_path": str(passive_root.GetPath()),
+        "runtime_xform_paths": runtime_xform_paths,
         "source_usd_saved": False,
         "source_usd_flattened": False,
     }

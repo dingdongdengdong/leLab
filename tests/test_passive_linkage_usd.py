@@ -134,6 +134,9 @@ def test_live_runtime_authors_once_then_updates_without_saving_or_flattening(
     assert updated["runtime_created"] is False
     assert updated["runtime_updated"] is True
     assert created["visual_part_count"] == updated["visual_part_count"] == 88
+    assert created["runtime_root_path"] == "/LeLabPassiveLinkageVisuals"
+    assert len(created["runtime_xform_paths"]) == 88
+    assert created["runtime_xform_paths"] == updated["runtime_xform_paths"]
     assert sum(len(prim.references) for prim in part_prims) == 88
     assert all(prim.instanceable for prim in part_prims)
     runtime_root = stage.prims["/LeLabPassiveLinkageVisuals"]
